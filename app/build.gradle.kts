@@ -42,6 +42,16 @@ tasks.register<JavaExec>("gutenbergSearchCheck") {
     mainClass.set("org.infinilect.app.gutenberg.GutenbergIntegrationCheck")
 }
 
+// Opt-in access diagnostic, independent of Gutenberg and of test/check/build.
+tasks.register<JavaExec>("oapenApiAccessCheck") {
+    group = "verification"
+    description = "Inspect one bounded response from the documented OAPEN REST endpoint (no acquisition)."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.oapen.OapenApiAccessCheck")
+}
+
 compose.desktop {
     application {
         mainClass = "org.infinilect.app.MainKt"
