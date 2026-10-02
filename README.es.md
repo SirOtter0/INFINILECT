@@ -85,7 +85,13 @@ de lector específica de Android. SQLDelight y Readium no están incluidos.
 
 ## Licencia
 
-GNU General Public License versión 3 únicamente (`GPL-3.0-only`), véase [LICENSE](LICENSE).
+El código original de INFINILECT se distribuye bajo `GPL-3.0-or-later`, véase [LICENSE](LICENSE).
+
+INFINILECT es software libre: puedes redistribuirlo y/o modificarlo bajo los
+términos de la Licencia Pública General de GNU publicada por la Free Software
+Foundation, ya sea la versión 3 de la Licencia o, a tu elección, cualquier versión
+posterior.
+
 La licencia del proyecto no cambia la licencia de las publicaciones de las fuentes.
 
 Copyright © 2026 SirOtter0 and INFINILECT contributors.

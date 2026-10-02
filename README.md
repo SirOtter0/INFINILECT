@@ -82,7 +82,12 @@ implementation. SQLDelight and Readium are not included.
 
 ## License
 
-GNU General Public License version 3 only (`GPL-3.0-only`), see [LICENSE](LICENSE).
+Original INFINILECT code is licensed under `GPL-3.0-or-later`, see [LICENSE](LICENSE).
+
+INFINILECT is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+
 The project license does not relicense publications obtained from sources.
 
 Copyright © 2026 SirOtter0 and INFINILECT contributors.

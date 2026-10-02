@@ -48,7 +48,7 @@ SLF4J API has no license element in its module POM; MIT is verified from its [ta
 | `io.ktor:ktor-utils-jvm` | 3.6.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `io.ktor:ktor-websocket-serialization-jvm` | 3.6.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `io.ktor:ktor-websockets-jvm` | 3.6.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
-| `org.infinilect:core` | 0.0.1-SNAPSHOT | [GPL-3.0-only](../LICENSE) (local project) |
+| `org.infinilect:core` | 0.0.1-SNAPSHOT | [GPL-3.0-or-later](../LICENSE) (local project) |
 | `org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-desktop` | 2.9.6 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.androidx.navigationevent:navigationevent-compose-desktop` | 1.1.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.androidx.savedstate:savedstate-compose-desktop` | 1.3.6 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
@@ -130,7 +130,7 @@ SLF4J API has no license element in its module POM; MIT is verified from its [ta
 | `io.ktor:ktor-websockets-jvm` | 3.6.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `junit:junit` | 4.13.2 | [Eclipse Public License 1.0](http://www.eclipse.org/legal/epl-v10.html) |
 | `org.hamcrest:hamcrest-core` | 1.3 | [New BSD License](http://www.opensource.org/licenses/bsd-license.php) |
-| `org.infinilect:core` | 0.0.1-SNAPSHOT | [GPL-3.0-only](../LICENSE) (local project) |
+| `org.infinilect:core` | 0.0.1-SNAPSHOT | [GPL-3.0-or-later](../LICENSE) (local project) |
 | `org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-desktop` | 2.9.6 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.androidx.navigationevent:navigationevent-compose-desktop` | 1.1.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.androidx.savedstate:savedstate-compose-desktop` | 1.3.6 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |

@@ -1,7 +1,7 @@
 # Third-party notices
 
 Copyright © 2026 SirOtter0 and INFINILECT contributors.
-Original INFINILECT code is GPL-3.0-only; upstream components retain their licenses.
+Original INFINILECT code is GPL-3.0-or-later; upstream components retain their licenses.
 No publication files are bundled. This foundation is not a packaged distribution.
 
 ## Direct dependencies and build tools
