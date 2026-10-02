@@ -24,6 +24,12 @@ Publication details, resource acquisition, caching and reading are **not impleme
 This search slice does not complete v0.0.1. Pure domain contracts, bounded resource
 access, revision-aware identity and architectural documentation remain in place.
 
+OAPEN is the intended first acquisition experiment, but it is **blocked**, not a
+functional second source: the documented REST endpoint rejects this environment
+with HTTP 403, and the transfer mechanism has not been verified. See the
+[official evidence and next gates](docs/OAPEN.md). No OAPEN UI or PDF acquisition
+is claimed. Gutenberg acquisition remains deferred pending official guidance.
+
 The deliberately small v0.0.1 goal is: open INFINILECT → search for a book → get
 real results → open one → read it. Project Gutenberg/OPDS is the first planned source.
 Desktop is the initial executable target; Android and iOS are future targets,
@@ -56,6 +62,10 @@ one-page live check, separate from tests/build and without a graphical UI, is:
 ```sh
 ./gradlew :app:gutenbergSearchCheck --args="shakespeare"
 ```
+
+A separate, one-request OAPEN access diagnostic (no publication mapping or download)
+is available as `./gradlew :app:oapenApiAccessCheck --args=water`. It is opt-in and
+fails on denied access; HTTP 200 alone would not verify acquisition.
 
 Actual verification and environment limitations are recorded in [VERIFICATION.md](docs/VERIFICATION.md).
 

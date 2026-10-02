@@ -1,5 +1,52 @@
 # Verification
 
+## OAPEN investigation — 2026-10-02 (integration blocked)
+
+Started from integrated main `86d70c1bc4f281e7f866207ff8bfcfed647e058d` on
+`feature/oapen-acquisition`. Existing contracts, core, UI, Gutenberg sources/tests,
+dependency versions and historical ADRs are unchanged. See [OAPEN.md](OAPEN.md)
+for current official documentation, the two development-request failures and the
+unverified acquisition mechanism. This is not a completed acquisition slice.
+
+The independent Ktor/Java `:app:oapenApiAccessCheck --args=water` was run manually
+**once**. It requested one bounded page from the documented REST search endpoint,
+returned HTTP 403, consumed zero metadata bytes, and failed the opt-in task with
+exit code 1 in 9 seconds. No publication metadata was mapped, pagination followed,
+resource requested or graphical UI executed. The endpoint's development response
+was `You address is not allowed to access this API.` No workaround was attempted.
+
+Normal tests use MockEngine only. Seven new diagnostic tests cover query encoding,
+fixed host/path/parameters and identifying headers, invalid queries without I/O,
+HTTP access errors/redirects without retry, media/encoding and declared-size
+validation, actual body bounds, cancellation/close and transport timeout. They
+do not stand in for unimplemented OAPEN parsing, publication mapping, source
+ownership, PDF streaming, resource selection or acquisition UI tests. Malformed
+XML is not parsed by the transport diagnostic; HTTP success proves only access.
+
+Final checks used the existing environment-local JDK/proxy/CA settings, with TLS
+verification enabled and the original project repositories:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest build \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main --check
+```
+
+- BUILD SUCCESSFUL in 25 seconds; 28 actionable tasks, all executed.
+- Core: 23 tests. App: 31 tests (the existing 24 plus 7 diagnostic tests).
+  Total: 54 tests; zero failures, errors or skipped tests. Gutenberg's 19
+  parser/source tests and the existing 5 controller tests still pass.
+- Both diff checks and local Markdown links passed; core and Gutenberg code/tests
+  remain identical to main. No runtime/test dependency or toolchain change.
+- No compiler/deprecation warnings or Maven HTTP 429 occurred. No repository
+  mirror override or workaround was used. The live diagnostic emitted SLF4J's
+  existing no-provider/NOP warning; no logging backend was added to silence it.
+- The live diagnostic does not run during build; its HTTP 403/exit 1 is separate
+  from the successful deterministic suite and build.
+- No graphical UI, native installer, OAPEN catalog mapping or book acquisition
+  was verified. Review the gates in OAPEN.md before implementing those features.
+
 ## Gutenberg search slice — 2026-10-02
 
 Started from integrated main `28619ed`, on `feature/gutenberg-search`. Core models,

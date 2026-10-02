@@ -11,5 +11,6 @@ Accepted decisions for the foundation and first search slice:
 - [0007: Minimal source metadata and revision-aware identity](0007-metadata-and-resource-identity.md)
 - [0008: Future shared UI and platform entry points](0008-platform-entrypoints.md)
 - [0009: Explicit Gutenberg OPDS search on desktop](0009-gutenberg-search.md)
+- [0010: OAPEN access and acquisition verification gate](0010-oapen-verification-gate.md)
 
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.

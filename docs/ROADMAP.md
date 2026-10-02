@@ -33,6 +33,16 @@ Open INFINILECT → search for a book → get real results → open one → read
 Completion means actual source-backed reading, not a simulated catalog or a
 welcome window. No completed release is implied by `0.0.1-SNAPSHOT`.
 
+## OAPEN acquisition experiment — blocked
+
+OAPEN is intended to demonstrate a second source and first real resource
+acquisition before adding a PDF reader or cache. Its REST search interface is
+documented, but current requests receive HTTP 403 and no concrete permitted
+bitstream transfer route has been verified. Only an opt-in access diagnostic and
+the [investigation/gates](OAPEN.md) exist; source mapping, selection and acquisition
+UI are deferred. Resolve these gates before treating this as a completed slice.
+Keep Gutenberg acquisition deferred pending its own official guidance.
+
 ## After the first working slice
 
 Add Android and iOS targets with build verification, using the platform-entrypoint

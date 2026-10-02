@@ -124,6 +124,16 @@ acquisition methods validate source ownership and throw UnsupportedOperationExce
 no false not-found result or fabricated resource bytes. See [Sources](SOURCES.md)
 and [ADR 0009](adr/0009-gutenberg-search.md) for the deliberately limited capabilities.
 
+## OAPEN acquisition verification gate
+
+OAPEN investigation adds only a desktop transport diagnostic; it implements none
+of the core source/resource contracts and is not wired into UI. The intended
+`consumer → ResourceLoader → owning PublicationSource → ResourceContent` flow
+needs no new core abstraction. Official API access and the exact transfer route
+must be verified before acquisition, source-neutral resource selection and a
+bounded demonstration consumer are implemented. See [ADR 0010](adr/0010-oapen-verification-gate.md).
+No cache or reader implementation is introduced by this investigation.
+
 ## Evolution when Android is added (no modules added now)
 
 Keep the two current modules until a working Android entry point needs more.

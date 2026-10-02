@@ -26,6 +26,12 @@ Los detalles de publicaciones, la adquisición de recursos, la caché y la lectu
 Se mantienen los contratos de dominio puros, acceso limitado a recursos, identidad
 con revisión de contenido y documentación arquitectónica.
 
+OAPEN es la primera prueba de adquisición prevista, pero está **bloqueada**, no es
+una segunda fuente funcional: el endpoint REST documentado rechaza este entorno
+con HTTP 403 y el mecanismo de transferencia no se ha verificado. Consulta la
+[evidencia oficial y los requisitos pendientes](docs/OAPEN.md). No se anuncia UI
+OAPEN ni adquisición PDF. Gutenberg espera orientación oficial para la adquisición.
+
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
 → obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS será la primera fuente.
 Escritorio es el primer destino ejecutable; Android e iOS son destinos futuros,
@@ -59,6 +65,10 @@ de una página real, independiente de tests/build y sin interfaz gráfica, es:
 ```sh
 ./gradlew :app:gutenbergSearchCheck --args="shakespeare"
 ```
+
+El diagnóstico OAPEN independiente `./gradlew :app:oapenApiAccessCheck --args=water`
+hace una sola petición, sin mapear publicaciones ni descargarlas. Es opt-in y falla
+si el acceso se rechaza; un HTTP 200 tampoco demostraría la adquisición.
 
 Los resultados reales de verificación y límites del entorno están en [VERIFICATION.md](docs/VERIFICATION.md).
 

@@ -1,5 +1,10 @@
 # Resolved dependency inventory
 
+The blocked OAPEN investigation reuses the existing Ktor Java client, coroutines
+and MockEngine for an opt-in access diagnostic. It adds no dependency, parser,
+serialization plugin or version change. The inventory below remains applicable;
+no OAPEN source/resource acquisition implementation is claimed. See [OAPEN.md](OAPEN.md).
+
 Resolved on Linux x86-64 with JDK 21 and Gradle 9.7.1 on 2026-10-02 for the Gutenberg search slice. Generated from the runtime, test and build-plugin graphs and cached Maven POMs (including inherited parent licenses). Native artifacts vary by OS. POM declarations supplement upstream license/notice files; see [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 New direct application declarations: Ktor client core/Java engine 3.6.0 and coroutines core 1.11.0. Test-only declarations: Ktor MockEngine 3.6.0, coroutines test 1.11.0 and kotlin-test 2.4.20. Their exact stable upstream licenses were reviewed before inclusion. No new XML parser library or logging backend is added; StAX belongs to the external JDK 21 prerequisite.

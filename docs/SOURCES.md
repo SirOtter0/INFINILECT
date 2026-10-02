@@ -111,6 +111,16 @@ for the security properties; the built-in provider is selected explicitly.
 JDK license/platform scope is recorded in THIRD_PARTY_NOTICES.md. Android/iOS
 parsers are not added or assumed compatible.
 
+## OAPEN investigation (blocked, not a functional source)
+
+The documented REST search API and policies were reviewed on 2026-10-02.
+Requests to `https://library.oapen.org/rest/search` returned HTTP 403 from this
+environment. Individual reader downloads are generally permitted, but a concrete
+REST bitstream-transfer contract/host policy has not been verified. No OapenSource,
+resource acquisition or OAPEN UI is implemented. The opt-in access diagnostic is
+not a source adapter. See [OAPEN evidence and gates](OAPEN.md) and
+[ADR 0010](adr/0010-oapen-verification-gate.md). Gutenberg remains unchanged.
+
 ## Future declarative definitions
 
 An external definition may describe a source ID, catalog URLs, approved engine
