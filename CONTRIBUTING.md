@@ -1,12 +1,15 @@
 # Contributing
 
-INFINILECT is at the foundation stage. Keep changes small and tied to the
+INFINILECT is in early development with its first Gutenberg search slice. Keep changes small and tied to the
 [v0.0.1 roadmap](docs/ROADMAP.md). Discuss substantial architecture changes in an
 issue and record accepted decisions in an ADR before expanding the module graph.
 
 Use JDK 21 and the checked-in wrapper. Run `./gradlew build` before submitting a
 pull request, report the commands and results, and state any checks you could not
-perform. For the desktop UI, also run `./gradlew :app:run` in a graphical session.
+perform. Core and search/source tests are deterministic: `./gradlew :core:jvmTest :app:desktopTest`.
+The opt-in `./gradlew :app:gutenbergSearchCheck --args="shakespeare"` requests
+one real page and is not part of the normal build. For the desktop UI, also run
+`./gradlew :app:run` in a graphical session.
 Use Kotlin's official style. Add meaningful tests for domain invariants and new
 behavior. Keep README.md and README.es.md aligned when changing user-facing status
 or setup instructions. English is the shared language for code and architecture;
@@ -18,9 +21,11 @@ THIRD_PARTY_NOTICES.md and retain upstream notices for redistribution. Do not ad
 libraries for features we have not implemented. Never commit credentials, fetched
 publications, caches or copyrighted fixtures without permission.
 
-Contributions are provided under GPL-3.0-only, the project's license. Add SPDX
-headers to original Kotlin source. Preserve existing attribution. No copyright
-assignment is required.
+By contributing to INFINILECT, you agree to distribute your contribution under
+GPL-3.0-or-later, the project's license (GNU GPL version 3 or, at your option, any
+later version). Add SPDX headers to original Kotlin source. Preserve existing
+attribution. Each contributor retains authorship and copyright in their
+contribution. No CLA or copyright assignment is required.
 
 Future source definitions are data interpreted by trusted engines. Do not submit
 arbitrary executable plugins, scripts, DRM bypasses or source integrations that

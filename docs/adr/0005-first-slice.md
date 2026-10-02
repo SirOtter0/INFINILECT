@@ -11,7 +11,7 @@ A universal reader can expand indefinitely before demonstrating useful reading.
 v0.0.1 is one path: open, search a book, receive real Gutenberg/OPDS results, open
 and read one verified representation. Ktor is the chosen transport when that
 adapter is implemented. Add SQLDelight only when needed; defer Readium until an
-Android reader requires it. Distribute original project code under GPL-3.0-only.
+Android reader requires it. Distribute original project code under GPL-3.0-or-later.
 
 ## Consequences
 
