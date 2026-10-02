@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+# Preserve upstream license copies verbatim.
+third-party/*.txt -text
