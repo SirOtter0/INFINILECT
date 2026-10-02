@@ -14,10 +14,14 @@
 
 Open INFINILECT → search for a book → get real results → open one → read it.
 
-1. Verify Gutenberg's official OPDS/search/acquisition endpoints and usage rules.
-2. Implement one trusted adapter using Ktor outside core; test catalog parsing,
-   pagination, errors and cancellation with legal fixtures and an explicit live smoke check.
-3. Connect a small search/results UI to the adapter, including empty/error states.
+1. **Implemented:** verify Gutenberg's official OPDS search endpoint/OpenSearch
+   query template and usage rules; no human-page scraping or aggregator.
+2. **Implemented:** trusted desktop GutenbergSource using Ktor outside core,
+   bounded StAX parsing, deterministic fixtures/MockEngine tests and an opt-in
+   one-page live check. Detail/acquisition operations are explicitly unsupported.
+3. **Implemented:** Compose search/results UI, Idle/Loading/Results/Empty/Error,
+   explicit Next page action with no prefetch. Visual execution still needs a
+   graphical desktop; see VERIFICATION.md. This is a search slice, not v0.0.1 completion.
 4. Resolve one supported representation through ResourceLoader/ResourceContent
    and implement a minimal reader (prefer TEXT if the verified source offers it),
    with a measured byte limit, verified charset and source metadata display.
@@ -39,4 +43,8 @@ structure when concrete implementations justify it. A validated declarative
 source schema can follow a second engine use case.
 
 Translation, synchronization, dozens of sources, arbitrary executable plugins and
-a complete plugin system are outside v0.0.1 and this foundational step.
+a complete plugin system are outside v0.0.1 and this search slice.
+
+Gutenberg documents XML OPDS retirement planned for 2027 and an OPDS2 testing feed
+requiring contact. Recheck the official interface before further source work;
+do not silently substitute an aggregator or an undocumented endpoint.

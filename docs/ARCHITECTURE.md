@@ -2,7 +2,7 @@
 
 > A source obtains publications. A reader displays them. INFINILECT connects both.
 
-## Foundation implemented today
+## Foundation and search slice implemented today
 
 Two modules are sufficient: `core` and `app`. Both use Kotlin Multiplatform source
 sets, with JVM/desktop as the only configured targets. More targets and modules
@@ -10,7 +10,10 @@ will be introduced with working implementations, not empty placeholders.
 
 `core/commonMain` contains Kotlin-only models and suspend contracts. It has no
 Compose, Readium, Ktor, SQLDelight or platform dependency. `app/commonMain` owns the
-welcome UI and `app/desktopMain` owns its launcher. The dependency direction is
+search UI and a small Compose-free search controller using coroutines StateFlow.
+`app/desktopMain` owns the launcher, GutenbergSource, Ktor Java transport and the
+JDK StAX parser. The launcher injects PublicationSource through SearchController
+and closes the source at shutdown. The dependency direction is
 `app → core`; core never refers to app.
 
 ## Domain
@@ -105,6 +108,22 @@ and progress have separate lifetimes; see [Cache](CACHE.md).
 No full reader, engine registry, persistence framework or cache implementation is
 claimed by the current foundation. See the [ADRs](adr/README.md).
 
+## Search slice
+
+`SearchScreen → SearchController → PublicationSource → GutenbergSource → Ktor/OPDS`.
+Shared UI observes Idle, Loading, Results, Empty and Error through StateFlow and
+never parses XML or handles HTTP. Only submit/Next page actions initiate requests;
+busy actions are ignored and the source serializes HTTP operations. Pagination
+replaces the displayed page, keeping memory bounded; a failed next-page request
+keeps the previous results and token for an explicit retry. Cancellation propagates
+and restores the previous/idle state. No cache, retry loop or prefetcher is involved.
+
+GutenbergSource is a trusted, desktop-specific adapter, not a core implementation
+or an external plugin. It enforces feed, URL, timeout and XML limits. Detail and
+acquisition methods validate source ownership and throw UnsupportedOperationException:
+no false not-found result or fabricated resource bytes. See [Sources](SOURCES.md)
+and [ADR 0009](adr/0009-gutenberg-search.md) for the deliberately limited capabilities.
+
 ## Evolution when Android is added (no modules added now)
 
 Keep the two current modules until a working Android entry point needs more.
@@ -113,7 +132,9 @@ and [module configuration guidance](https://www.jetbrains.com/help/kotlin-multip
 
 1. Turn today's `app/commonMain` into a shared UI library, named `sharedUi`.
 2. Move `app/desktopMain/Main.kt`, the desktop application plugin configuration,
-   OS runtime dependency and packaging into `desktopApp`, depending on `sharedUi`.
+   OS runtime dependency, desktop Gutenberg transport/parser and packaging into
+   `desktopApp`, depending on `sharedUi`. Choose an Android transport/parser only
+   when that target is added; JDK StAX is not shared Kotlin code.
 3. Add `androidApp` for Activity, manifest, lifecycle, permissions and application
    packaging, depending on `sharedUi`. Use the Android-KMP library plugin for
    Android targets in shared libraries; do not combine `com.android.application`

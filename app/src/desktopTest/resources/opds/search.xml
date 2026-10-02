@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Small authored fixture following Gutenberg's observed search navigation feed. -->
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dcterms="http://purl.org/dc/terms/" xml:lang="en">
+  <id>https://www.gutenberg.org/ebooks/search.opds/?query=books</id>
+  <title>Search Results</title>
+  <updated>2026-10-02T00:00:00Z</updated>
+  <author><name>Project Gutenberg</name></author>
+  <link rel="next" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?query=books&amp;start_index=26"/>
+  <entry>
+    <id>https://www.gutenberg.org/ebooks/authors/search.opds/?query=books</id>
+    <title>Authors</title>
+    <content type="text">2 author names match your search.</content>
+    <link rel="subsection" href="/ebooks/authors/search.opds/?query=books"/>
+  </entry>
+  <entry>
+    <id>https://www.gutenberg.org/ebooks/1342.opds</id>
+    <title>Pride and Prejudice</title>
+    <updated>2026-10-02T00:00:00Z</updated>
+    <content type="text">Jane Austen</content>
+    <link rel="subsection" type="application/atom+xml;profile=opds-catalog" href="/ebooks/1342.opds"/>
+    <link rel="http://opds-spec.org/image/thumbnail" type="image/png" href="data:image/png;base64,AA=="/>
+  </entry>
+  <entry>
+    <id>https://example.org/ebooks/1342.opds</id>
+    <title>A foreign catalog item</title>
+    <author><name>Another Author</name></author>
+  </entry>
+</feed>

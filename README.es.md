@@ -15,12 +15,16 @@ Que Project Gutenberg ofrezca una obra en EE. UU. no implica que sea de dominio 
 
 ## Estado
 
-El proyecto está en una fase muy temprana. La base actual aporta contratos
-y modelos de dominio, acceso limitado a recursos, identidad con revisión de contenido,
-metadatos mínimos de fuente, una pantalla de bienvenida Compose para escritorio,
-pruebas y documentación arquitectónica. La búsqueda, la integración Gutenberg/OPDS, la
-caché de recursos y la lectura **todavía no están implementadas**.
-Esto no es una versión v0.0.1 publicada.
+El proyecto está en una fase muy temprana. La aplicación de escritorio ahora busca
+en el catálogo OPDS oficial de Project Gutenberg y muestra resultados reales,
+autores e idiomas cuando la fuente los proporciona. La búsqueda se envía mediante
+una acción explícita; la siguiente página solo se solicita al pulsar **Next page**.
+No hay búsqueda automática ni precarga.
+
+Los detalles de publicaciones, la adquisición de recursos, la caché y la lectura
+**todavía no están implementados**. Este slice de búsqueda no completa v0.0.1.
+Se mantienen los contratos de dominio puros, acceso limitado a recursos, identidad
+con revisión de contenido y documentación arquitectónica.
 
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
 → obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS será la primera fuente.
@@ -33,29 +37,42 @@ Instala JDK 21. El wrapper Gradle incluido descarga Gradle en el primer uso;
 las dependencias requieren acceso a Internet.
 
 ```sh
-./gradlew :core:jvmTest :app:desktopJar
+./gradlew :core:jvmTest :app:desktopTest
 ./gradlew build
 ./gradlew :app:run
 ```
 
-En Windows utiliza `gradlew.bat`. La ejecución requiere un escritorio gráfico.
+En Windows utiliza `gradlew.bat`. La ejecución requiere un escritorio gráfico
+y conexión a Internet para buscar.
 Todavía no se incluyen instaladores nativos ni aplicaciones móviles.
 
 Versiones: Kotlin/compilador Compose 2.4.20, Compose Multiplatform 1.12.1,
 Gradle 9.7.1. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
 y los [avisos de terceros](THIRD_PARTY_NOTICES.md).
 
+El transporte Gutenberg utiliza Ktor 3.6.0 fuera de core. El parser de escritorio
+usa StAX incluido en JDK 21, con acceso XML externo deshabilitado. Consulta los
+[endpoints y límites de la fuente](docs/SOURCES.md). Los tests sin conexión utilizan
+fixtures OPDS pequeñas de autoría propia y Ktor MockEngine. Una comprobación opcional
+de una página real, independiente de tests/build y sin interfaz gráfica, es:
+
+```sh
+./gradlew :app:gutenbergSearchCheck --args="shakespeare"
+```
+
+Los resultados reales de verificación y límites del entorno están en [VERIFICATION.md](docs/VERIFICATION.md).
+
 ## Estructura inicial pequeña
 
 - `core`: modelos y contratos en Kotlin puro en `commonMain`; destino JVM para verificar.
-- `app`: interfaz Compose compartida y entrada de escritorio; depende de `core`.
+- `app`: interfaz/estado de búsqueda Compose compartidos y adaptador/entrada Gutenberg de escritorio; depende de `core`.
   La [migración documentada](docs/adr/0008-platform-entrypoints.md) separará interfaz
   compartida y aplicaciones de escritorio/Android cuando se incorpore Android.
 - `docs`: arquitectura, política de fuentes, caché, hoja de ruta y decisiones.
 
-Ktor será el cliente HTTP, fuera de `core`. SQLDelight se añadirá cuando la
+Ktor es el cliente HTTP de la fuente de escritorio, fuera de `core`. SQLDelight se añadirá cuando la
 persistencia lo necesite. Readium solo podrá incorporarse en una implementación
-de lector específica de Android. Ninguno es necesario ni está incluido en esta base.
+de lector específica de Android. SQLDelight y Readium no están incluidos.
 
 ## Documentación y contribuciones
 

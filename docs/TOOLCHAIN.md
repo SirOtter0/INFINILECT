@@ -9,6 +9,20 @@ the second technical pass before updating the wrapper.
 | Compose Multiplatform | 1.12.1 | [JetBrains release](https://github.com/JetBrains/compose-multiplatform/releases/tag/v1.12.1), [release API](https://api.github.com/repos/JetBrains/compose-multiplatform/releases/tags/v1.12.1), [JetBrains compatibility guide](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compatibility-and-versioning.html) |
 | Gradle | 9.7.1 | [Patch release notes and recommendation](https://docs.gradle.org/9.7.1/release-notes.html), [Gradle compatibility](https://docs.gradle.org/9.7.1/userguide/compatibility.html) |
 | JDK | 21 | [Gradle JVM compatibility](https://docs.gradle.org/9.7.1/userguide/compatibility.html), [Compose desktop requirements](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compatibility-and-versioning.html) |
+| Ktor client / Java engine / test MockEngine | 3.6.0 | [Official release](https://github.com/ktorio/ktor/releases/tag/3.6.0), [Ktor release history](https://ktor.io/docs/releases.html), [client engine platforms](https://ktor.io/docs/client-engines.html) |
+| kotlinx.coroutines core / test | 1.11.0 | [Official stable release](https://github.com/Kotlin/kotlinx.coroutines/releases/tag/1.11.0), [Ktor's tagged dependency versions](https://github.com/ktorio/ktor/blob/3.6.0/gradle/libs.versions.toml) |
+
+## Gutenberg slice additions
+
+Rechecked official release/metadata/license sources before adding dependencies on
+2026-10-02. Ktor 3.6.0 is not a draft/prerelease; its tagged build and published
+POMs use Kotlin 2.3.21 and coroutines 1.11.0. The existing newer Kotlin 2.4.20
+compiler accepts these libraries; project tests/build establish actual compatibility.
+No Ktor Gradle plugin, serialization plugin, JSON/XML library or logging backend
+is introduced. Java engine requires Java 11+ and supports the current JDK 21
+desktop target; it is not an Android/iOS engine. StAX is the built-in desktop JDK
+parser. Additional platforms require their own adapters/checks. Foundation Kotlin,
+Compose, Gradle and JDK choices are unchanged.
 
 ## Compose 1.12.1 is an official stable release
 

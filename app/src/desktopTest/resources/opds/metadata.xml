@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Authored fixture for optional Atom/OPDS acquisition metadata, not a live book response. -->
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dcterms="http://purl.org/dc/terms/">
+  <id>https://www.gutenberg.org/ebooks/search.opds/?query=books</id>
+  <title>Search Results</title>
+  <updated>2026-10-02T00:00:00Z</updated>
+  <entry>
+    <id>http://www.gutenberg.org/ebooks/1234.opds</id>
+    <title>Two Authors &amp; Two Languages</title>
+    <author><name>First Author</name><uri>https://example.org/first</uri></author>
+    <author><name>Second Author</name></author>
+    <content type="text">Do not override the structured authors.</content>
+    <dcterms:language>en</dcterms:language>
+    <dcterms:language>ES</dcterms:language>
+    <rights>Source-supplied statement; check local law.</rights>
+    <updated>2026-10-02T00:00:00Z</updated>
+    <link rel="http://opds-spec.org/acquisition/open-access" type="text/plain; charset=utf-8" href="/cache/epub/1234/pg1234.txt"/>
+    <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="https://www.gutenberg.org/ebooks/1234.epub3.images"/>
+    <link rel="http://opds-spec.org/acquisition" type="application/pdf" href="/files/1234/book.pdf"/>
+    <link rel="http://opds-spec.org/acquisition" type="text/html" href="/files/1234/book.html"/>
+    <link rel="http://opds-spec.org/acquisition" type="text/plain" href="javascript:alert(1)"/>
+    <link rel="http://opds-spec.org/acquisition" type="text/plain" href="https://example.org/book.txt"/>
+    <link rel="http://opds-spec.org/acquisition" type="application/zip" href="/files/1234/book.zip"/>
+    <link rel="http://opds-spec.org/image" type="image/jpeg" href="/cache/epub/1234/cover.jpg"/>
+  </entry>
+  <entry>
+    <id>https://www.gutenberg.org/ebooks/5678.opds</id>
+    <title>Only a Title</title>
+  </entry>
+</feed>

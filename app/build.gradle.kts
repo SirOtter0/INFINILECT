@@ -13,13 +13,33 @@ kotlin {
             implementation("org.jetbrains.compose.runtime:runtime:1.12.1")
             implementation("org.jetbrains.compose.foundation:foundation:1.12.1")
             implementation("org.jetbrains.compose.material:material:1.12.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
         }
         getByName("desktopMain") {
             dependencies {
                 implementation(compose.desktop.currentOs)
+                implementation("io.ktor:ktor-client-core:3.6.0")
+                implementation("io.ktor:ktor-client-java:3.6.0")
             }
         }
+        getByName("desktopTest").dependencies {
+            implementation("io.ktor:ktor-client-mock:3.6.0")
+        }
     }
+}
+
+// Opt-in live check: never a dependency of test/check/build.
+tasks.register<JavaExec>("gutenbergSearchCheck") {
+    group = "verification"
+    description = "Request one real Gutenberg OPDS search page (no graphical UI)."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.gutenberg.GutenbergIntegrationCheck")
 }
 
 compose.desktop {
