@@ -1,0 +1,16 @@
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+**/build/
+# IDEs
+.idea/
+*.iml
+.vscode/
+# Local configuration / secrets
+local.properties
+.env
+.env.*
+!.env.example
+# OS
+.DS_Store
+Thumbs.db

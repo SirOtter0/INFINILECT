@@ -15,8 +15,9 @@ Project Gutenberg's availability in the US does not establish public-domain stat
 
 ## Status
 
-Very early development. This foundational commit provides domain contracts, an
-honest Compose desktop welcome screen, tests and architectural documentation.
+Very early development. The current foundation provides domain contracts, an
+honest Compose desktop welcome screen, bounded resource-access contracts, revision-aware
+identity, minimal source metadata, tests and architectural documentation.
 Search, Gutenberg/OPDS integration, resource caching and reading are **not implemented**.
 This is not a v0.0.1 release.
 
@@ -40,13 +41,15 @@ On Windows, use `gradlew.bat`. Running requires a graphical desktop. Native
 installers and mobile launchers are not included yet.
 
 Versions: Kotlin/Compose compiler 2.4.20, Compose Multiplatform 1.12.1,
-Gradle 9.7.0. See [toolchain evidence](docs/TOOLCHAIN.md) for official compatibility
+Gradle 9.7.1. See [toolchain evidence](docs/TOOLCHAIN.md) for official compatibility
 references and [third-party notices](THIRD_PARTY_NOTICES.md) for license information.
 
 ## Small starting structure
 
 - `core`: pure Kotlin domain models and contracts in `commonMain`; JVM target for verification.
 - `app`: shared Compose UI and a desktop entry point; depends on `core`.
+  [Documented migration](docs/adr/0008-platform-entrypoints.md) separates shared UI,
+  desktop and Android entry points when Android is actually added.
 - `docs`: architecture, source policy, cache design, roadmap and decision records.
 
 Ktor is the chosen future HTTP client, outside `core`. SQLDelight will be added
