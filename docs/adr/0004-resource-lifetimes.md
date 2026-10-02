@@ -18,4 +18,8 @@ downloads, keyed by the full publication identity.
 
 Cache deletion cannot cascade to downloads or progress. The reader stays source-
 and storage-agnostic. Atomic writes, byte budgets and restart/eviction tests are
-required when implemented. This commit adds only the loader boundary and design.
+required when implemented. The foundation adds the loader boundary and design.
+[ADR 0006](0006-bounded-resource-access.md) defines handle lifetime and partial reads;
+[ADR 0007](0007-metadata-and-resource-identity.md) adds revision identity and an
+explicit rule against unvalidated reuse when revision is unknown. Storage remains
+unimplemented.

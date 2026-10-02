@@ -15,9 +15,10 @@ Que Project Gutenberg ofrezca una obra en EE. UU. no implica que sea de dominio 
 
 ## Estado
 
-El proyecto está en una fase muy temprana. Este commit fundacional aporta contratos
-y modelos de dominio, una pantalla de bienvenida Compose para escritorio, pruebas
-y documentación arquitectónica. La búsqueda, la integración Gutenberg/OPDS, la
+El proyecto está en una fase muy temprana. La base actual aporta contratos
+y modelos de dominio, acceso limitado a recursos, identidad con revisión de contenido,
+metadatos mínimos de fuente, una pantalla de bienvenida Compose para escritorio,
+pruebas y documentación arquitectónica. La búsqueda, la integración Gutenberg/OPDS, la
 caché de recursos y la lectura **todavía no están implementadas**.
 Esto no es una versión v0.0.1 publicada.
 
@@ -41,13 +42,15 @@ En Windows utiliza `gradlew.bat`. La ejecución requiere un escritorio gráfico.
 Todavía no se incluyen instaladores nativos ni aplicaciones móviles.
 
 Versiones: Kotlin/compilador Compose 2.4.20, Compose Multiplatform 1.12.1,
-Gradle 9.7.0. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
+Gradle 9.7.1. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
 y los [avisos de terceros](THIRD_PARTY_NOTICES.md).
 
 ## Estructura inicial pequeña
 
 - `core`: modelos y contratos en Kotlin puro en `commonMain`; destino JVM para verificar.
 - `app`: interfaz Compose compartida y entrada de escritorio; depende de `core`.
+  La [migración documentada](docs/adr/0008-platform-entrypoints.md) separará interfaz
+  compartida y aplicaciones de escritorio/Android cuando se incorpore Android.
 - `docs`: arquitectura, política de fuentes, caché, hoja de ruta y decisiones.
 
 Ktor será el cliente HTTP, fuera de `core`. SQLDelight se añadirá cuando la

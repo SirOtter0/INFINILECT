@@ -40,4 +40,30 @@ class PublicationTest {
         assertFailsWith<IllegalArgumentException> { PublicationResource(id, "", PublicationFormat.TEXT, "text/plain") }
         assertFailsWith<IllegalArgumentException> { PublicationResource(id, "text", PublicationFormat.TEXT, "") }
     }
+
+    @Test fun missingSourceMetadataDoesNotInventLanguageOrRights() {
+        val publication = Publication(id, "Book", PublicationType.BOOK)
+        assertEquals(emptyList(), publication.languages)
+        assertEquals(null, publication.sourceUrl)
+        assertEquals(null, publication.rights)
+    }
+
+    @Test fun sourceLanguageProvenanceAndRightsArePreserved() {
+        val publication = Publication(
+            id, "Book", PublicationType.BOOK,
+            languages = listOf("en", "es"),
+            sourceUrl = "https://www.gutenberg.org/ebooks/1342",
+            rights = "Source-supplied statement; jurisdiction-specific.",
+        )
+        assertEquals(listOf("en", "es"), publication.languages)
+        assertEquals("https://www.gutenberg.org/ebooks/1342", publication.sourceUrl)
+        assertEquals("Source-supplied statement; jurisdiction-specific.", publication.rights)
+    }
+
+    @Test fun optionalMetadataRejectsPresentButBlankValues() {
+        assertFailsWith<IllegalArgumentException> { Publication(id, "Book", PublicationType.BOOK, languages = listOf("")) }
+        assertFailsWith<IllegalArgumentException> { Publication(id, "Book", PublicationType.BOOK, sourceUrl = " ") }
+        assertFailsWith<IllegalArgumentException> { Publication(id, "Book", PublicationType.BOOK, rights = "") }
+    }
+
 }

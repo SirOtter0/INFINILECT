@@ -1,6 +1,18 @@
 # Resolved dependency inventory
 
-Resolved on Linux x86-64 with JDK 21 and Gradle 9.7.0 on 2026-10-02. Generated from the runtime, test and build-plugin artifact graphs and their cached Maven POMs. Native artifacts vary by OS. POM declarations supplement, rather than replace, upstream license/notice files. See [third-party notices](../THIRD_PARTY_NOTICES.md).
+Resolved on Linux x86-64 with JDK 21 and Gradle 9.7.1 on 2026-10-02. Generated from the runtime, test and build-plugin artifact graphs and their cached Maven POMs. Native artifacts vary by OS. POM declarations supplement, rather than replace, upstream license/notice files. See [third-party notices](../THIRD_PARTY_NOTICES.md).
+
+The second technical pass adds no library dependencies. Desktop runtime, JVM test
+and build-plugin graphs match the original foundation. The core graph is included
+below to make its dependency boundary explicit. Gradle itself is a separately
+downloaded build tool, now at 9.7.1.
+
+## Core JVM runtime
+
+| Artifact | Version | Declared license |
+| --- | --- | --- |
+| `org.jetbrains.kotlin:kotlin-stdlib` | 2.4.20 | [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `org.jetbrains:annotations` | 13.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 
 ## Desktop runtime
 

@@ -8,9 +8,32 @@ This document records the agreed design; storage is not implemented yet.
 
 The reader knows only ResourceLoader. On a memory miss, the loader checks disk;
 on a disk miss, it calls the owning source. A successful source read populates
-disk and memory as permitted by policy. The resource identity includes SourceId,
-publication-local ID, resource key and a representation/revision discriminator
-when available; persistence must encode components without ambiguous separators.
+disk and memory as permitted by policy, committing only after complete verified
+consumption. Early close, cancellation or a read failure must discard incomplete
+cache writes. A handle does not imply that a full resource fits in memory; future
+memory entries must obey a byte budget and disk fills can consume chunks.
+
+`PublicationResource.cacheKey` is a nullable `ResourceCacheKey` comprising the full
+PublicationId (SourceId + local ID), resource key, format, media type and a known,
+nonblank revision. The source owns the opaque revision: it must change whenever
+bytes change, for example a strong validator, immutable version or verified content
+digest. A weak ETag or catalog metadata timestamp is not sufficient unless the
+trusted engine can guarantee byte identity. Changing representation or revision
+creates a different key; never write new bytes under the previous key.
+
+A null revision produces no key for unconditional reuse. An unversioned reference
+must be resolved/revalidated with its source before any retained bytes are reused;
+source unavailability cannot silently make an unknown-revision cache entry current.
+If the source cannot establish freshness, fetch again. A digest after acquisition
+can identify those bytes but does not establish that the source has not changed
+on a later session. Explicit verified downloads have their own persistent policy.
+These rules prevent unknown revisions from becoming an unlimited stale-cache fallback.
+
+Persistence must store separate fields (including both PublicationId components),
+or use a versioned length-prefixed encoding before hashing; never concatenate with
+an unescaped delimiter, serialize `toString()` or persist runtime `hashCode()`.
+No cache serializer or cache implementation is introduced yet. See
+[ADR 0007](adr/0007-metadata-and-resource-identity.md).
 
 Memory cache is bounded and session-local. Disk cache persists between sessions
 and is automatically evicted primarily by byte budget and least-recent use.

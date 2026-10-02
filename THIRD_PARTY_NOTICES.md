@@ -7,13 +7,15 @@ No publication files are bundled. This foundation is not a packaged distribution
 ## Direct dependencies and build tools
 
 Licenses were checked against upstream license files before the foundation build.
+The second technical pass adds no dependencies. Gradle 9.7.1's official tagged
+[license](https://github.com/gradle/gradle/blob/v9.7.1/LICENSE) remains Apache-2.0.
 
 | Component | Version | Purpose | License / official source |
 | --- | --- | --- | --- |
 | Kotlin Gradle plugin, standard library and kotlin-test | 2.4.20 | Compiler, pure core/runtime, tests | [Apache-2.0](https://github.com/JetBrains/kotlin/blob/master/license/LICENSE.txt) |
 | Kotlin Compose compiler plugin | 2.4.20 | Compile Compose UI | [Apache-2.0](https://github.com/JetBrains/kotlin/blob/master/license/LICENSE.txt) |
 | Compose Multiplatform plugin, runtime, foundation, Material and desktop | 1.12.1 | UI and desktop launcher | [Apache-2.0](https://github.com/JetBrains/compose-multiplatform/blob/master/LICENSE.txt) |
-| Gradle / wrapper | 9.7.0 | Build tooling, including checked-in wrapper | [Apache-2.0](https://github.com/gradle/gradle/blob/master/LICENSE) |
+| Gradle / wrapper | 9.7.1 | Build tooling, including checked-in wrapper | [Apache-2.0](https://github.com/gradle/gradle/blob/master/LICENSE) |
 
 Apache-2.0 is compatible with GPLv3; retain the upstream license and notices when
 redistributing these components. A copy is in [third-party/Apache-2.0.txt](third-party/Apache-2.0.txt).

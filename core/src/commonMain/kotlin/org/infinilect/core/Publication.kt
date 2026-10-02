@@ -21,11 +21,18 @@ data class PublicationResource(
     val key: String,
     val format: PublicationFormat,
     val mediaType: String,
+    /** Source-owned version that must change whenever the bytes change; null means unknown. */
+    val revision: String? = null,
 ) {
     init {
         require(key.isNotBlank()) { "Resource key must not be blank" }
         require(mediaType.isNotBlank()) { "Media type must not be blank" }
+        require(revision == null || revision.isNotBlank()) { "Revision must be absent or nonblank" }
     }
+
+    /** Unknown revisions have no key for unconditional cache reuse. */
+    val cacheKey: ResourceCacheKey?
+        get() = revision?.let { ResourceCacheKey(publicationId, key, format, mediaType, it) }
 }
 
 /** Semantic type is independent of the available representations. */
@@ -35,9 +42,18 @@ data class Publication(
     val type: PublicationType,
     val authors: List<String> = emptyList(),
     val resources: List<PublicationResource> = emptyList(),
+    /** Source-supplied language tags; empty means unknown, not language-neutral. */
+    val languages: List<String> = emptyList(),
+    /** Publication detail/canonical URL validated by the source adapter, not an acquisition URL. */
+    val sourceUrl: String? = null,
+    /** Verbatim source rights/license statement; absence implies no rights determination. */
+    val rights: String? = null,
 ) {
     init {
         require(title.isNotBlank()) { "Title must not be blank" }
+        require(languages.all { it.isNotBlank() }) { "Language tags must not be blank" }
+        require(sourceUrl == null || sourceUrl.isNotBlank()) { "Source URL must be absent or nonblank" }
+        require(rights == null || rights.isNotBlank()) { "Rights must be absent or nonblank" }
         require(resources.all { it.publicationId == id }) { "Resources must belong to this publication" }
         require(resources.map { it.key }.distinct().size == resources.size) { "Resource keys must be unique" }
     }

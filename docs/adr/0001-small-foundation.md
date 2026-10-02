@@ -20,3 +20,5 @@ only to an Android-specific implementation behind reader contracts.
 Desktop provides a buildable first entry point. Mobile launchers are future work;
 common source sets are a portability boundary, not a claim of verified mobile
 support. Split modules and configure targets when implementations require them.
+[ADR 0008](0008-platform-entrypoints.md) records the concrete Android/shared UI/
+desktop migration while retaining the two-module foundation today.

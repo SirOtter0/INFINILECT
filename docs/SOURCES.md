@@ -25,6 +25,18 @@ untrusted input. Preserve rights statements and source links when available;
 Project Gutenberg's US public-domain status is not a global rights guarantee.
 INFINILECT does not host or redistribute a publication catalog.
 
+Map supplied language tags, publication detail/canonical URL and rights text to
+Publication's small optional metadata fields; absence must remain unknown. Validate
+source URLs before exposing/opening them, normalize language tags without inventing
+values, and treat rights text as display data rather than executable HTML. Cover
+and description parsing/rendering are deferred until a consumer needs them.
+
+Acquisitions return ResourceContent handles, not mandatory whole-resource arrays.
+Implement bounded partial reads and cancellation-safe close in the trusted adapter.
+Revision mapping must describe byte identity. If a requested revision no longer
+matches the acquisition, refresh/fail rather than storing bytes with the old cache
+key. Unversioned cache reuse needs source revalidation; see [CACHE.md](CACHE.md).
+
 ## Future declarative definitions
 
 An external definition may describe a source ID, catalog URLs, approved engine

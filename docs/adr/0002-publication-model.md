@@ -18,4 +18,7 @@ ResourceLoader rather than calling adapters.
 
 Storage and routing must preserve both ID components. Formats can expand without
 reclassifying publications. Reader choice and resource loading do not depend on
-catalog protocols. Streaming, richer metadata and error types wait for a real adapter.
+catalog protocols. The initial foundation deferred streaming and richer metadata;
+[ADR 0006](0006-bounded-resource-access.md) and [ADR 0007](0007-metadata-and-resource-identity.md)
+now refine those boundaries before any real adapter. Rich transport error types
+remain deferred.

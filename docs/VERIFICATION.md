@@ -1,64 +1,78 @@
 # Foundation verification
 
-Performed on 2026-10-02 in Linux x86-64.
+Second technical pass performed on 2026-10-02 in Linux x86-64. Final versions:
+Kotlin/Compose compiler 2.4.20, Compose Multiplatform 1.12.1, Gradle 9.7.1,
+Eclipse Temurin JDK 21.0.12.1+1.
 
-## Results
+## Actual checks and results
 
-- Official toolchain versions and compatibility checked before creating build files;
-  see [TOOLCHAIN.md](TOOLCHAIN.md).
-- Gradle 9.7.0 binary distribution and generated wrapper JAR verified against
-  official SHA-256 checksums. The distribution checksum is pinned in the wrapper.
-- `build` completed successfully through `./gradlew` (Gradle 9.7.0, Eclipse Temurin
-  JDK 21.0.12.1+1). Both core and desktop Kotlin code compiled; `core:jvmJar` and
-  `app:desktopJar` were generated. Final build reported `BUILD SUCCESSFUL` in 28s.
-- `core:jvmTest`: 4 tests, 0 failures, 0 errors, 0 skipped. Covers source-aware
-  identity (including ambiguous separator cases), type/format independence,
-  resource ownership/uniqueness and blank metadata rejection.
-- App has no UI tests yet (`desktopTest` was `NO-SOURCE`); no UI test pass is claimed.
-- Runtime, JVM test and build-plugin dependency graphs were inspected, with Maven
-  license declarations recorded in [DEPENDENCIES.md](DEPENDENCIES.md). JUnit and
-  Hamcrest are absent from the application runtime graph. Core imports only Kotlin
-  code and has no Compose, Ktor, Readium or platform API dependency.
-- Local Markdown links and staged patch whitespace checked before committing
-  (verbatim upstream license copies retain their original whitespace).
+| Check | Result |
+| --- | --- |
+| Official Compose release/tag/API | 1.12.1 exists, published 2026-09-22, not draft/prerelease; retained |
+| Wrapper update and regeneration under 9.7.1 | Success; distribution and JAR SHA-256 verified, see TOOLCHAIN.md |
+| `clean :core:jvmTest` | Success in 20s, 22 tests before adding the multi-buffer regression case |
+| `build foundationDependencyInventory` | Success in 16s; core and app built, desktop Kotlin compiled and JAR generated after clean |
+| Final `:core:jvmTest build foundationDependencyInventory` | Success in 15s; 23 tests, 0 failures/errors/skipped |
+| Build using original repositories (without mirror override) | Failed in 11s during plugin resolution: Maven Central HEAD returned HTTP 429 for Kotlin's BOM |
+| Dependency comparison with original foundation | No changes in desktop runtime (46 artifacts, including local core), test (6) or build-plugin (22) graphs; no new dependencies |
+| Core runtime graph | Only kotlin-stdlib 2.4.20 and JetBrains annotations 13.0; no Compose/Ktor/Readium/platform API imports |
+| Local Markdown links and `git diff --check` | Passed |
 
-## Environment adjustments and command
+Final tests: PublicationTest 7, ResourceContentTest 13, ResourceCacheKeyTest 3.
+They cover source-aware identity, type/format independence, metadata absence and
+preservation, ownership/uniqueness, representation/revision separation, unknown
+revision keys, short reads across multiple buffers, known/unknown size limits,
+EOF/zero limits, overflow-safe arithmetic, cleanup and error/cancellation propagation.
+Fixtures are in-memory and use Kotlin's standard coroutine primitives without a
+new dependency. Cancellation tests inject a cancellation signal; they do not claim
+real HTTP scheduling/cancellation, adapter close behavior or cache persistence.
+App tests remain `NO-SOURCE`; no UI test pass is claimed. No compiler/deprecation
+warnings were reported by the final successful build with `--warning-mode=all`.
 
-The environment initially had only a JRE. A full Temurin JDK 21 was downloaded
-from its official GitHub release and its SHA-256 verified, installed only in `/tmp`.
-The downloaded JDK used the environment's existing Java certificate store to
-retain TLS validation through the session proxy.
+## Environment and commands
 
-Maven Central returned HTTP 429 (IP rate limit). A temporary Gradle init script,
-**not part of the project**, replaced repositories with JetBrains' official cache
-redirector for the same Maven Central/plugin portal/Google Maven coordinates.
-The repository's normal Maven Central, Google and plugin portal configuration was
-retained. The successful invocation was:
+The initial environment provided only a JRE. The full Temurin JDK was downloaded
+from its official GitHub release, checksum-verified and installed under `/tmp`.
+It uses the environment's Java certificate store; TLS verification remains enabled.
+
+The session still encounters a Maven Central IP rate limit. A direct GET returned
+200, but Gradle's HEAD through the plugin portal returned 429, so that single GET
+was not evidence of restored full resolution. Successful checks used a temporary
+init script replacing repositories with JetBrains' official cache redirector for
+the same Central/plugin portal/Google Maven coordinates. Project repository
+configuration is unchanged. With the verified JDK and proxy/certificate settings:
 
 ```sh
-JAVA_HOME="$INFINILECT_JDK" \
-JAVA_TOOL_OPTIONS='-Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Dhttps.proxyHost=proxy -Dhttps.proxyPort=8080 -Dhttp.proxyHost=proxy -Dhttp.proxyPort=8080' \
-GRADLE_USER_HOME=/tmp/infinilect-gradle \
+./gradlew -I /tmp/infinilect-repositories.init.gradle clean :core:jvmTest \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
 ./gradlew -I /tmp/infinilect-repositories.init.gradle build foundationDependencyInventory \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew -I /tmp/infinilect-repositories.init.gradle :core:jvmTest build foundationDependencyInventory \
   --no-daemon --console=plain --max-workers=2 --warning-mode=all
 ```
 
-`foundationDependencyInventory` was a temporary inspection task, not a committed
-application task. It read resolved artifact coordinates for `desktopRuntimeClasspath`,
-`jvmTestRuntimeClasspath` and the root build-plugin `classpath`. No proxy addresses,
-local JDK paths or repository overrides are required by the project itself.
+The init script and inventory task are inspection tools outside the repository.
+They inspect `desktopRuntimeClasspath`, `jvmTestRuntimeClasspath`, `jvmRuntimeClasspath`
+and the root build-plugin classpath. POM license declarations are recorded in
+[DEPENDENCIES.md](DEPENDENCIES.md), with upstream notices in THIRD_PARTY_NOTICES.md.
+The Gradle patch license remains Apache-2.0. No runtime or test library was added.
+Normal contributor verification remains `./gradlew :core:jvmTest` and `./gradlew build`
+with JDK 21; retry normal repository resolution outside this rate-limited session.
 
-Normal contributor verification remains `./gradlew build` with an installed JDK 21.
-An unmodified online repository-resolution run could not complete in this session
-because of the Maven Central rate limit; the successful build used the mirror above.
+## Limits and manual checks before merge
 
-## Limits and next checks
+- No graphical desktop/Xvfb was available: `:app:run` and interactive/visual behavior
+  were not tested. Manually open the existing welcome window in a graphical session.
+- JetBrains' Kotlin 2.4.20 compatibility table still ends at Gradle 9.7.0. The patch
+  9.7.1 is Gradle's recommended update and passes this project's tests/build, not an
+  asserted update to JetBrains' certification table. Check IDE import with JDK 21.
+- Review the resource ownership/close and unknown-revision revalidation contracts
+  before implementing a source. Transport cancellation, revision mapping, byte limits
+  and charset handling need actual adapter integration tests later.
+- Native installers, full native redistribution notices, Windows/macOS runtime,
+  Android/iOS targets and platform entrypoint migration are not verified here.
+- Gutenberg/OPDS, cache, downloads and persisted progress remain unimplemented;
+  no end-to-end v0.0.1 reading test is claimed.
 
-No graphical desktop or Xvfb was available, so `:app:run` and visual/interactive
-behavior were not verified. Native installer packaging, complete native-component
-redistribution notices, Windows/macOS execution, Android and iOS builds are not
-claimed. The JAR is not a standalone executable bundle.
-
-Gutenberg/OPDS search, reader behavior, caching, downloads and persisted progress
-are future implementations, so no end-to-end v0.0.1 test exists yet. Verify these
-in the order described in [ROADMAP.md](ROADMAP.md).
+The earlier foundation passed 4 tests with Gradle 9.7.0; that historical result is
+superseded by this pass's final 23-test/9.7.1 verification.
