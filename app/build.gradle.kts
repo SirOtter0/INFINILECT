@@ -24,6 +24,7 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation("io.ktor:ktor-client-core:3.6.0")
                 implementation("io.ktor:ktor-client-java:3.6.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
             }
         }
         getByName("desktopTest").dependencies {
@@ -50,6 +51,21 @@ tasks.register<JavaExec>("oapenApiAccessCheck") {
     val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
     classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
     mainClass.set("org.infinilect.app.oapen.OapenApiAccessCheck")
+}
+
+// Explicit experiments only; these tasks are never dependencies of test/check/build.
+mapOf(
+    "oapenAlternateAccessCheck" to "org.infinilect.app.oapen.OapenAlternateAccessCheck",
+    "internetArchiveAcquisitionCheck" to "org.infinilect.app.archive.InternetArchiveAcquisitionCheck",
+).forEach { (taskName, entrypoint) ->
+    tasks.register<JavaExec>(taskName) {
+        group = "verification"
+        description = "Run one bounded, opt-in official source acquisition experiment."
+        dependsOn("desktopTestClasses")
+        val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+        classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+        mainClass.set(entrypoint)
+    }
 }
 
 compose.desktop {
