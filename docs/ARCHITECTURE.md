@@ -2,7 +2,7 @@
 
 > A source obtains publications. A reader displays them. INFINILECT connects both.
 
-## Foundation and search slice implemented today
+## Foundation, search and acquisition experiment implemented today
 
 Two modules are sufficient: `core` and `app`. Both use Kotlin Multiplatform source
 sets, with JVM/desktop as the only configured targets. More targets and modules
@@ -15,6 +15,14 @@ search UI and a small Compose-free search controller using coroutines StateFlow.
 JDK StAX parser. The launcher injects PublicationSource through SearchController
 and closes the source at shutdown. The dependency direction is
 `app → core`; core never refers to app.
+
+Independent InternetArchiveSource in desktopMain implements search, details and
+bounded acquisition; current launcher/UI still injects Gutenberg only. Shared
+DirectResourceLoader, neutral format selection and a prefix consumer demonstrate
+`Publication → PublicationResource → ResourceContent` in an opt-in CLI task.
+No registry/cache/download store/reader. HTTP/JSON, access gates and streaming
+lifecycle stay in the desktop adapter. Core contracts are sufficient and unchanged.
+See [ADR 0011](adr/0011-verified-source-acquisition.md).
 
 ## Domain
 
@@ -124,15 +132,20 @@ acquisition methods validate source ownership and throw UnsupportedOperationExce
 no false not-found result or fabricated resource bytes. See [Sources](SOURCES.md)
 and [ADR 0009](adr/0009-gutenberg-search.md) for the deliberately limited capabilities.
 
-## OAPEN acquisition verification gate
+## Acquisition verification and lifecycle
 
-OAPEN investigation adds only a desktop transport diagnostic; it implements none
-of the core source/resource contracts and is not wired into UI. The intended
-`consumer → ResourceLoader → owning PublicationSource → ResourceContent` flow
-needs no new core abstraction. Official API access and the exact transfer route
-must be verified before acquisition, source-neutral resource selection and a
-bounded demonstration consumer are implemented. See [ADR 0010](adr/0010-oapen-verification-gate.md).
-No cache or reader implementation is introduced by this investigation.
+OAPEN REST access remains blocked, but official OAI metadata with download links
+is accessible; actual PDF transfer is still unverified. Preserve the original
+[ADR 0010](adr/0010-oapen-verification-gate.md) finding and see
+[ADR 0011](adr/0011-verified-source-acquisition.md) for the verified Archive route.
+Both OAPEN diagnostics remain independent opt-in tasks, not source implementations.
+
+The neutral consumer uses ResourceLoader, selects a caller-supported format and
+closes its prefix-test handle. Archive validates ownership/fresh permissions and
+opens a sequential HTTP stream. Its producer keeps Ktor's public scoped streaming
+response alive until close/cancellation; close aborts without waiting for transfer
+or materializing the file. A later consumer must open a fresh handle. No cache,
+registry, reader or simultaneous-source UI is introduced.
 
 ## Evolution when Android is added (no modules added now)
 

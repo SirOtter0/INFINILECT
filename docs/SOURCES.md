@@ -111,15 +111,23 @@ for the security properties; the built-in provider is selected explicitly.
 JDK license/platform scope is recorded in THIRD_PARTY_NOTICES.md. Android/iOS
 parsers are not added or assumed compatible.
 
-## OAPEN investigation (blocked, not a functional source)
+## OAPEN alternate access and first acquisition source
 
-The documented REST search API and policies were reviewed on 2026-10-02.
-Requests to `https://library.oapen.org/rest/search` returned HTTP 403 from this
-environment. Individual reader downloads are generally permitted, but a concrete
-REST bitstream-transfer contract/host policy has not been verified. No OapenSource,
-resource acquisition or OAPEN UI is implemented. The opt-in access diagnostic is
-not a source adapter. See [OAPEN evidence and gates](OAPEN.md) and
-[ADR 0010](adr/0010-oapen-verification-gate.md). Gutenberg remains unchanged.
+Historical REST requests returned HTTP403. Official OAI-PMH GetRecord instead
+returned metadata with a direct PDF link; its HEAD was blocked, and the opt-in
+alternate Ktor diagnostic timed out once. REST blocked does not mean OAPEN
+unusable. No OapenSource or challenge bypass. See [OAPEN](OAPEN.md).
+
+InternetArchiveSource is the second concrete PublicationSource and first actual
+resource-acquisition experiment. It uses official advanced search/item JSON APIs
+and documented individual download permalinks, supporting only public CC0 text
+items with validated TEXT/PDF files. The unchanged UI still searches Gutenberg;
+Archive's opt-in CLI demo reads at most 512 text bytes through ResourceContent.
+No arbitrary metadata URL is acquired. Narrow observed-host redirects, permission
+refresh, bounded parsing/streaming and deterministic offline tests enforce limits.
+See [Archive endpoints/rights/hosts](INTERNET_ARCHIVE.md),
+[comparison](ACQUISITION_COMPARISON.md), and
+[ADR 0011](adr/0011-verified-source-acquisition.md).
 
 ## Future declarative definitions
 

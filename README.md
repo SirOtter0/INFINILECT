@@ -20,18 +20,20 @@ Gutenberg OPDS catalog and shows real book results, authors and languages when
 supplied. Search is submitted explicitly; the next page is fetched only when
 you press **Next page**. There is no automatic search or prefetching.
 
-Publication details, resource acquisition, caching and reading are **not implemented**.
-This search slice does not complete v0.0.1. Pure domain contracts, bounded resource
-access, revision-aware identity and architectural documentation remain in place.
+An independent desktop Internet Archive adapter demonstrates real acquisition of
+a public CC0 text through PublicationSource/ResourceContent, with an opt-in CLI
+check and bounded UTF-8 prefix. This is a conservative subset, not a second source
+in the current UI. No cache, persistent downloads or reader is implemented;
+**v0.0.1 is not complete**. [Acquisition scope](docs/INTERNET_ARCHIVE.md).
 
-OAPEN is the intended first acquisition experiment, but it is **blocked**, not a
-functional second source: the documented REST endpoint rejects this environment
-with HTTP 403, and the transfer mechanism has not been verified. See the
-[official evidence and next gates](docs/OAPEN.md). No OAPEN UI or PDF acquisition
-is claimed. Gutenberg acquisition remains deferred pending official guidance.
+OAPEN's official alternate metadata interface is accessible and supplies download
+links; REST rejects this environment with HTTP 403 and PDF transfer remains
+blocked/unverified. See [OAPEN](docs/OAPEN.md) and the
+[comparison](docs/ACQUISITION_COMPARISON.md). Gutenberg acquisition remains deferred
+pending official guidance. No OAPEN source/UI or PDF reader is claimed.
 
 The deliberately small v0.0.1 goal is: open INFINILECT → search for a book → get
-real results → open one → read it. Project Gutenberg/OPDS is the first planned source.
+real results → open one → read it. Project Gutenberg/OPDS is the first functional search source.
 Desktop is the initial executable target; Android and iOS are future targets,
 not currently supported builds.
 
@@ -67,12 +69,25 @@ A separate, one-request OAPEN access diagnostic (no publication mapping or downl
 is available as `./gradlew :app:oapenApiAccessCheck --args=water`. It is opt-in and
 fails on denied access; HTTP 200 alone would not verify acquisition.
 
+Two additional opt-in checks never run during tests/build:
+
+```sh
+./gradlew :app:oapenAlternateAccessCheck
+./gradlew :app:internetArchiveAcquisitionCheck
+```
+
+The first requests one OAI-PMH record and HEAD only; the second searches a verified
+CC0 government document and consumes at most 512 bytes through ResourceLoader.
+No publication text is logged/saved. See source docs for limits and the narrow
+host/access policy. JSON parsing uses desktop kotlinx.serialization-json 1.11.0
+(Apache-2.0); core remains Kotlin-only.
+
 Actual verification and environment limitations are recorded in [VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Small starting structure
 
 - `core`: pure Kotlin domain models and contracts in `commonMain`; JVM target for verification.
-- `app`: shared Compose search UI/state and a desktop Gutenberg adapter/entry point; depends on `core`.
+- `app`: shared Compose search UI/state, neutral acquisition demo, desktop adapters and entry point; depends on `core`.
   [Documented migration](docs/adr/0008-platform-entrypoints.md) separates shared UI,
   desktop and Android entry points when Android is actually added.
 - `docs`: architecture, source policy, cache design, roadmap and decision records.
