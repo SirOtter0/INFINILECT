@@ -28,9 +28,10 @@ internal class ReadingSession(
     loader: ResourceLoader = DirectResourceLoader(source),
     decodingDispatcher: CoroutineDispatcher = Dispatchers.Default,
     progress: ProgressPersistence? = null,
-) {
+    onOpened: (Publication) -> Unit = {},
+) : ApplicationSessionLifetime {
     val search = SearchController(source)
-    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress)
+    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, onOpened)
     private val mutableQuery = MutableStateFlow("")
     val query: StateFlow<String> = mutableQuery.asStateFlow()
     private var searchJob: Job? = null
@@ -57,7 +58,8 @@ internal class ReadingSession(
     fun back() { opening.cancel() }
 
     /** Discarded on source change/application disposal; a later selection creates a fresh session. */
-    fun close() {
+    override fun flushProgress() { opening.flushProgress() }
+    override fun close() {
         if (closed) return
         closed = true
         searchJob?.cancel()

@@ -33,6 +33,11 @@ entre reinicios, sin ajustes de lector, lector EPUB/PDF ni downloads persistente
 y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
 de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
 Consulta la [política de caché](docs/CACHE.md).
+Library guarda metadatos de publicaciones localmente; History registra aperturas
+correctas. Ambas sobreviven a reinicios y al borrado de caché. Abrir una entrada
+guardada vuelve a consultar su fuente, adquiere normalmente y restaura el progreso.
+Clear History requiere confirmación y conserva Library/progreso.
+[Política local](docs/LIBRARY_HISTORY.md).
 **v0.0.1 no está terminada**. [Alcance](docs/INTERNET_ARCHIVE.md).
 
 La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona
@@ -135,9 +140,10 @@ Los resultados reales de verificación y límites del entorno están en [VERIFIC
   [Decisión Android](docs/adr/0013-first-android-application.md) desarrolla ADR 0008.
 - `docs`: arquitectura, política de fuentes, caché, hoja de ruta y decisiones.
 
-Ktor es el cliente HTTP de los adapters de plataforma, fuera de `core`. SQLDelight se añadirá cuando la
-persistencia lo necesite. Readium solo podrá incorporarse en una implementación
-de lector específica de Android. SQLDelight y Readium no están incluidos.
+Ktor es el cliente HTTP de los adapters de plataforma, fuera de `core`. SQLDelight
+2.4.0 guarda metadatos de Library/History en app; el progreso mantiene su almacén
+independiente de archivos. Readium no está incluido y solo podrá incorporarse en
+un lector específico de Android.
 
 ## Documentación y contribuciones
 
@@ -145,6 +151,7 @@ de lector específica de Android. SQLDelight y Readium no están incluidos.
 - [Fuentes](docs/SOURCES.md)
 - [Caché y descargas](docs/CACHE.md)
 - [Progreso de lectura persistente](docs/PROGRESS.md)
+- [Biblioteca local e historial](docs/LIBRARY_HISTORY.md)
 - [Hoja de ruta](docs/ROADMAP.md)
 - [Decisiones arquitectónicas](docs/adr/README.md)
 - [Cómo contribuir](CONTRIBUTING.md)

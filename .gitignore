@@ -14,3 +14,6 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+# Local collection database and SQLite sidecars (never repository data)
+infinilect-collections.sqlite
+infinilect-collections.sqlite-*

@@ -3,6 +3,7 @@ plugins {
     kotlin("plugin.compose")
     id("org.jetbrains.compose")
     id("com.android.kotlin.multiplatform.library")
+    id("app.cash.sqldelight")
 }
 
 kotlin {
@@ -23,6 +24,7 @@ kotlin {
             implementation("org.jetbrains.compose.foundation:foundation:1.12.1")
             implementation("org.jetbrains.compose.material:material:1.12.1")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+            implementation("app.cash.sqldelight:runtime:2.4.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -37,15 +39,24 @@ kotlin {
         }
         getByName("desktopMain") {
             dependsOn(jvmSharedMain)
-            dependencies { implementation("io.ktor:ktor-client-java:3.6.0") }
+            dependencies {
+                implementation("io.ktor:ktor-client-java:3.6.0")
+                implementation("app.cash.sqldelight:sqlite-driver:2.4.0")
+            }
         }
         getByName("androidMain") {
             dependsOn(jvmSharedMain)
-            dependencies { implementation("io.ktor:ktor-client-android:3.6.0") }
+            dependencies {
+                implementation("io.ktor:ktor-client-android:3.6.0")
+                implementation("app.cash.sqldelight:android-driver:2.4.0")
+            }
         }
         val jvmSharedTest = create("jvmSharedTest") {
             dependsOn(commonTest.get())
-            dependencies { implementation("io.ktor:ktor-client-mock:3.6.0") }
+            dependencies {
+                implementation("io.ktor:ktor-client-mock:3.6.0")
+                implementation("app.cash.sqldelight:sqlite-driver:2.4.0")
+            }
         }
         getByName("desktopTest") { dependsOn(jvmSharedTest) }
         getByName("androidHostTest") {
@@ -55,6 +66,19 @@ kotlin {
             dependencies { implementation("net.sf.kxml:kxml2:2.3.0") }
         }
 
+    }
+}
+
+sqldelight {
+    databases {
+        create("LocalCollectionsDatabase") {
+            packageName.set("org.infinilect.app.collections.database")
+            schemaOutputDirectory.set(layout.buildDirectory.dir("sqldelight/schema").get().asFile)
+            // Initial schema only: no historical migration/database baseline yet.
+            // SQL definition verification stays enabled. The first schema change
+            // must introduce a historical baseline and enable migration replay.
+            verifyMigrations.set(false)
+        }
     }
 }
 

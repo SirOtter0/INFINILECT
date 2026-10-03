@@ -19,5 +19,6 @@ Accepted decisions for the foundation, search, acquisition and first TEXT reader
 - [0014: First persistent automatic resource cache](0014-persistent-resource-cache.md)
 
 - [0015: Persistent logical reading progress](0015-persistent-reading-progress.md)
+- [0016: Persistent local library and reading history](0016-local-library-history.md)
 
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.

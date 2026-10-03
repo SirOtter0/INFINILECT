@@ -59,8 +59,8 @@ for its library code; this exception permits use by differently licensed applica
 JDK 21 is an external runtime/toolchain prerequisite, not bundled here. Preserve
 its complete upstream legal directory if a runtime is redistributed later.
 
-SQLDelight and Readium are **not included**. Check their exact versions, licenses,
-transitive dependencies and notices when an implementation needs them.
+Readium is **not included**. SQLDelight is now used only by the local library/history
+metadata store; its licenses and driver notices are recorded below.
 Before any packaged release, produce an artifact-specific notice inventory and
 include all required upstream license/copyright files, including native components.
 
@@ -106,3 +106,28 @@ and test kXML are absent from the APK. Do not bundle test/build-tool classes int
 product artifacts. Preserve upstream notices if those tools themselves are
 redistributed. The future packaged-release/native notice audit remains required;
 this task produces only a local debug APK and no release distribution.
+
+## Local library/history SQLDelight — 2026-10-03
+
+SQLDelight Gradle plugin, runtime, JDBC/SQLite driver and Android driver **2.4.0**
+are Apache-2.0. [Stable upstream release](https://github.com/sqldelight/sqldelight/releases/tag/2.4.0),
+[exact-tag license](https://github.com/sqldelight/sqldelight/blob/2.4.0/LICENSE.txt),
+[official multiplatform driver setup](https://sqldelight.github.io/sqldelight/latest/multiplatform_sqlite/).
+Existing [Apache license copy](third-party/Apache-2.0.txt) applies. AndroidX SQLite
+and SQLite Framework **2.7.1** retain Apache-2.0 (official Google Maven POMs linked
+in [DEPENDENCIES](docs/DEPENDENCIES.md)). Core and ReadingProgress do not use SQLDelight.
+
+Desktop/host-test Xerial SQLite JDBC **3.53.4.0** is Apache-2.0, with inherited
+Zentus code under BSD-2-Clause and native SQLite in the public domain. Retain both
+upstream [Apache license](third-party/sqlite-jdbc-Apache-2.0.txt) and
+[David Crawshaw BSD notice](third-party/sqlite-jdbc-BSD-2-Clause.txt), copied from
+the resolved artifact's META-INF/maven/org.xerial/sqlite-jdbc license files (CRLF
+line endings normalized to LF, license wording unchanged).
+[Official tagged Apache](https://github.com/xerial/sqlite-jdbc/blob/3.53.4.0/LICENSE),
+[Zentus](https://github.com/xerial/sqlite-jdbc/blob/3.53.4.0/LICENSE.zentus),
+[SQLite public-domain statement](https://www.sqlite.org/copyright.html).
+These are GPLv3-compatible upstream licenses/dedication, not relicensed project code.
+The JDBC driver/native binaries and host tests are absent from the Android APK;
+Android uses its OS SQLite through AndroidX. Redistributors must retain included
+native/driver notices. SQL compiler/plugin transitives are build tooling only.
+No new permission, telemetry or network behavior is introduced by this database.

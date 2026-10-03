@@ -31,6 +31,10 @@ This is a conservative first reading path, with local approximate TEXT progress 
 settings, EPUB/PDF reader or persistent downloads. Automatic bounded disk caching
 only reuses resources with trustworthy revisions; current Archive resources have
 no revision and reopening still acquires again. See [cache policy](docs/CACHE.md).
+Library saves publication metadata locally; History records successful opens.
+Both survive restarts and cache deletion. Saved entries reopen through their source,
+with normal acquisition and reading-progress restoration. History Clear requires
+confirmation and keeps Library/progress. [Local storage policy](docs/LIBRARY_HISTORY.md).
 **v0.0.1 is not complete**. [Acquisition scope](docs/INTERNET_ARCHIVE.md).
 
 OAPEN's official alternate metadata interface is accessible and supplies download
@@ -132,9 +136,9 @@ Actual verification and environment limitations are recorded in [VERIFICATION.md
   [Android decision](docs/adr/0013-first-android-application.md) refines ADR 0008.
 - `docs`: architecture, source policy, cache design, roadmap and decision records.
 
-Ktor is the HTTP client in platform source adapters, outside `core`. SQLDelight will be added
-when persistence needs it. Readium may be used only by an Android-specific reader
-implementation. SQLDelight and Readium are not included.
+Ktor is the HTTP client in platform source adapters, outside `core`. SQLDelight
+2.4.0 stores local library/history metadata in app; progress remains its independent
+file store. Readium is not included and may only be used by an Android-specific reader.
 
 ## Documentation and contribution
 
@@ -142,6 +146,7 @@ implementation. SQLDelight and Readium are not included.
 - [Sources](docs/SOURCES.md)
 - [Cache and downloads](docs/CACHE.md)
 - [Persistent reading progress](docs/PROGRESS.md)
+- [Local library and reading history](docs/LIBRARY_HISTORY.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architectural decisions](docs/adr/README.md)
 - [Contributing](CONTRIBUTING.md)

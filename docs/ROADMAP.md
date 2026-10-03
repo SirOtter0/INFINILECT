@@ -33,9 +33,14 @@ Open INFINILECT → search for a book → get real results → open one → read
    deferred; no SQL/database is needed for this disk slice.
 6. **Implemented:** independent persistent logical reading progress for TEXT on
    Desktop/Android, code-point locator/current-line restoration, bounded atomic
-   files and throttled saves. No history/bookmarks/library or source bypass;
+   files and throttled saves. No bookmarks or source bypass;
    [progress policy](PROGRESS.md), [ADR 0015](adr/0015-persistent-reading-progress.md).
-7. Verify the full path on desktop with real results and document its limits.
+7. **Implemented:** local library and successful-open history in an app-private
+   SQLDelight database, shared Search/Library/History navigation and source-resolved
+   reopen. No cached metadata authorization or progress migration; physical A–J
+   verification remains pending. [Policy](LIBRARY_HISTORY.md),
+   [ADR 0016](adr/0016-local-library-history.md).
+8. Verify the full path on Desktop and Android with real results and document its limits.
 
 Completion means actual source-backed reading, not a simulated catalog or a
 welcome window. No completed release is implied by `0.0.1-SNAPSHOT`.
@@ -84,3 +89,12 @@ a complete plugin system are outside v0.0.1 and this search slice.
 Gutenberg documents XML OPDS retirement planned for 2027 and an OPDS2 testing feed
 requiring contact. Recheck the official interface before further source work;
 do not silently substitute an aggregator or an undocumented endpoint.
+
+## v0.1 follow-up — Library actions from catalog results
+
+The experimental local-library slice currently adds publications only from the
+reader. Add a metadata-only Library action directly to search/catalog results so
+opening a publication is not required to save its snapshot. Saved results must
+still re-resolve PublicationId through the owning PublicationSource on later open;
+stored metadata/rights/URLs must never authorize acquisition. This is deferred,
+not implemented in the PR #8 Android storage correction.

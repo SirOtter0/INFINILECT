@@ -114,3 +114,20 @@ signing only; no release key/signing configuration. AndroidX's prebuilt graphics
 path native library is packaged unchanged with symbols; no unnecessary NDK/native
 build is introduced. See [verification](VERIFICATION.md) for actual commands,
 APK metadata and environment provisioning details.
+
+## SQLDelight local metadata database — 2026-10-03
+
+Add only SQLDelight **2.4.0**, a stable release published 2026-09-18, Apache-2.0:
+[official release](https://github.com/sqldelight/sqldelight/releases/tag/2.4.0),
+[tagged license](https://github.com/sqldelight/sqldelight/blob/2.4.0/LICENSE.txt).
+[Official multiplatform setup](https://sqldelight.github.io/sqldelight/latest/multiplatform_sqlite/)
+uses the runtime and platform Android/JVM SQLite drivers chosen here.
+Its [tagged wrapper](https://github.com/sqldelight/sqldelight/blob/2.4.0/gradle/wrapper/gradle-wrapper.properties)
+uses Gradle **9.7.1**; its Kotlin compiler baseline is older than this project's
+2.4.20. No claim of a published certification matrix for this exact full stack:
+repository compilation, real SQLite tests, Android lint and APK assembly provide
+actual compatibility evidence in [VERIFICATION](VERIFICATION.md).
+Kotlin/Compose/Gradle/AGP/JDK/SDK versions remain unchanged. SQLDelight is app-only;
+core remains pure and ReadingProgress is not migrated. Initial schema v1 runs SQL
+definition checks and fresh/reopen tests; historical migration replay is introduced
+with the first version change/baseline, not a generated database committed today.

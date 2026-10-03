@@ -25,7 +25,7 @@ import org.infinilect.app.acquisition.selectResource
 internal sealed interface OpenPublicationState {
     data object Idle : OpenPublicationState
     data class Loading(val publication: Publication) : OpenPublicationState
-    data class Ready(val document: TextDocument, val reading: TextReadingProgress? = null) : OpenPublicationState
+    data class Ready(val document: TextDocument, val reading: TextReadingProgress? = null, val publication: Publication? = null) : OpenPublicationState
     data class Error(val publication: Publication, val userMessage: String) : OpenPublicationState
 }
 
@@ -36,6 +36,7 @@ internal class OpenPublicationController(
     private val scope: CoroutineScope,
     private val decodingDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val progress: ProgressPersistence? = null,
+    private val onOpened: (Publication) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
     val state: StateFlow<OpenPublicationState> = mutableState.asStateFlow()
@@ -55,7 +56,7 @@ internal class OpenPublicationController(
         mutableState.value = OpenPublicationState.Loading(publication)
         request = scope.launch {
             try {
-                val (document, restored) = withTimeout(60_000) {
+                val (document, restored, details) = withTimeout(60_000) {
                     val details = source.getPublication(publication.id)
                     currentCoroutineContext().ensureActive()
                     if (details == null) {
@@ -66,11 +67,14 @@ internal class OpenPublicationController(
                         ?: throw OpeningException("No readable text format is available for this publication.")
                     val loaded = loadTextDocument(details, resource, loader, decodingDispatcher)
                     val stored = loaded.progressId?.let { progress?.get(it) }
-                    loaded to stored
+                    Triple(loaded, stored, details)
                 }
                 currentCoroutineContext().ensureActive()
-                if (generation == ticket) mutableState.value = OpenPublicationState.Ready(document,
-                    progress?.let { TextReadingProgress(document, restored, it, scope) })
+                if (generation == ticket) {
+                    mutableState.value = OpenPublicationState.Ready(document,
+                        progress?.let { TextReadingProgress(document, restored, it, scope) }, details)
+                    onOpened(details)
+                }
             } catch (error: TimeoutCancellationException) {
                 currentCoroutineContext().ensureActive()
                 if (generation == ticket) mutableState.value = OpenPublicationState.Error(publication,

@@ -131,3 +131,12 @@ are persisted with progress. See [PROGRESS.md](PROGRESS.md) and
 
 See [ADR 0014](adr/0014-persistent-resource-cache.md) and actual offline verification
 in [VERIFICATION.md](VERIFICATION.md).
+
+## Local library/history separation
+
+The app-private SQLDelight library/history database stores user metadata, never
+resource bytes or progress. It lives in persistent application data, outside this
+evictable cache. Clearing Library/History cannot evict bytes or reading position;
+cache-only deletion cannot delete those stores. A saved entry must re-resolve its
+owning source and follow normal acquisition, including Archive null-revision
+cache bypass. See [LIBRARY_HISTORY](LIBRARY_HISTORY.md).
