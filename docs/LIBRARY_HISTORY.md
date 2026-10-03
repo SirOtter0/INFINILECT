@@ -50,6 +50,44 @@ existing library entry without implicitly adding it.
 History Clear requires an explicit confirmation. Clearing/removing history does
 not touch library, progress or cache. Library removal likewise affects only library.
 
+## Catalog Library actions (PR #9)
+
+Search results now offer Add to Library / Remove from Library without opening the
+publication. Every currently displayed source can save metadata, including
+Gutenberg search-only results; saving does not imply that a reader/acquisition is
+supported. Unsupported saved opens keep the entry and show the existing safe error.
+The reader retains its secondary Library action.
+
+CollectionsController owns one bounded list/membership snapshot (at most the
+repository's 1,000 Library entries), not one database query per result. Membership
+uses PublicationId, never title: source/local IDs remain distinct even with equal
+titles. Loading/unknown actions are disabled; known saved/unsaved state is explicit.
+Storage unavailability disables mutations and offers Retry Library. A pending
+mutation disables only that publication across both Search and Reader. Repeated
+taps on its source-scoped ID are ignored, not queued as opposing writes.
+
+Actions use PublicationSnapshot.from(publication) and the existing repositories.
+Committed Success changes membership; failure retains the previous membership and
+shows a fixed message. Lists re-query storage afterward. Generation checks and
+cancellation reject stale refreshes; cancelled writes re-query storage because a
+commit can race delivery of the return value. Disposing the controller cancels its
+jobs and clears loading/busy state. There is no optimistic durable RAM substitute.
+
+Saving/removing catalog metadata does not call getPublication/loadResource, fill
+resource cache, create reading progress, or record History. Only successful reader
+opening records History. Search/source/query/results/page token and logical Back
+destinations are retained. Library/History show title, authors, source, Open and
+Remove, clear empty states and existing confirmed History Clear. Buttons can wrap
+on narrow search layouts; no cover networking or visual redesign is introduced.
+
+Schema v1, SQLDelight/dependency versions, platform storage paths, IO transactions,
+busy_timeout/max_page_count query handling and debug-only diagnostics remain
+unchanged. Source re-resolution/current acquisition authorization, independent
+progress/cache and Internet Archive revision=null behavior remain unchanged.
+The user reports corrected PR #8 collections survived physical Android restart;
+that does not verify the new catalog UI. Host SQLite restart tests and the new
+physical plan below provide separate evidence.
+
 ## SQLDelight and schema
 
 SQLDelight **2.4.0**, Apache-2.0, generates the app-only SQL access layer; Android
@@ -222,3 +260,37 @@ available to independently confirm the first exception on the user's device;
 source evidence identifies two concrete incompatible calls in the tested path.
 The new APK must repeat the physical A–J plan, including terminate/relaunch,
 cache-only deletion, progress preservation and normal fresh source acquisition.
+
+## PR #9 catalog-action physical test plan
+
+New catalog interactions have not been tested on a physical device/emulator by
+the implementation environment. Repeat this plan with the PR #9 debug APK:
+
+A. Search Internet Archive. Add a result to Library **without opening it**.
+Open Library: the publication appears.
+
+B. Completely terminate INFINILECT. Relaunch: the Library entry remains.
+
+C. Search for the same publication: it is shown as already in Library.
+
+D. Open it: the reader shows Remove from Library. Existing reading progress,
+if any, restores normally. Normal fresh source acquisition still occurs.
+
+E. Back to Search: the selected source, query/results and page state remain.
+
+F. Remove the publication directly from Search: Library no longer contains it.
+
+G. History is unchanged by Add/Remove Library operations.
+
+H. Successfully open a publication: History records it. Back to Search:
+Library membership remains correct.
+
+I. Clear Android **cache only**, never app data/storage. Restart:
+Library + History + ReadingProgress remain.
+
+J. Completely terminate/relaunch once more: no Library/History/progress storage
+errors appear.
+
+Internet Archive remains public CC0-only and revision=null; Library membership
+never skips its fresh metadata/acquisition boundary. Gutenberg remains search-only.
+No persisted record or publication content is logged during this test.
