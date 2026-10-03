@@ -3,5 +3,7 @@
 package org.infinilect.app
 
 import org.infinilect.app.network.createSources
+import org.infinilect.app.cache.DiskResourceCache
+import org.infinilect.app.cache.desktopCacheDirectory
 
-actual fun createApplicationSources(): ApplicationSources = createSources()
+fun createApplicationSources(): ApplicationSources = createSources(DiskResourceCache(desktopCacheDirectory()))

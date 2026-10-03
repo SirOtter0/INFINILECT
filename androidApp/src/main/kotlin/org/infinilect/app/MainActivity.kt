@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        sources = createApplicationSources()
+        sources = createApplicationSources(applicationContext)
         setContent {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 App(sources, backHandler = { enabled, onBack ->

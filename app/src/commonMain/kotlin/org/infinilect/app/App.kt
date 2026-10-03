@@ -48,7 +48,9 @@ fun App(
     var selected by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val option = sources[selected]
-    val session = remember(option) { ReadingSession(option.source, scope, option.textReadingEnabled) }
+    val session = remember(option) {
+        ReadingSession(option.source, scope, option.textReadingEnabled, applicationSources.loaderFor(option.source))
+    }
     DisposableEffect(applicationSources, session) {
         applicationSources.attach(session)
         onDispose { applicationSources.detach(session) }
