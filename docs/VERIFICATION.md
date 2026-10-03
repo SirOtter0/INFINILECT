@@ -1,5 +1,103 @@
 # Verification
 
+## First persistent resource cache — 2026-10-03
+
+Started from exact main HEAD **f47f42757cacf2670f01333e4c1306ce18c5a235**, the PR #5
+merge, after fetch/checkout/pull --ff-only; final fetch confirmed main unchanged.
+Work is on feature/persistent-resource-cache. No merge/rebase/squash/force push.
+
+### Actual final commands and results
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+**BUILD SUCCESSFUL in 1m 44s**, 144 actionable tasks: 134 executed, 10 up-to-date.
+Desktop/shared/Android compiled; actual debug APK produced. No new dependencies,
+version changes, repository substitutions, baseline/suppressions or Maven 429.
+Used the existing JDK 21.0.12.1+1, SDK/cache/proxy/trust configuration outside Git
+documented in the previous Android section. No compiler/deprecation/packaging
+warnings; lint **0 errors, 0 warnings, 0 issues**.
+
+| Suite | Tests | Failures / errors / skipped |
+| --- | --- | --- |
+| core:jvmTest | 23 | 0 / 0 / 0 |
+| app:desktopTest | 180 | 0 / 0 / 0 |
+| core:testAndroidHostTest | 23 | 0 / 0 / 0 |
+| app:testAndroidHostTest | 160 | 0 / 0 / 0 |
+| Total executions | **386** | **0 / 0 / 0** |
+
+**219 unique cases**, including **46 new cases**: disk cache 38, actual Archive
+adapter/cache/TEXT boundary 2, application-owned loader/lifecycle 1, Desktop paths
+4, Android private-path selection 1. Shared new cases run on both host targets.
+androidApp:testDebugUnitTest remains NO-SOURCE; no instrumented suite/device tests
+were skipped or claimed. Normal tests are entirely offline.
+
+Cache tests use real temporary files, fake streams, controlled clocks/dispatchers
+and restart simulations. They verify every identity field, ambiguous delimiters,
+null revision bypass, streaming miss/hit, normal-close publication, truncation/
+overflow/changed sizes, cancellation and prompt handoff races, early close,
+corruption/header disagreement, recency/quota including container/temp bytes,
+active pinned cursors, concurrent fills/owners, file locks, malformed files,
+no-follow symlinks, best-effort unavailable storage and ownership/close behavior.
+
+Archive MockEngine tests pass the real source through the cache loader and complete
+the existing TextDocument flow twice: **4 metadata requests + 2 acquisitions**, no
+cache entry. A second test acquires once, then changes the item to restricted;
+fresh metadata blocks reacquisition rather than returning old bytes. No live
+Internet calls in either test. All previous Archive redirect/legal/acquisition,
+Gutenberg, UTF-8/BOM/512 KiB/cancellation/session tests remain green. Source policies,
+core source/contracts, manifests and dependency declarations are unchanged.
+
+Intermediate failures were test-fixture issues: a mutation wrote an already-zero
+header byte, a metadata fixture had multiple formats, a negative size was rejected
+by readBytes before the cache's read validation, and virtual time could expire a
+Ktor transport lease while a real dispatcher was pending. Corrected the fixtures/
+expectations and used the existing source-test transport-dispatch pattern; no
+source timeout/security policy was weakened. Targeted offline Archive boundary
+tests passed before rerunning the full clean command above.
+
+### APK and environment inspection
+
+Task: `./gradlew :androidApp:assembleDebug`.
+Path: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+Size: **11,372,251 bytes** (about 10.85 MiB).
+SHA-256: **`288235eff09e66465feab7d313c639527a3c2f5ad65fa6729d24644933ee65fa`**.
+
+```sh
+$ANDROID_HOME/build-tools/36.0.0/aapt2 dump badging \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk
+$ANDROID_HOME/build-tools/36.0.0/aapt2 dump permissions \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk
+$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk
+adb devices -l
+```
+
+Inspected package org.infinilect.app, label INFINILECT, compile/target 37, min 26,
+debuggable MainActivity, standard debug v2 signature verified. Permissions remain
+INTERNET + AndroidX internal app-scoped signature permission; no storage permission.
+Merged manifest still disables cleartext/backup. No APK/cache/build files or secrets
+are committed. Markdown links/SPDX/dependency inventory/core purity/diff checks pass.
+
+**No source live checks run (0 live-source requests/bytes).** No display/device/
+emulator is available; adb returned an empty device list. UI compiled but graphical
+smoke test not performed. Actual Android cacheDir/filesystem/OS eviction and physical
+device lifecycle need manual validation. Android host tests execute on the host JVM,
+not an Android OS. macOS/Windows path selection is tested as pure policy on Linux;
+their filesystem rename/ACL behavior was not exercised on those operating systems.
+
+Stable-revision restart hits are proven by offline fixtures. Current IA's null
+revision means no persistent-hit/offline-reading claim. This is automatic evictable
+infrastructure, not Downloads, metadata truth or reading progress; L1 RAM is deferred.
+Ownership/paths/failure limits are in [CACHE.md](CACHE.md) and
+[ADR 0014](adr/0014-persistent-resource-cache.md).
+
 ## First Android application target — 2026-10-03
 
 Fetched origin, checked out main and pulled `--ff-only` before creating

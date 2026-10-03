@@ -27,8 +27,10 @@ keeps the selected source, query and current results. Only strictly valid UTF-8
 with known size up to **512 KiB** is supported; unavailable TEXT resources give a
 controlled error. Project Gutenberg remains **search-only**.
 
-This is a conservative first reading path, with no cache, persistence, reader
-settings, EPUB/PDF reader or persistent downloads. Reopening acquires again;
+This is a conservative first reading path, without progress persistence, reader
+settings, EPUB/PDF reader or persistent downloads. Automatic bounded disk caching
+only reuses resources with trustworthy revisions; current Archive resources have
+no revision and reopening still acquires again. See [cache policy](docs/CACHE.md).
 **v0.0.1 is not complete**. [Acquisition scope](docs/INTERNET_ARCHIVE.md).
 
 OAPEN's official alternate metadata interface is accessible and supplies download

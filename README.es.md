@@ -28,8 +28,11 @@ conserva la fuente seleccionada, consulta y resultados actuales. Solo admite UTF
 estrictamente válido, con tamaño conocido de hasta **512 KiB**; la ausencia de TEXT
 produce un error controlado. Project Gutenberg sigue siendo **solo búsqueda**.
 
-Es una primera ruta de lectura conservadora, sin caché, persistencia, ajustes de
-lector, lector EPUB/PDF ni downloads persistentes. Volver a abrir adquiere de nuevo;
+Es una primera ruta de lectura conservadora, sin persistencia de progreso, ajustes
+de lector, lector EPUB/PDF ni downloads persistentes. La caché de disco automática
+y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
+de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
+Consulta la [política de caché](docs/CACHE.md).
 **v0.0.1 no está terminada**. [Alcance](docs/INTERNET_ARCHIVE.md).
 
 La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona

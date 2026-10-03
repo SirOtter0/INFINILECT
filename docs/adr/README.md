@@ -16,5 +16,6 @@ Accepted decisions for the foundation, search, acquisition and first TEXT reader
 - [0012: Minimal bounded text reading slice](0012-bounded-text-reading.md)
 
 - [0013: First Android application target](0013-first-android-application.md)
+- [0014: First persistent automatic resource cache](0014-persistent-resource-cache.md)
 
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.

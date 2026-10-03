@@ -26,10 +26,11 @@ Open INFINILECT → search for a book → get real results → open one → read
    search public CC0 items, open a TEXT resource through ResourceLoader/
    ResourceContent, validate complete UTF-8 up to 512 KiB, display TextReader,
    and Back to retained query/results. Gutenberg remains search-only. No EPUB/PDF,
-   cache, persistence or reader settings. Graphical smoke verification is pending.
-5. Add bounded memory/disk caching with restart-safe eviction and an independent
-   progress store; verify progress survives clearing cache. Add SQLDelight only
-   if this persistence implementation needs it.
+   reader settings or progress persistence. Graphical smoke verification is pending.
+5. **First disk tier implemented:** bounded automatic resource cache with restart
+   reuse only for trustworthy revisions, recency eviction and corruption checks.
+   Current Archive null revisions still reacquire. L1 memory cache and independent
+   progress remain deferred; no SQL/database is needed for this disk slice.
 6. Verify the full path on desktop with real results and document its limits.
 
 Completion means actual source-backed reading, not a simulated catalog or a
@@ -57,9 +58,10 @@ are verified separately from physical-device smoke testing. See
 [ADR 0013](adr/0013-first-android-application.md) and [verification](VERIFICATION.md).
 No reader feature, new format or cache is added by the Android slice.
 
-After physical Android/Desktop validation: bounded memory/disk cache behind
-ResourceLoader, with restart-safe eviction and independent progress. No cache
-implementation begins in this Android PR.
+The next infrastructure slice adds the first persistent disk tier behind
+ResourceLoader on both platforms; see [CACHE.md](CACHE.md) and
+[ADR 0014](adr/0014-persistent-resource-cache.md). No cache was added by the Android
+PR itself. Downloads/progress/L1 memory and future revision mechanisms remain deferred.
 
 ## After the first working slice
 
