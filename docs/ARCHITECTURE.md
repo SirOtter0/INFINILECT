@@ -281,6 +281,18 @@ reflect committed storage; history is captured only after a successful reader op
 ApplicationCollections owns repositories/finite history queue, ApplicationSession
 owns small navigation, and both reuse the existing ReadingSession/opener.
 
+CollectionsController now loads one bounded Library list into a source-scoped
+membership set for catalog results and the reader. Unknown membership disables
+Add/Remove until storage responds; storage failures have fixed errors and an
+explicit retry. One pending mutation per PublicationId suppresses repeated taps
+without disabling unrelated rows. PublicationSnapshot.from(publication) stores
+metadata only, with visible membership updated after repository commit, followed
+by an authoritative list refresh. Request generations/cancellation reject stale
+list responses. No per-result database lookup, source operation, acquisition,
+History capture or progress update is part of a catalog Library action.
+Reader and catalog actions share this controller; normal source-resolved opening
+and Search/query/results/pagination/Back behavior remain separate and unchanged.
+
 Saved entry → PublicationId → owning PublicationSource.getPublication → normal
 ResourceLoader/strict TEXT decoding → Reader + unchanged progress restoration.
 Stored metadata/rights/URLs never replace current source permission checks.

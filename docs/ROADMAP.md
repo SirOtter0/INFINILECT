@@ -37,8 +37,9 @@ Open INFINILECT → search for a book → get real results → open one → read
    [progress policy](PROGRESS.md), [ADR 0015](adr/0015-persistent-reading-progress.md).
 7. **Implemented:** local library and successful-open history in an app-private
    SQLDelight database, shared Search/Library/History navigation and source-resolved
-   reopen. No cached metadata authorization or progress migration; physical A–J
-   verification remains pending. [Policy](LIBRARY_HISTORY.md),
+   reopen. No cached metadata authorization or progress migration. The user reports
+   that corrected PR #8 Library/History survive physical Android process restart;
+   the new catalog-action A–J plan still needs device verification. [Policy](LIBRARY_HISTORY.md),
    [ADR 0016](adr/0016-local-library-history.md).
 8. Verify the full path on Desktop and Android with real results and document its limits.
 
@@ -90,11 +91,14 @@ Gutenberg documents XML OPDS retirement planned for 2027 and an OPDS2 testing fe
 requiring contact. Recheck the official interface before further source work;
 do not silently substitute an aggregator or an undocumented endpoint.
 
-## v0.1 follow-up — Library actions from catalog results
+## Library actions from catalog results — implemented in PR #9
 
-The experimental local-library slice currently adds publications only from the
-reader. Add a metadata-only Library action directly to search/catalog results so
-opening a publication is not required to save its snapshot. Saved results must
-still re-resolve PublicationId through the owning PublicationSource on later open;
-stored metadata/rights/URLs must never authorize acquisition. This is deferred,
-not implemented in the PR #8 Android storage correction.
+The previous v0.1 follow-up is implemented: Search results expose Add/Remove and
+committed Library membership without opening a reader. A single bounded library
+snapshot serves all result rows; pending actions serialize per PublicationId.
+Search/Reader share membership, and Library/History retain simple metadata lists.
+Saving changes no History, ReadingProgress or cached bytes and makes no source
+request. Later opening still resolves PublicationId through its owning source;
+stored metadata/rights/URLs never authorize acquisition. No schema/dependency
+change, cover requests or broader reader features. New physical verification is
+pending; [policy and manual plan](LIBRARY_HISTORY.md#pr-9-catalog-action-physical-test-plan).

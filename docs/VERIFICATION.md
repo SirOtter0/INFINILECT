@@ -1,5 +1,114 @@
 # Verification
 
+## PR #9 catalog Library actions — 2026-10-03
+
+Verified starting main: **bb7dc10728c8560df47f8d21e4bf8535439e7686**, the PR #8
+merge containing the Android result-returning PRAGMA correction. New branch
+feature/catalog-library-actions; no reuse/rewrite of prior branches/history.
+The user reports PR #8 physical Library/History process-restart persistence passed.
+That is user-provided evidence, not an implementation-environment device test.
+
+### Scope and invariants
+
+Shared CollectionsController now provides one bounded source-scoped membership
+set to catalog results and the reader, with per-publication pending actions,
+durable-result updates and generation-checked authoritative refreshes. Unknown
+membership disables mutations; failures retain prior labels/state and fixed safe
+errors. Cancellation before a launch starts cannot leave membership loading.
+Search/Library/History gain small label/spacing/source-name/empty-state improvements
+and narrow-screen wrapping of result actions. Existing Back destinations and
+retained Search source/query/results/page token are unchanged.
+
+Catalog saves use PublicationSnapshot.from(publication): no getPublication,
+ResourceContent, network acquisition, History, ReadingProgress or cached bytes.
+Later saved opens still source-resolve IDs and run all existing acquisition checks.
+No schema/migration/core/dependency/version/platform-storage change. PR #8 SQLite
+PRAGMA handling, IO/durability/corruption/diagnostics and all source/cache/TEXT/
+progress implementations remain untouched. No new ADR is needed for this action
+within the existing controller/repository ownership.
+
+### Commands and actual results
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+Targeted run passed in 1m 6s, 27 actionable tasks (13 executed / 14 up-to-date).
+Two preliminary clean runs passed; the clean suite was repeated after adding
+scope-start cancellation and failure-label regressions. The **final** clean run:
+**BUILD SUCCESSFUL in 2m 11s**, **146 actionable tasks: 138 executed / 8 up-to-date**.
+SQLDelight generation/definition verification, core/app/Desktop builds, Android
+host tests, Android lint and debug APK assembly pass. Lint: **No issues found,
+0 errors / 0 warnings**. No compiler/deprecation/packaging warnings, test failures
+or intermediate failed build. Launcher unit task remains NO-SOURCE; generated
+resource tasks may be NO-SOURCE/SKIPPED, not skipped test cases.
+
+| Final test task | Executions | Failures / errors / skipped |
+| --- | --- | --- |
+| core:jvmTest | 38 | 0 / 0 / 0 |
+| app:desktopTest | 332 | 0 / 0 / 0 |
+| core:testAndroidHostTest | 38 | 0 / 0 / 0 |
+| app:testAndroidHostTest | 312 | 0 / 0 / 0 |
+| Total | **720** | **0 / 0 / 0** |
+
+**396 unique cases** after JVM/Desktop suffix normalization. **27 new cases**:
+18 shared catalog controller/state tests and nine shared real SQLite/application
+integration tests (54 executions across both host targets). Existing tests are
+unchanged. Coverage includes snapshot loading/no row lookups, source/local identity
+and equal titles, pending unrelated rows/repeated taps, safe durable failures,
+retry, stale/cancelled responses, scope closure, Reader/catalog consistency,
+new repository/driver/owner restart, failed put/remove without RAM false success,
+no source/content/history/progress/cache side effects, retained query/page state,
+Library/History Back origin, current source re-resolution, progress restoration,
+unavailable saved items and cache-only deletion/repeated owner recreation.
+Android-host SQLite uses real JDBC files and a host JVM, not Android OS SQLite.
+
+### APK and inspection
+
+```sh
+aapt2 dump badging androidApp/build/outputs/apk/debug/androidApp-debug.apk
+aapt2 dump permissions androidApp/build/outputs/apk/debug/androidApp-debug.apk
+aapt2 dump xmltree androidApp/build/outputs/apk/debug/androidApp-debug.apk --file AndroidManifest.xml
+apksigner verify --verbose --print-certs androidApp/build/outputs/apk/debug/androidApp-debug.apk
+sha256sum androidApp/build/outputs/apk/debug/androidApp-debug.apk
+adb devices -l
+```
+
+Task :androidApp:assembleDebug; artifact
+**androidApp/build/outputs/apk/debug/androidApp-debug.apk**.
+Size **11,585,646 bytes**; SHA-256
+**bd46c0933c0e2c35cc82701792ff33085cc2fcc1ccbc03f19e811d8af8c9359e**.
+Manifest/badging and debug v2 signature pass. The debug certificate matches the
+previous PR #8 review APK; generated DEX contains the new catalog membership/action
+code. Package org.infinilect.app, INFINILECT label, minSdk 26, target/compileSdk 37.
+Only INTERNET plus the existing app-scoped AndroidX signature permission;
+cleartext/backup disabled, no storage permission.
+
+Both diff checks, local Markdown links and new-code GPL-3.0-or-later headers pass.
+Full diff inspected against main; no generated APK/database/cache/progress/build
+file or secret is committed. Dependency inventory/schema/platform/source/cache/
+progress diffs are empty. No repository workaround or Maven 429; existing verified
+/tmp JDK/SDK/Gradle cache and proxy/trust settings were reused.
+
+### Limits and required human review
+
+No live source requests/checks were run. No graphical Desktop or Android device/
+emulator smoke test was performed; adb listed no device. APK compilation and host
+tests do not verify touch layout, Android SQLite execution or process restart.
+Run the exact [PR #9 A–J plan](LIBRARY_HISTORY.md#pr-9-catalog-action-physical-test-plan)
+with the new APK: save without opening, terminate/relaunch, membership from Search,
+Reader consistency/Back, History independence and cache-only deletion. Current IA
+revision=null still fresh-acquires on open. Saving Gutenberg metadata is supported;
+opening it remains unavailable while Gutenberg is search-only. No covers/formats/
+settings/downloads/sync or visual redesign are included. PR remains unmerged.
+
 ## PR #8 blocking Android collections correction — 2026-10-03
 
 Continued feature/local-library-history / PR #8 from the physically tested
