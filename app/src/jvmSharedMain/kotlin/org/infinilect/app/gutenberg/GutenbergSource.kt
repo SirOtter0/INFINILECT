@@ -4,7 +4,7 @@ package org.infinilect.app.gutenberg
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
-import io.ktor.client.engine.java.Java
+import org.infinilect.app.network.platformHttpEngine
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.prepareGet
@@ -32,7 +32,7 @@ import org.infinilect.core.SourceId
 
 
 /** Search-only trusted desktop adapter. Owns its client/engine; close at application shutdown. */
-class GutenbergSource(private val engine: HttpClientEngine = Java.create()) : PublicationSource, AutoCloseable {
+class GutenbergSource(private val engine: HttpClientEngine = platformHttpEngine()) : PublicationSource, AutoCloseable {
     override val id = SourceId("gutenberg")
     private val requestLock = Mutex()
     @Volatile private var closed = false

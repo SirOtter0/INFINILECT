@@ -2,11 +2,6 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.gutenberg
 
-import java.io.ByteArrayInputStream
-import javax.xml.XMLConstants
-import javax.xml.stream.XMLInputFactory
-import javax.xml.stream.XMLStreamConstants
-import javax.xml.stream.XMLStreamException
 import org.infinilect.app.search.SearchException
 import org.infinilect.core.Publication
 import org.infinilect.core.PublicationFormat
@@ -23,18 +18,11 @@ private const val ATOM = "http://www.w3.org/2005/Atom"
 private const val DC_TERMS = "http://purl.org/dc/terms/"
 private const val ACQUISITION = "http://opds-spec.org/acquisition"
 
-/** Gutenberg's small Atom/OPDS subset, confined to desktop/JDK; not a universal OPDS engine. */
-internal class GutenbergOpdsParser {
+/** One bounded Gutenberg mapping/policy; platform adapters supply XML tokens only. */
+internal class GutenbergOpdsParser(private val openXml: (ByteArray) -> OpdsXmlReader = ::platformOpdsXmlReader) {
     fun parse(bytes: ByteArray, pageUrl: String, query: String, checkCancellation: () -> Unit = {}): SearchPage {
         if (bytes.size > MAX_FEED_BYTES) throw InvalidOpdsException()
-        val factory = XMLInputFactory.newDefaultFactory().apply {
-            setProperty(XMLInputFactory.SUPPORT_DTD, false)
-            setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false)
-            setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-            xmlResolver = javax.xml.stream.XMLResolver { _, _, _, _ -> throw XMLStreamException("External XML resolution disabled") }
-        }
-        val reader = try { factory.createXMLStreamReader(ByteArrayInputStream(bytes)) }
-            catch (error: XMLStreamException) { throw InvalidOpdsException(error) }
+        val reader = openXml(bytes)
         var depth = 0
         var events = 0
         var entries = 0
@@ -48,10 +36,10 @@ internal class GutenbergOpdsParser {
                 if (++events > 100_000) throw InvalidOpdsException()
                 if (events % 256 == 0) checkCancellation()
                 when (reader.next()) {
-                    XMLStreamConstants.DTD, XMLStreamConstants.ENTITY_REFERENCE -> throw InvalidOpdsException()
-                    XMLStreamConstants.START_ELEMENT -> {
+                    OpdsXmlEvent.PROHIBITED -> throw InvalidOpdsException()
+                    OpdsXmlEvent.START -> {
                         if (++depth > 32) throw InvalidOpdsException()
-                        if (reader.getAttributeValue(XMLConstants.XML_NS_URI, "base") != null) throw InvalidOpdsException()
+                        if (reader.getAttributeValue("http://www.w3.org/XML/1998/namespace", "base") != null) throw InvalidOpdsException()
                         if (reader.attributeCount + reader.namespaceCount > 16) throw InvalidOpdsException()
                         for (i in 0 until reader.attributeCount) {
                             if (reader.getAttributeValue(i).length > 16_384) throw InvalidOpdsException()
@@ -92,11 +80,11 @@ internal class GutenbergOpdsParser {
                         if (depth == 3 && ns == ATOM && name == "author") entry?.inAuthor = true
                         if (field != null) capture = Capture(field, depth)
                     }
-                    XMLStreamConstants.CHARACTERS, XMLStreamConstants.CDATA -> capture?.let {
-                        if (it.text.length + reader.textLength > 16_384) throw InvalidOpdsException()
+                    OpdsXmlEvent.TEXT -> capture?.let {
+                        if (it.text.length + reader.text.length > 16_384) throw InvalidOpdsException()
                         it.text.append(reader.text)
                     }
-                    XMLStreamConstants.END_ELEMENT -> {
+                    OpdsXmlEvent.END -> {
                         capture?.takeIf { it.depth == depth }?.let {
                             if (!it.hasChildren) entry?.accept(it.field, it.text.toString().trim())
                             capture = null
@@ -111,13 +99,12 @@ internal class GutenbergOpdsParser {
                         }
                         depth--
                     }
+                    OpdsXmlEvent.OTHER -> Unit
                 }
             }
             if (!seenFeed || depth != 0) throw InvalidOpdsException()
             checkCancellation()
             return SearchPage(publications, next)
-        } catch (error: XMLStreamException) {
-            throw InvalidOpdsException(error)
         } catch (error: IllegalArgumentException) {
             throw InvalidOpdsException(error)
         } finally {

@@ -227,6 +227,16 @@ class OpenPublicationControllerTest {
         assertEquals(1, content.closes)
     }
 
+    @Test fun exactlyThreeBomBytesAreEmptyWithoutCountingOverflowProbe() = runTest {
+        val content = Content(byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()), chunk = 1)
+        val controller = Fixture(acquire = { content }).controller(this)
+        controller.open(summary); advanceUntilIdle()
+        assertEquals(TextFailure.EMPTY.userMessage,
+            assertIs<OpenPublicationState.Error>(controller.state.value).userMessage)
+        assertEquals(3, content.position)
+        assertEquals(1, content.closes)
+    }
+
     @Test fun bomOnlyWhitespaceAndNulDoNotBecomeReadableDocuments() = runTest {
         for (text in listOf("\uFEFF", " \n\t", "text\u0000binary")) {
             val content = Content(text.encodeToByteArray())
