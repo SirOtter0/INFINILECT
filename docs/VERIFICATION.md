@@ -1,5 +1,131 @@
 # Verification
 
+## First end-to-end bounded TEXT reading slice — 2026-10-03
+
+Fetched origin, checked out main and pulled with `--ff-only`. Main matched the
+expected PR #3 merge **238a7099428b373053352b20ef2a4a7e8f37d80f**; created only
+`feature/text-reader` from that commit. No main edits, rebase, squash, history
+rewrite, force push or merge performed in this slice.
+
+### Implemented path
+
+Desktop source choice → SearchController → PublicationSource → real search
+results → explicit Open text → OpenPublicationController → details/TEXT selection
+→ DirectResourceLoader → ResourceContent → complete bounded strict UTF-8
+TextDocument → Compose TextReader → Back with current source/query/results.
+
+Gutenberg remains the default search-only choice. Internet Archive is the only
+reading choice, unchanged public-CC0 adapter, fresh permissions and fail-closed
+item-scoped storage validation. Both source implementations, Archive metadata/
+URLs, core and existing SearchController are identical to main. Existing neutral
+resource selection was renamed/reused by the reader and prefix checks rather
+than duplicated. No source registry, cross-source matching or simultaneous search.
+
+Reader cap **524,288 bytes (512 KiB)** is separate from the source's **64 MiB**.
+Unknown/zero/negative/changed/oversized size, short/long streams, invalid UTF-8
+and invalid read counts give controlled errors. Reads allocate one size+1 payload,
+probe at most one extra byte, and close before decoding. Decode explicitly as
+UTF-8, strip one leading BOM, preserve interior BOMs, reject blank/NUL-bearing
+documents. No full text logged; no cache/persistence/settings/EPUB/PDF reader.
+Open is bounded to 60s, owns one session job and always closes its acquired handle.
+Duplicate busy actions are ignored. Back cancels/invalidate generations; late
+completion cannot replace a new document. A source switch cancels/discards the
+old session and resets Compose collectors, without an automatic request.
+See [ADR 0012](adr/0012-bounded-text-reading.md).
+
+### Final offline verification
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest build \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+**BUILD SUCCESSFUL in 31s**, 28 actionable tasks, all executed. XML reports:
+**core 23 + app 129 = 152 tests**, **0 failures / 0 errors / 0 skipped**.
+**39 new deterministic tests:** opener **29**, one-source session/navigation **10**.
+All normal tests remain offline; no live task in test/check/build.
+
+New tests cover complete TEXT and correct resource/once-only loader, details/ID
+ownership, missing details/TEXT/PDF-only cases, size known/unknown/negative/zero/
+changing/oversized/exact cap, actual overrun/early EOF/zero read, invalid UTF-8
+including after the old prefix boundary, multibyte characters split across reads,
+BOM, whitespace/NUL, read/acquisition/cleanup errors, retry, double Open, timeout,
+close/cancellation/read and handle-handoff races, stale noncooperative completion,
+application scope cancellation, Search/Loading/Reader/Back preservation,
+source-switch isolation, explicit pagination and captured query/no automatic I/O.
+
+Retained suites: Gutenberg parser 11/source 8; SearchController 5; Archive metadata
+12/URLs 11/source 26; prior neutral prefix demo 4; OAPEN REST 7/alternate 6; all pass.
+No compiler/deprecation warnings in the final clean run. The initial incremental
+opener run passed but reported test-scheduler opt-in warnings; explicit test-only
+ExperimentalCoroutinesApi opt-in removed them. Later incremental UI/tests passed.
+The final cancellation-at-handoff guard/test was added after the live check;
+it only affects cancelled operations and passed offline, so no live rerun.
+
+Local Markdown paths/headings, SPDX GPL-3.0-or-later, both diff checks and core
+purity passed. No publication bodies, credentials/build artifacts committed.
+LICENSE/CONTRIBUTING/third-party declarations unchanged. No dependency or version
+changes. Resolved inventory exactly matches the saved baseline: core runtime
+**2**/tests **6**, app runtime **64**/tests **70**, build plugins **22**. Inspection
+used a temporary environment-only init task:
+
+```sh
+./gradlew -I /tmp/infinilect-search-inventory.init.gradle searchDependencyInventory \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+The mandatory clean build used **no init script**. Existing environment-local
+JDK 21/proxy/CA configuration, TLS verification enabled, permanent repositories
+unchanged. No Maven 429/mirror workaround. Kotlin 2.4.20, Compose Multiplatform
+1.12.1, Gradle 9.7.1, Temurin JDK 21.0.12.1+1 and all dependency licenses unchanged.
+
+### Exactly one new live full-document check
+
+```sh
+./gradlew :app:internetArchiveTextReadingCheck \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**2026-10-03T08:06:48.622357109Z**, task/build success in **11s**. Same
+ReadingSession/SearchController/OpenPublicationController/document loader as UI,
+with a byte-counting ResourceLoader wrapper only for diagnostic measurements:
+
+| Request | HTTP | Application-consumed bytes | Outcome |
+| --- | --- | --- | --- |
+| Advanced search for identifier:gmb-2015-93040 | 200 | 594 | One explicit result page |
+| metadata/gmb-2015-93040 | 200 | 5,359 | Publication/TEXT details |
+| Same metadata immediately before acquisition | 200 | 5,359 | Fresh CC0/access/ownership/locations |
+| download/gmb-2015-93040/gmb-2015-93040_djvu.txt | 302 | 0 | One validated redirect to dn760105.eu.archive.org |
+| dn760105.eu.archive.org/0/items/gmb-2015-93040/gmb-2015-93040_djvu.txt | 200 | 2,566 | Full small TEXT, exact EOF/size, strict UTF-8 |
+
+**5 requests, one redirect, 13,878 total application-consumed bytes**. Declared
+and consumed document size **2,566 bytes**; **2,562 decoded UTF-16 characters**.
+Resource closed before Ready. Back retained exact result state and query. Item
+is the previously verified public CC0 government document; source still performs
+fresh access/license checks. No 403/429, retry, content logging or persistent
+download. Transport buffering can exceed measured application consumption.
+No existing prefix, Gutenberg or OAPEN live check repeated.
+
+Existing SLF4J no-provider/NOP warnings appeared only in the live process; no
+logging backend/dependency added.
+
+### Graphical limitation and review before merge
+
+**UI compiled but graphical smoke test not performed.** Neither DISPLAY nor
+WAYLAND_DISPLAY is available; no virtual-display workaround was attempted.
+Offline session tests and live production-controller execution do not prove
+Compose visual rendering/scroll behavior.
+
+On a graphical desktop, run `./gradlew :app:run`, select Internet Archive, search
+`identifier:gmb-2015-93040`, Open text, inspect actual text, scroll, Back and
+confirm source/query/results remain. Also check Gutenberg search, switching source
+during a search and Back during opening. Test layout responsiveness on documents
+near the 512 KiB cap before broader usability claims. Strict UTF-8 and known-size
+requirements intentionally exclude some items. No full-file hash/revision
+verification, reader settings/position persistence or v0.0.1 completion claim.
+
 ## Final PR #3 delivery/lifecycle review — 2026-10-03
 
 Started at `3d8cc453a3a53812850ccc10485e7229592c9a26` on the existing

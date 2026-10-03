@@ -7,13 +7,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import org.infinilect.app.gutenberg.GutenbergSource
-import org.infinilect.app.search.SearchController
+import org.infinilect.app.archive.InternetArchiveSource
 
 fun main() = application {
-    val source = remember { GutenbergSource() }
-    val controller = remember(source) { SearchController(source) }
-    DisposableEffect(source) { onDispose { source.close() } }
+    val gutenberg = remember { GutenbergSource() }
+    val archive = remember { InternetArchiveSource() }
+    val sources = remember(gutenberg, archive) { listOf(
+        SourceOption("Project Gutenberg", gutenberg),
+        SourceOption("Internet Archive", archive, textReadingEnabled = true),
+    ) }
+    DisposableEffect(gutenberg, archive) { onDispose { gutenberg.close(); archive.close() } }
     Window(onCloseRequest = ::exitApplication, title = "INFINILECT") {
-        App(controller)
+        App(sources)
     }
 }

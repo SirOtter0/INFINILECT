@@ -21,10 +21,14 @@ autores e idiomas cuando la fuente los proporciona. La búsqueda se envía media
 una acción explícita; la siguiente página solo se solicita al pulsar **Next page**.
 No hay búsqueda automática ni precarga.
 
-Un adaptador independiente de Internet Archive demuestra adquisición real de un
-texto público CC0 mediante PublicationSource/ResourceContent, con check CLI opt-in
-y lectura UTF-8 acotada. Es un subconjunto conservador, no una segunda fuente en la
-UI actual. No hay caché, downloads persistentes ni lector;
+Selecciona **Internet Archive** para buscar textos públicos CC0, pulsa **Open text**
+y lee un recurso TEXT real en el primer TextReader mínimo. **Back to results**
+conserva la fuente seleccionada, consulta y resultados actuales. Solo admite UTF-8
+estrictamente válido, con tamaño conocido de hasta **512 KiB**; la ausencia de TEXT
+produce un error controlado. Project Gutenberg sigue siendo **solo búsqueda**.
+
+Es una primera ruta de lectura conservadora, sin caché, persistencia, ajustes de
+lector, lector EPUB/PDF ni downloads persistentes. Volver a abrir adquiere de nuevo;
 **v0.0.1 no está terminada**. [Alcance](docs/INTERNET_ARCHIVE.md).
 
 La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona
@@ -52,6 +56,12 @@ las dependencias requieren acceso a Internet.
 En Windows utiliza `gradlew.bat`. La ejecución requiere un escritorio gráfico
 y conexión a Internet para buscar.
 Todavía no se incluyen instaladores nativos ni aplicaciones móviles.
+
+Para un ejemplo pequeño verificado, selecciona Internet Archive y busca
+`identifier:gmb-2015-93040`; después pulsa **Open text**. Es un documento público
+CC0 del gobierno neerlandés. No se enriquecen ni adquieren resultados de forma
+automática. Cambiar de fuente cancela la sesión anterior y vacía consulta/resultados;
+volver desde el lector conserva la sesión actual, sin guardar posición de lectura.
 
 Versiones: Kotlin/compilador Compose 2.4.20, Compose Multiplatform 1.12.1,
 Gradle 9.7.1. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
@@ -84,12 +94,23 @@ No registra ni guarda texto. Consulta límites y política conservadora de hosts
 acceso en los documentos de cada fuente. El parser JSON kotlinx.serialization-json
 1.11.0 (Apache-2.0) es solo de escritorio; core sigue puro.
 
+El nuevo check de documento completo usa la misma lógica de búsqueda/apertura/sesión
+que la UI, verifica UTF-8 estricto y Back, y solo registra cantidades, nunca texto:
+
+```sh
+./gradlew :app:internetArchiveTextReadingCheck
+```
+
+Es opt-in, no se ejecuta en tests/build y lee un único documento pequeño verificado
+bajo el límite de 512 KiB. El check CLI no equivale a una prueba gráfica de la UI.
+
 Los resultados reales de verificación y límites del entorno están en [VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Estructura inicial pequeña
 
 - `core`: modelos y contratos en Kotlin puro en `commonMain`; destino JVM para verificar.
-- `app`: UI/estado Compose compartidos, demo de adquisición neutral, adaptadores y entrada de escritorio; depende de `core`.
+- `app`: UI Compose compartida de búsqueda/TextReader, carga/estado de sesión independientes
+  de la fuente, adaptadores y entrada de escritorio; depende de `core`.
   La [migración documentada](docs/adr/0008-platform-entrypoints.md) separará interfaz
   compartida y aplicaciones de escritorio/Android cuando se incorpore Android.
 - `docs`: arquitectura, política de fuentes, caché, hoja de ruta y decisiones.

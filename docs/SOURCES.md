@@ -121,13 +121,17 @@ unusable. No OapenSource or challenge bypass. See [OAPEN](OAPEN.md).
 InternetArchiveSource is the second concrete PublicationSource and first actual
 resource-acquisition experiment. It uses official advanced search/item JSON APIs
 and documented individual download permalinks, supporting only public CC0 text
-items with validated TEXT/PDF files. The unchanged UI still searches Gutenberg;
-Archive's opt-in CLI demo reads at most 512 text bytes through ResourceContent.
+items with validated TEXT/PDF files. Desktop now selects either Gutenberg search
+or Internet Archive search/first TEXT reading, one active source at a time.
+The source-neutral TextReader requires full strict UTF-8 with known size ≤512 KiB;
+PDF/EPUB are not opened. Archive's existing opt-in prefix demo still reads at most
+512 bytes; its new full-text check uses the same session/controller as the UI.
 No arbitrary metadata URL is acquired. Fresh item-scoped delivery locations, permission
 refresh, bounded parsing/streaming and deterministic offline tests enforce limits.
 See [Archive endpoints/rights/hosts](INTERNET_ARCHIVE.md),
 [comparison](ACQUISITION_COMPARISON.md), and
-[ADR 0011](adr/0011-verified-source-acquisition.md).
+[ADR 0011](adr/0011-verified-source-acquisition.md), and
+[ADR 0012](adr/0012-bounded-text-reading.md). No cache or persistence.
 
 ## Future declarative definitions
 
