@@ -1,4 +1,8 @@
 {
+  "server": "ia903102.us.archive.org",
+  "workable_servers": ["ia903102.us.archive.org", "ia803102.us.archive.org"],
+  "dir": "/35/items/gmb-2015-93040",
+  "alternate_locations": {"workable": [{"server": "dn760105.eu.archive.org", "dir": "/0/items/gmb-2015-93040"}]},
   "metadata": {
     "identifier": "gmb-2015-93040",
     "title": "VERLENING OMGEVINGSVERGUNNING, OUDEWEG 2 GERSLOOT",

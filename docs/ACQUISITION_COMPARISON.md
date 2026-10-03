@@ -18,6 +18,19 @@ coverage or future priority. [OAPEN evidence](OAPEN.md), [IA evidence](INTERNET_
 | Update/rate guidance | Daily feeds, OAI datestamps; no numeric quota found | Bot UA/model, 429/Retry-After/cache/checksum/concurrency guidance; no universal numeric quota found |
 | Complexity/risk | Resolve transfer access plus client discovery/index strategy | Conservative license/access gates and verified-host redirects; unknown hosts unsupported |
 
+## Delivery policy follow-up — 2026-10-03
+
+The table preserves the initial 2026-10-02 evidence. No OAPEN/Gutenberg live check
+was repeated in the final review. Internet Archive's fixed observed-node allowlist
+was replaced by fresh, item-scoped MDAPI host/directory membership plus structured
+HTTPS/domain/path validation. Documented `server`/`workable_servers`/`dir` fields
+and observed official-API `alternate_locations.workable` are distinguished in
+[the trust boundary](INTERNET_ARCHIVE.md#item-scoped-delivery-trust-boundary--reviewed-2026-10-03).
+No exhaustive global hosting guarantee was found; unannounced nodes still fail
+closed. One new opt-in acquisition run succeeded through `ia803102.us.archive.org`,
+a different announced node: five requests, one redirect, 512 resource bytes.
+The source remains limited to public CC0 texts; no lending, login, reader or cache.
+
 **Choose one narrow Internet Archive source and CLI demo.** Official search,
 item/file metadata, individual transfer and public CC0 item passed real checks.
 The decision follows rights/access/byte evidence, not convenience alone. OAPEN

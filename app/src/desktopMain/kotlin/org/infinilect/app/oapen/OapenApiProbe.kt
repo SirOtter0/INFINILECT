@@ -16,6 +16,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.infinilect.app.network.PROJECT_USER_AGENT
 
 internal const val OAPEN_SEARCH_URL = "https://library.oapen.org/rest/search"
 internal const val OAPEN_PROBE_MAX_BYTES = 2 * 1024 * 1024
@@ -47,7 +48,7 @@ internal class OapenApiProbe(private val engine: HttpClientEngine = Java.create(
             parameters.append("offset", "0")
         }.buildString()
         client.prepareGet(url) {
-            header(HttpHeaders.UserAgent, "INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)")
+            header(HttpHeaders.UserAgent, PROJECT_USER_AGENT)
             header(HttpHeaders.Accept, "application/xml")
             header(HttpHeaders.AcceptEncoding, "identity")
         }.execute { response ->

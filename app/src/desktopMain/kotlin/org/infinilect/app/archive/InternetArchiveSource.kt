@@ -16,14 +16,14 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.infinilect.app.search.SearchException
+import org.infinilect.app.network.PROJECT_USER_AGENT
 import org.infinilect.core.*
 
-internal const val ARCHIVE_USER_AGENT = "INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)"
-internal const val EXPERIMENT_USER_AGENT = "INFINILECT/0.0.1-SNAPSHOT (Codex; GPT-6; +https://github.com/SirOtter0/INFINILECT/issues)"
 
 /** Application-consumed bytes, excluding transport buffering; never includes book contents. */
 internal data class ArchiveHttpEvidence(val url: String, val status: Int, val location: String?) {
@@ -33,13 +33,14 @@ internal data class ArchiveHttpEvidence(val url: String, val status: Int, val lo
 /** Deliberately narrow public-CC0 text adapter, independent of the current Gutenberg UI. */
 internal class InternetArchiveSource(
     private val engine: HttpClientEngine = Java.create(),
-    private val userAgent: String = ARCHIVE_USER_AGENT,
+    private val userAgent: String = PROJECT_USER_AGENT,
     private val observe: (ArchiveHttpEvidence) -> Unit = {},
+    streamDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : PublicationSource, AutoCloseable {
     override val id = ARCHIVE_ID
     private val lock = Mutex()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    @Volatile private var closed = false
+    private val scope = CoroutineScope(SupervisorJob() + streamDispatcher)
+    private val closed = AtomicBoolean()
     private val client = HttpClient(engine) {
         followRedirects = false
         expectSuccess = false
@@ -73,6 +74,10 @@ internal class InternetArchiveSource(
 
     private suspend fun item(id: PublicationId): ArchiveItem? {
         val bytes = metadataBytes(ArchiveUrls.metadata(id.localId))
+        return parseItem(bytes, id)
+    }
+
+    private suspend fun parseItem(bytes: ByteArray, id: PublicationId): ArchiveItem? {
         return withContext(Dispatchers.Default) {
             val context = currentCoroutineContext()
             ArchiveMetadata.item(bytes, id.localId) { context.ensureActive() }
@@ -97,9 +102,12 @@ internal class InternetArchiveSource(
         if (headers[HttpHeaders.ContentEncoding]?.trim()?.lowercase()?.let { it != "identity" } == true) throw InvalidArchiveData()
     }
 
-    private suspend fun metadataBytes(url: String): ByteArray = lock.withLock {
-        check(!closed) { "Source is closed." }
-        client.prepareGet(url) {
+    private suspend fun metadataBytes(url: String): ByteArray = lock.withLock { metadataBytesLocked(url) }
+
+    /** Caller owns lock, allowing refresh/open to remain one serialized acquisition operation. */
+    private suspend fun metadataBytesLocked(url: String): ByteArray {
+        check(!closed.get()) { "Source is closed." }
+        return client.prepareGet(url) {
             header(HttpHeaders.UserAgent, userAgent)
             header(HttpHeaders.Accept, "application/json")
             header(HttpHeaders.AcceptEncoding, "identity")
@@ -132,15 +140,16 @@ internal class InternetArchiveSource(
         ArchiveUrls.filename(resource.key)
         require(resource.revision == null) { "Verified resource revisions are not implemented." }
         return userFacing {
-            // Refresh permission and file metadata for every explicit acquisition; no cache is introduced.
-            val file = item(resource.publicationId)?.files?.singleOrNull { it.resource == resource }
-                ?: throw InvalidArchiveData()
             val ready = CompletableDeferred<ResourceContent>()
             val producer = scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
                     lock.withLock {
-                        check(!closed)
-                        stream(ArchiveUrls.download(resource.publicationId.localId, resource.key), file, ready, emptySet())
+                        check(!closed.get())
+                        // Refresh after queueing, immediately before open; no other request can intervene.
+                        val item = parseItem(metadataBytesLocked(ArchiveUrls.metadata(resource.publicationId.localId)), resource.publicationId)
+                            ?: throw InvalidArchiveData()
+                        val file = item.files.singleOrNull { it.resource == resource } ?: throw InvalidArchiveData()
+                        stream(ArchiveUrls.download(resource.publicationId.localId, resource.key), file, item.locations, ready, emptySet())
                     }
                 } catch (error: Throwable) { ready.completeExceptionally(error) }
             }
@@ -149,7 +158,7 @@ internal class InternetArchiveSource(
         }
     }
 
-    private suspend fun stream(url: String, file: ArchiveFile, ready: CompletableDeferred<ResourceContent>, visited: Set<String>) {
+    private suspend fun stream(url: String, file: ArchiveFile, locations: Set<ArchiveLocation>, ready: CompletableDeferred<ResourceContent>, visited: Set<String>) {
         if (url in visited || visited.size > 2) throw InvalidArchiveData()
         client.prepareGet(url) {
             header(HttpHeaders.UserAgent, userAgent)
@@ -160,9 +169,9 @@ internal class InternetArchiveSource(
             val evidence = response.evidence(url)
             if (response.status.value in setOf(301, 302, 303, 307, 308)) {
                 val location = response.headers[HttpHeaders.Location] ?: throw InvalidArchiveData()
-                val target = ArchiveUrls.redirect(url, location, file.resource.publicationId.localId, file.resource.key)
+                val target = ArchiveUrls.redirect(url, location, file.resource.publicationId.localId, file.resource.key, locations)
                 response.bodyAsChannel().cancel(null)
-                stream(target, file, ready, visited + url)
+                stream(target, file, locations, ready, visited + url)
             } else {
                 if (response.status.value != 200) throw InvalidArchiveData()
                 val type = response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase()
@@ -177,15 +186,15 @@ internal class InternetArchiveSource(
                 try {
                     if (!ready.complete(content)) content.close()
                     // Ktor's public streaming execute scope must stay alive while the handle is owned.
-                    lifetime.await()
+                    // An idle consumer must not strand the source mutex after transport completion/timeout.
+                    withTimeout(60_000) { lifetime.await() }
                 } finally { content.close() }
             }
         }
     }
 
     override fun close() {
-        if (closed) return
-        closed = true
+        if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         client.close()
         engine.close()
@@ -198,20 +207,24 @@ internal class ArchiveResourceContent(
     private val evidence: ArchiveHttpEvidence,
     private val abort: () -> Unit,
 ) : ResourceContent {
-    @Volatile private var closed = false
+    private val closed = AtomicBoolean()
     private var consumed = 0L
+
+    init { require(sizeBytes in 1..MAX_RESOURCE_BYTES) }
 
     override suspend fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         require(offset in 0..buffer.size && length in 0..(buffer.size - offset))
-        check(!closed) { "Resource is closed." }
+        check(!closed.get()) { "Resource is closed." }
         if (length == 0) return 0
         try {
             currentCoroutineContext().ensureActive()
-            val count = channel.readAvailable(buffer, offset, minOf(length.toLong(), MAX_RESOURCE_BYTES - consumed + 1).toInt())
+            val requested = minOf(length.toLong(), sizeBytes - consumed + 1).toInt()
+            val count = channel.readAvailable(buffer, offset, requested)
             if (count == -1) {
                 if (consumed != sizeBytes) throw InvalidArchiveData()
                 return -1
             }
+            if (count !in 1..requested) throw InvalidArchiveData()
             consumed += count
             evidence.consumedBytes.addAndGet(count.toLong())
             if (consumed > sizeBytes || consumed > MAX_RESOURCE_BYTES) throw InvalidArchiveData()
@@ -220,8 +233,7 @@ internal class ArchiveResourceContent(
     }
 
     override fun close() {
-        if (closed) return
-        closed = true
+        if (!closed.compareAndSet(false, true)) return
         channel.cancel(null)
         abort()
     }

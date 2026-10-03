@@ -45,4 +45,12 @@ class ResourceAcquisitionDemoTest {
         assertFailsWith<kotlinx.coroutines.CancellationException> { demonstrateAcquisition(content, resource) }
         assertTrue(content.closed)
     }
+
+    @Test fun truncatedUtf8AtActualEofIsNotHiddenAsAPartialPrefix() = runTest {
+        for (bytes in listOf(byteArrayOf('a'.code.toByte(), 0xc3.toByte()), ByteArray(512) { 'a'.code.toByte() }.apply { this[511] = 0xc3.toByte() })) {
+            val content = Content(bytes)
+            assertFails { demonstrateAcquisition(content, resource) }
+            assertTrue(content.closed)
+        }
+    }
 }

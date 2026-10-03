@@ -123,7 +123,7 @@ resource-acquisition experiment. It uses official advanced search/item JSON APIs
 and documented individual download permalinks, supporting only public CC0 text
 items with validated TEXT/PDF files. The unchanged UI still searches Gutenberg;
 Archive's opt-in CLI demo reads at most 512 text bytes through ResourceContent.
-No arbitrary metadata URL is acquired. Narrow observed-host redirects, permission
+No arbitrary metadata URL is acquired. Fresh item-scoped delivery locations, permission
 refresh, bounded parsing/streaming and deterministic offline tests enforce limits.
 See [Archive endpoints/rights/hosts](INTERNET_ARCHIVE.md),
 [comparison](ACQUISITION_COMPARISON.md), and

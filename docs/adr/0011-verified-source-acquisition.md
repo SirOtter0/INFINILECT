@@ -18,6 +18,9 @@ See [comparison](../ACQUISITION_COMPARISON.md).
 
 ## Decision
 
+Initial 2026-10-02 decision; the delivery/lifecycle follow-up below amends its
+fixed-node restriction without changing its public-CC0 scope.
+
 Add only InternetArchiveSource in desktopMain, behind PublicationSource. No core
 change/module/universal engine. Conservative public CC0 texts, TEXT/PDF references,
 opaque pagination, fresh permission checks. Preserve rights/license separately
@@ -42,3 +45,28 @@ deliberately excluded; review before broadening host/rights rules or offering
 general acquisition UI. TEXT prefix integrated; PDF acquisition/validation and
 full-file hash verification deferred. OAPEN remains viable with transfer/discovery
 questions, without requiring restoration of REST if another official route suffices.
+
+## Delivery/lifecycle follow-up — 2026-10-03
+
+The fixed observed-host constant cannot support items served by other legitimate
+nodes. Official item documentation says download permalinks may redirect, and
+the MDAPI record documents root `server`, `workable_servers` and `dir`. The test
+item's official response also includes `alternate_locations.workable` host/dir
+pairs; this is observed API evidence, not an exhaustive documented schema.
+See [current policy and official references](../INTERNET_ARCHIVE.md).
+
+Always start with the official permalink. Follow only same-item/file redirects
+whose exact storage host and directory occur in fresh MDAPI location fields,
+additionally constrained to structurally parsed ASCII `archive.org` DNS labels,
+HTTPS/default or 443 port and canonical matching paths. No wildcard permission,
+editable item-metadata URLs, unannounced nodes or direct-storage fallback.
+Keep the local two-hop/loop bound and fail closed on unsupported locations.
+The single follow-up live check used a different announced primary node.
+
+Refresh permissions/locations after acquiring the source mutex, immediately
+before opening. Include the official `nodownload`/`is_collection` flags and fail
+closed on ambiguous restriction values. Close is atomic/idempotent; a 60s
+post-handoff handle lifetime prevents abandoned consumers from stranding the
+serialized source. Reads permit only one known-size overflow probe byte. The demo
+must reject incomplete UTF-8 at actual EOF. No core/dependency change; revisions
+remain null, CC0-only and no reader/cache/lending/login scope changes.

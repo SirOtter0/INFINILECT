@@ -19,7 +19,7 @@ import javax.xml.stream.XMLInputFactory
 import javax.xml.stream.XMLStreamConstants.*
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import org.infinilect.app.archive.EXPERIMENT_USER_AGENT
+import org.infinilect.app.network.PROJECT_USER_AGENT
 
 internal const val OAPEN_OAI_RECORD = "https://library.oapen.org/oai/request?verb=GetRecord&identifier=oai:library.oapen.org:20.500.12657/25287&metadataPrefix=xoai"
 internal data class OapenBitstream(val url: String, val size: Long, val rights: String?, val licenseUrl: String?)
@@ -43,7 +43,7 @@ internal class OapenAlternateProbe(private val engine: HttpClientEngine = Java.c
         var status = 0
         attemptedRequests++
         val bytes = client.prepareGet(OAPEN_OAI_RECORD) {
-            header(HttpHeaders.UserAgent, EXPERIMENT_USER_AGENT)
+            header(HttpHeaders.UserAgent, PROJECT_USER_AGENT)
             header(HttpHeaders.Accept, "application/xml, text/xml")
             header(HttpHeaders.AcceptEncoding, "identity")
         }.execute { response ->
@@ -72,7 +72,7 @@ internal class OapenAlternateProbe(private val engine: HttpClientEngine = Java.c
         val pdf = parseOapenRecord(bytes) { context.ensureActive() }
         attemptedRequests++
         return client.prepareHead(pdf.url) {
-            header(HttpHeaders.UserAgent, EXPERIMENT_USER_AGENT)
+            header(HttpHeaders.UserAgent, PROJECT_USER_AGENT)
             header(HttpHeaders.Accept, "application/pdf")
             header(HttpHeaders.AcceptEncoding, "identity")
         }.execute { response ->

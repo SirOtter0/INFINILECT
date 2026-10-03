@@ -8,6 +8,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 import org.infinilect.app.archive.archiveFixture
+import org.infinilect.app.network.PROJECT_USER_AGENT
 
 class OapenAlternateProbeTest {
     @Test fun extractsAnnouncedSizeAndVerbatimRightsFromDocumentedRecord() {
@@ -21,7 +22,7 @@ class OapenAlternateProbeTest {
         val methods = mutableListOf<HttpMethod>()
         OapenAlternateProbe(MockEngine { request ->
             methods += request.method
-            assertTrue(request.headers[HttpHeaders.UserAgent]!!.contains("INFINILECT"))
+            assertEquals(PROJECT_USER_AGENT, request.headers[HttpHeaders.UserAgent])
             if (request.method == HttpMethod.Get) respond(archiveFixture("oapen-record.xml"), headers = headersOf(HttpHeaders.ContentType, "text/xml"))
             else respond("", HttpStatusCode.Forbidden)
         }).use { probe ->

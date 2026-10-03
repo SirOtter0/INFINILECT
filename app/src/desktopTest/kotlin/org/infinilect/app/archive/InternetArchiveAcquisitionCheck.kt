@@ -14,7 +14,7 @@ object InternetArchiveAcquisitionCheck {
         println("Internet Archive acquisition check at ${Instant.now()}")
         val observations = mutableListOf<ArchiveHttpEvidence>()
         try {
-            InternetArchiveSource(userAgent = EXPERIMENT_USER_AGENT, observe = { synchronized(observations) { observations += it } }).use { source ->
+            InternetArchiveSource(observe = { synchronized(observations) { observations += it } }).use { source ->
                 val page = source.search("identifier:gmb-2015-93040")
                 val result = page.publications.single { it.id.localId == "gmb-2015-93040" }
                 val publication = checkNotNull(source.getPublication(result.id))

@@ -1,5 +1,119 @@
 # Verification
 
+## Final PR #3 delivery/lifecycle review — 2026-10-03
+
+Started at `3d8cc453a3a53812850ccc10485e7229592c9a26` on the existing
+`feature/oapen-acquisition` branch. `git fetch origin`, status, branch/log,
+merge-base and left/right counts confirmed integrated main
+`86d70c1bc4f281e7f866207ff8bfcfed647e058d` unchanged, an ancestor, **0 behind /
+4 ahead** before the additive review commit. All four previous commits preserved;
+no new branch, merge, rebase, squash, force push or history rewrite.
+
+GitHub reported PR #3 **open, ready, unmerged, mergeable=true / clean** at review
+start. Main was unprotected, repository rulesets empty, and the head had no
+check runs/statuses or required checks. There was no local conflict or main
+advance to explain the earlier `mergeable:false`. Its historical cause could
+not be established; a temporary computation remains a possibility, not a
+confirmed diagnosis. No main merge/rebase was attempted.
+
+### Corrections and official evidence
+
+The [current item-scoped boundary](INTERNET_ARCHIVE.md) replaces a production
+single-node constant with fresh documented `server`/`workable_servers`/`dir`
+coordinates and observed official-API `alternate_locations.workable` pairs.
+Always start at the official download permalink; only exact announced
+host/directory/item/file redirects pass additional HTTPS, structured DNS-zone
+and canonical-path checks. No blanket subdomain authorization. Official pages
+do not provide an exhaustive host family/list or redirect-count guarantee;
+unsupported locations/hops fail closed. [ADR 0011 follow-up](adr/0011-verified-source-acquisition.md)
+preserves the initial decision and explains the change.
+
+Also corrected: missing `nodownload`/`is_collection` gates and ambiguous access
+flags; permission refresh occurring before waiting for the acquisition mutex;
+non-atomic close races; abandoned handle lifetime retaining the mutex;
+overlong reads consuming more than one known-size overflow byte; and the demo
+accepting truncated UTF-8 at actual EOF. Preserve `rights`, `licenseurl` and
+`possible-copyright-status` separately, keep **revision=null / CC0-only**.
+The existing two-redirect bound was correct; new tests verify both its accepted
+boundary and rejection of a third hop. All sources/probes now share the normal
+project User-Agent, without development-tool/model identification.
+
+### Final clean build and offline tests
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest build \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+**BUILD SUCCESSFUL in 28s**, 28 actionable tasks, all executed. XML reports:
+**core 23 + app 90 = 113 tests**, **0 failures / 0 errors / 0 skipped**.
+An earlier incremental `:app:desktopTest` also passed in 29s. No compiler or
+deprecation warnings; expected Gradle generated-resource/configuration tasks
+marked SKIPPED/NO-SOURCE are not skipped test cases.
+
+App counts: Archive metadata **12**, URLs **11**, source/lifecycle **26**, neutral
+demo **4**, OAPEN alternate **6**, OAPEN REST **7**, Gutenberg parser **11**,
+Gutenberg source **8**, search controller **5**. Seventeen tests added in this
+review; existing tests extended for the new trust boundary and standard UA.
+Normal tasks remain completely offline/deterministic with MockEngine/fixtures.
+Coverage adds multiple item-scoped nodes, unannounced and confusing domains,
+Unicode/punycode, userinfo/ports/query/fragment, wrong identifiers/files,
+traversal/double encodings, canonical URL loops, exactly two/excessive redirects,
+fresh serialized permission checks, declared-size overflow, concurrent close,
+virtual-time handle expiry, ambiguous access flags and truncated UTF-8 EOF.
+
+Both diff checks and local Markdown file targets passed. Core is identical to
+main and remains dependency-free in production (Kotlin only). Its source has
+no HTTP/Compose/JSON/source/platform imports. Gutenberg's only implementation
+change is referencing the centralized **identical** User-Agent value; its policy,
+unsupported acquisition, tests, UI/controller and launcher remain unchanged.
+No versions/dependencies/license changes or tracked publication bodies,
+credentials/build artifacts. Runtime dependency licenses retain their terms.
+
+Existing JDK 21/proxy/CA environment configuration was used with TLS verification
+enabled and unchanged repositories. No Maven HTTP429 or mirror workaround.
+Kotlin 2.4.20, Compose Multiplatform 1.12.1, Gradle 9.7.1, Temurin JDK
+21.0.12.1+1, Ktor 3.6.0 and coroutines 1.11.0 unchanged. No visual UI/native
+installer/reader verification. Existing SLF4J no-provider/NOP messages appeared
+only in the live diagnostic; no logging dependency was added.
+
+### Exactly one new live check
+
+Only the Internet Archive check was rerun, because delivery policy changed.
+No OAPEN or Gutenberg live request; no live retry.
+
+```sh
+./gradlew :app:internetArchiveAcquisitionCheck \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**2026-10-03T07:20:59.244405773Z**, task/build success in 10s:
+
+| Request | HTTP | Application-consumed bytes | Outcome |
+| --- | --- | --- | --- |
+| Advanced search for identifier:gmb-2015-93040 | 200 | 594 | One explicit page |
+| metadata/gmb-2015-93040 | 200 | 5,359 | Item/public CC0 resources |
+| Same metadata, immediately before opening | 200 | 5,359 | Fresh access/location gate |
+| download/gmb-2015-93040/gmb-2015-93040_djvu.txt | 302 | 0 | Validated redirect to ia803102.us.archive.org |
+| ia803102.us.archive.org/35/items/gmb-2015-93040/gmb-2015-93040_djvu.txt | 200 | 512 | UTF-8 prefix through ResourceContent, handle closed |
+
+**5 requests, 1 redirect, 11,824 consumed bytes total, 512 resource bytes**;
+known file size **2,566**. No 403/429 or retry. This different primary node was
+announced by fresh metadata and accepted without a hardcoded node constant.
+Transport can buffer more than the application consumes. No whole-file
+checksum validation or persistent download, and no text was logged.
+
+### Remaining review limits
+
+The source remains a narrow public-CC0 TEXT/PDF adapter with only TEXT-prefix
+integration evidence. Unknown location shapes/hosts, more than two redirects,
+unsupported license/access states and ambiguous data fail closed. Review the
+observed alternate-location schema and 60s handle ownership deadline before
+broader item support or a reader. Rights metadata is supplied by IA, not a new
+legal adjudication. No cache, reader, lending/login/DRM or mobile features added.
+
 ## Alternate access and first acquisition — 2026-10-02
 
 Stayed on `feature/oapen-acquisition`, preserving `8334415` and `bb464b9`.

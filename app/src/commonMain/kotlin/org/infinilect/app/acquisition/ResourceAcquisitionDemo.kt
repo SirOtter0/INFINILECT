@@ -25,9 +25,10 @@ internal suspend fun demonstrateAcquisition(loader: ResourceLoader, resource: Pu
     try {
         val prefix = ByteArray(512)
         var total = 0
+        var eof = false
         while (total < prefix.size) {
             val count = content.read(prefix, total, prefix.size - total)
-            if (count == -1) break
+            if (count == -1) { eof = true; break }
             check(count in 1..(prefix.size - total))
             total += count
         }
@@ -39,7 +40,8 @@ internal suspend fun demonstrateAcquisition(loader: ResourceLoader, resource: Pu
         if (continuation >= 0) {
             val lead = prefix[continuation].toInt() and 0xff
             val width = when { lead < 0x80 -> 1; lead in 0xc2..0xdf -> 2; lead in 0xe0..0xef -> 3; lead in 0xf0..0xf4 -> 4; else -> 1 }
-            if (total - continuation < width) end = continuation
+            val completeResource = eof || content.sizeBytes?.let { it <= total } == true
+            if (!completeResource && total == prefix.size && total - continuation < width) end = continuation
         }
         val decoded = prefix.decodeToString(0, end, throwOnInvalidSequence = true)
         check(decoded.isNotBlank() && '\u0000' !in decoded) { "Resource is not a supported UTF-8 text." }

@@ -18,6 +18,8 @@ internal data class ArchiveItem(
     val files: List<ArchiveFile>,
     val rights: String?,
     val licenseUrl: String?,
+    val locations: Set<ArchiveLocation>,
+    val possibleCopyrightStatus: String?,
 )
 
 /** Bounded JSON metadata, not a universal Internet Archive schema. */
@@ -66,7 +68,34 @@ internal object ArchiveMetadata {
     private fun JsonObject.string(key: String) = strings(key).singleOrNull()
     private fun JsonObject.flag(key: String): Boolean {
         val value = this[key] ?: return false
-        return value != JsonNull && (value as? JsonPrimitive)?.content?.lowercase() !in setOf("false", "0", "")
+        // Present but ambiguous restriction flags are not proof of public access.
+        return (value as? JsonPrimitive)?.content?.lowercase() !in setOf("false", "0")
+    }
+
+    private fun locations(root: JsonObject, identifier: String): Set<ArchiveLocation> {
+        val result = mutableSetOf<ArchiveLocation>()
+        val primary = root.strings("workable_servers").toMutableSet()
+        root.string("server")?.let(primary::add)
+        if (primary.size > 16) throw InvalidArchiveData()
+        root.string("dir")?.let { directory ->
+            for (host in primary) result += ArchiveUrls.storageLocation(host, directory, identifier)
+        }
+        // Observed in the official MDAPI response, separate from uploader-controlled metadata.
+        val alternate = root["alternate_locations"]
+        if (alternate != null) {
+            val objectValue = alternate as? JsonObject ?: throw InvalidArchiveData()
+            val workable = objectValue["workable"]
+            if (workable != null) {
+                val entries = workable as? JsonArray ?: throw InvalidArchiveData()
+                if (entries.size > 16) throw InvalidArchiveData()
+                for (entry in entries) {
+                    val coordinate = entry as? JsonObject ?: throw InvalidArchiveData()
+                    result += ArchiveUrls.storageLocation(coordinate.string("server") ?: throw InvalidArchiveData(),
+                        coordinate.string("dir") ?: throw InvalidArchiveData(), identifier)
+                }
+            }
+        }
+        return result
     }
 
     fun search(bytes: ByteArray, query: String, page: Int, checkCancellation: () -> Unit = {}): SearchPage {
@@ -97,7 +126,7 @@ internal object ArchiveMetadata {
         val id = PublicationId(ARCHIVE_ID, identifier)
         val rights = metadata.string("rights")
         val license = metadata.string("licenseurl")
-        val restricted = root.flag("is_dark") || root.flag("is_restricted") || root["lendingInfo"] != null ||
+        val restricted = root.flag("is_dark") || root.flag("is_restricted") || root.flag("nodownload") || root.flag("is_collection") || root["lendingInfo"] != null ||
             metadata.flag("access-restricted-item") || metadata.keys.any { it.startsWith("lending") } ||
             metadata.strings("collection").any { it in setOf("loggedin", "inlibrary", "printdisabled", "lendinglibrary") }
         val rawFiles = root["files"] as? JsonArray ?: throw InvalidArchiveData()
@@ -124,6 +153,7 @@ internal object ArchiveMetadata {
         if (files.map { it.resource.key }.distinct().size != files.size) throw InvalidArchiveData()
         return ArchiveItem(Publication(id, metadata.string("title") ?: identifier, PublicationType.DOCUMENT,
             metadata.strings("creator"), files.map { it.resource }, metadata.strings("language"),
-            ArchiveUrls.canonical(identifier), rights ?: license), files, rights, license)
+            ArchiveUrls.canonical(identifier), rights ?: license), files, rights, license,
+            locations(root, identifier), metadata.string("possible-copyright-status"))
     }
 }

@@ -1,6 +1,7 @@
 # Internet Archive: first bounded resource acquisition
 
-Official documentation and real integration verified **2026-10-02**. Narrow
+Initial real integration verified **2026-10-02**; delivery/lifecycle review and
+one new integration check **2026-10-03**. Narrow
 desktop adapter for public **CC0 text items**, plus CLI demonstration; not complete
 Archive support or a reader. Gutenberg UI/policy unchanged. Core has no source,
 HTTP, JSON or platform dependency.
@@ -19,6 +20,14 @@ HTTP, JSON or platform dependency.
   `https://archive.org/details/{identifier}` and individual file permalink
   **`https://archive.org/download/{identifier}/{filename}`**. Storage redirects
   are expected; resulting storage URLs are not persisted identities.
+- [MDAPI record](https://archive.org/developers/md-record.html): root `server`
+  is the preferred node, `workable_servers` lists available data nodes, and
+  `dir` is the absolute item directory. `d1`/`d2` describe primary/backup nodes.
+  The documentation recommends the `/download/` service instead of constructing
+  storage URLs, because items can migrate. Root state flags include `is_dark`,
+  `nodownload` and `is_collection`. These are separate from editable item
+  `metadata`; user JSON can also appear at the response root, so root placement
+  alone is not proof that an arbitrary field is trustworthy.
 - [Metadata schema](https://archive.org/developers/metadata-schema/index.html):
   `licenseurl` identifies a license; `rights` is a separate statement;
   `access-restricted-item` flags restrictions. Neither Archive presence nor
@@ -27,13 +36,17 @@ HTTP, JSON or platform dependency.
   individual files, formats and HTTP Range. Some EPUB derivatives are generated
   on demand; no such route is implemented here.
 - [Automated access](https://archive.org/developers/bots.html): descriptive
-  tool/version User-Agent, AI agent/model identification; respect 429/Retry-After,
+  tool/version User-Agent (and guidance for AI agents); respect 429/Retry-After,
   limit concurrency, delay bulk work, avoid unchanged downloads/check checksums,
   cache responses. No universal numeric search/read quota found. This slice is
   serialized, with no bulk action, automatic retry or prefetch. HTTP 429 stops
   the action without an automatic retry; any future retry must honor Retry-After.
   No cache/login introduced. Permission
   metadata is refreshed before opening rather than cached across actions.
+
+All source clients/probes share the project identification:
+`INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)`.
+The development-tool/model identity has been removed; no private contact data.
 
 Content retains its individual license. No blanket metadata/content license
 is inferred from a footer. No lending/login/DRM support or restriction bypass.
@@ -49,14 +62,19 @@ opaque tokens. No automatic search enrichment/next page.
 Search resources are empty until `getPublication()`. Details map title (identifier
 fallback), creators, supplied language values and canonical permalink. Generic
 `texts` conservatively map to `DOCUMENT`, not automatically books. The adapter
-preserves `rights` and `licenseurl` separately; existing `Publication.rights`
+preserves `rights`, `licenseurl` and `possible-copyright-status` separately;
+existing `Publication.rights`
 contains verbatim rights if supplied, otherwise verbatim license URL. Never
 concatenates/translates them or converts them to “public domain”.
 
 Acquirable files require exact CC0 1.0 license URL, `mediatype=texts`, no
-restricted/dark/lending flags or known restricted collections, no file-private/
+restricted/dark/no-download/collection/lending flags or known restricted
+collections, no file-private/
 restricted flag. File-specific rights or a non-CC0 file license are excluded
 rather than overridden by item CC0. Conservative subset, not exhaustive Archive access policy.
+Present restriction flags with ambiguous/null values fail closed; only absent
+or explicitly false/zero flags pass. A copyright-status value is not converted
+into a license or a public-domain assertion.
 Unknown licensing yields no selectable files. Only `DjVuTXT`/`Text` plus `.txt`
 map to TEXT/`text/plain`; `Text PDF`/`PDF` plus `.pdf` map to PDF/`application/pdf`.
 These MIME expectations are validated against HTTP Content-Type, not invented
@@ -73,29 +91,67 @@ Identifiers: first ASCII alphanumeric, then alphanumeric/`_-.`, max 100;
 additionally reject `..`. Filename: narrow ASCII basename, max 200, with spaces
 encoded as a segment. Nested/non-ASCII names, percent encodings, separators,
 schemes, controls/traversal unsupported. Ownership and the whole resource
-reference are checked against **fresh metadata** before acquisition.
+reference are checked against **fresh metadata** immediately before acquisition,
+after waiting for the source mutex. Refresh and opening are one serialized
+operation; another queued request cannot intervene.
 
-Exact acquisition allowlist: **`archive.org`** (official permalink) and
-**`dn760105.eu.archive.org`** (observed delivery host). No wildcard CDN allowlist.
-Metadata hints `ia903102.us.archive.org`/`ia803102.us.archive.org` were observed,
-are **not enabled**, and do not construct file URLs. Unknown delivery hosts fail
-closed pending evidence/review; acquisition of other items is deliberately limited.
+### Item-scoped delivery trust boundary — reviewed 2026-10-03
 
-At most two redirects, loop detection, HTTPS/default or 443 port, no userinfo/
-fragment/query, exact identifier/filename, permanent path or observed numeric
-`/N/items/{identifier}/{filename}` storage shape. Traversal/ambiguous percent
-encodings rejected before URI normalization. No configured cookies/credentials.
+Always begin with the official **`archive.org/download/{identifier}/{filename}`**
+permalink. A redirect to that exact permalink is allowed, subject to loop/hop
+checks. A storage redirect requires **all** of:
+
+- An exact host/directory pair announced by this item's fresh HTTPS MDAPI
+  response: documented root `server`/`workable_servers` with root `dir`, or
+  `alternate_locations.workable[]` pairs of `server` and `dir`.
+- Structurally parsed ASCII DNS labels in the `archive.org` zone, excluding
+  punycode labels, Unicode, IP addresses, empty/invalid labels and trailing dots.
+  This zone check is an additional constraint, **never wildcard authorization**.
+- Exact `/N/items/{identifier}/{filename}` path for the same item/file, with
+  `N` containing 1–3 decimal digits. The directory must match the announced pair.
+- HTTPS, implicit/443 port, no userinfo, query or fragment, canonical path
+  encoding. Reject dot segments, encoded separators/traversal, double encoding
+  and any noncanonical alias. Normalize host case/default port for loop detection.
+
+Only the validated redirect is followed; metadata never supplies a starting
+download URL. Editable `metadata.server`, arbitrary URL fields, `d1`/`d2` alone,
+and alternate `servers` entries not in `workable` do not authorize targets.
+Limit to 16 primary and 16 alternate coordinates. Unknown/unannounced hosts,
+even apparently official ones, fail closed without retry or a direct-node fallback.
+Suffix lookalikes such as `evilarchive.org` or `archive.org.attacker.example`
+are rejected. No configured cookies/credentials.
+
+**Documentation vs observation:** official item documentation explicitly makes
+redirects part of the permalink interface and documents primary node/directory
+fields. The API response observed for the test item also announces
+`alternate_locations.workable`, including `dn760105.eu.archive.org` with
+`/0/items/gmb-2015-93040`; this shape is structured official-API evidence, **not
+an exhaustive documented schema or hosting guarantee**. The reviewed pages
+provide no exhaustive hostname family/list or guaranteed redirect count. The
+maximum **two redirects** and numeric directory shape are conservative local
+limits. Unsupported shapes/extra hops fail closed. No dweb route is needed.
+
+The initial 2026-10-02 implementation authorized only one observed node.
+The review replaces that production constant with fresh item-scoped locations,
+without granting all subdomains access. Offline fixtures cover multiple nodes;
+the single new live check reached a different documented primary node.
 
 Require HTTP 200, expected Content-Type, identity encoding. Content-Length must
-match file metadata; actual reads reject overlong/truncated streams. Metadata:
+match file metadata; actual reads reject overlong/truncated streams, consuming
+at most one probe byte beyond the known file size. Nonempty reads return positive
+counts or EOF, never an unexpected zero. Metadata:
 2 MiB plus one overflow probe, 8 KiB buffer, JSON depth 32, 200 files/array values,
 16 KiB mapped strings. Strict UTF-8/bounded nesting precede kotlinx.serialization
 parsing. Connect 5s, metadata request 15s, file request 60s; no Java-engine socket
-idle-timeout guarantee. Requests serialize while a handle is open.
+idle-timeout guarantee. Requests serialize while a handle is open; a separate
+**60s handle lifetime after handoff** closes an abandoned handle and releases
+the mutex, even if transport already finished. This is a total ownership deadline,
+not a promise of 60s socket inactivity detection.
 
 `ResourceContent` bridges Ktor public scoped `execute {}` to a single-consumer
 handle. Reads use the caller buffer. Close cancels channel/producer without
-waiting; opening/read cancellation and shutdown release I/O. Non-scoped
+waiting; atomic idempotent close tolerates concurrent cleanup. Opening/read
+cancellation, lifetime expiry and shutdown release I/O. Non-scoped
 `execute()` (which saves the whole body) is never used. No giant ByteArray,
 temporary book file, persistent download or cache.
 
@@ -121,7 +177,8 @@ Explicit opt-in CLI demo searches the known item, gets details, selects TEXT via
 neutral format selector, refreshes permission metadata, opens through
 `DirectResourceLoader → PublicationSource.loadResource → ResourceContent`, reads
 at most 512 bytes, verifies UTF-8 and closes. No text logged. An incomplete trailing
-UTF-8 sequence is excluded without fetching more bytes. A later consumer requires
+UTF-8 sequence is excluded only at a partial 512-byte boundary, without fetching
+more bytes; invalid/truncated UTF-8 at actual EOF fails. A later consumer requires
 a fresh handle. Independent of unchanged Gutenberg UI, no global source manager.
 
 **Once at 2026-10-02T23:13:46Z:** 5 requests, HTTP 200/200/200/302/200, one validated
@@ -131,3 +188,12 @@ buffer more bytes than the application reads. Earlier development HEAD observed
 the same 302; Range 0–31 then returned HTTP 206, 32 bytes,
 `text/plain; charset=utf-8`, Content-Range `bytes 0-31/2566`. No IA 403/429.
 No graphical UI/reader executed. [Verification](VERIFICATION.md).
+
+**Once at 2026-10-03T07:20:59.244405773Z:** the revised policy passed the same
+opt-in check: 5 requests, HTTP 200/200/200/302/200, **11,824 application-consumed
+bytes**, including **512 resource bytes**. This time the permalink redirected to
+**`https://ia803102.us.archive.org/35/items/gmb-2015-93040/gmb-2015-93040_djvu.txt`**,
+matching the fresh MDAPI primary-node/directory pair. One redirect; no 403/429 or
+retry. This demonstrates another announced node, not all items/hosts/formats.
+Gutenberg/OAPEN live checks were not repeated. No full-file checksum/content
+validation, reader or graphical UI was run.

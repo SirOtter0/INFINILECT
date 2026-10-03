@@ -33,7 +33,7 @@ class OapenApiProbeTest {
             assertEquals("0", request.url.parameters["offset"])
             assertEquals("application/xml", request.headers[HttpHeaders.Accept])
             assertEquals("identity", request.headers[HttpHeaders.AcceptEncoding])
-            assertTrue(request.headers[HttpHeaders.UserAgent]!!.contains("https://github.com/SirOtter0/INFINILECT/issues"))
+            assertEquals("INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)", request.headers[HttpHeaders.UserAgent])
             respond("<items/>", headers = headersOf(HttpHeaders.ContentType, "application/xml; charset=UTF-8"))
         }).use { probe ->
             assertEquals(OapenApiObservation(200, 8), probe.inspect(" $query "))

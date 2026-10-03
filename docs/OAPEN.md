@@ -84,8 +84,10 @@ PDF HEAD only if metadata succeeds. No redirects/file download. Fixed HTTPS host
 exact example ID/bitstream path, 2 MiB metadata limit plus one overflow probe,
 8 KiB buffer, connect 5s/request 15s, XML depth 32, 20,000 events, 32 bitstreams,
 16 attributes/namespaces, 16 KiB fields/attributes. DTD/external entities forbidden;
-cancellation/close releases I/O. User-Agent identifies INFINILECT, Codex/GPT-6 and
-the project issue URL.
+cancellation/close releases I/O. As of the 2026-10-03 review, all clients/probes
+share `INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)`.
+The initial run below used the former experimental tool/model identification;
+only identification was normalized, and no OAPEN check was rerun.
 
 **Run once at 2026-10-02T23:11:53Z:** GET timed out after 15s before HTTP status;
 zero application-consumed bytes, HEAD not issued. Task exit 1; no retry. This

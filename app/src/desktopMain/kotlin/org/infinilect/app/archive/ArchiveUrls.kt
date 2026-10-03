@@ -6,9 +6,10 @@ import io.ktor.http.URLBuilder
 import java.net.URI
 import java.util.Base64
 
-/** Narrow, evidence-based subset. Unobserved storage hosts deliberately fail closed. */
+internal data class ArchiveLocation(val host: String, val directory: String)
+
+/** Exact item-scoped locations from fresh MDAPI infrastructure fields, never a wildcard. */
 internal object ArchiveUrls {
-    const val DELIVERY_HOST = "dn760105.eu.archive.org"
     const val PAGE_SIZE = 10
     private val identifierPattern = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
     private val filenamePattern = Regex("[A-Za-z0-9][A-Za-z0-9._ -]{0,199}")
@@ -60,7 +61,24 @@ internal object ArchiveUrls {
         return page
     }
 
-    fun redirect(current: String, location: String, identifier: String, filename: String): String {
+    private fun asciiHost(value: String): String {
+        require(value.length in 1..253 && value.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '.' || it == '-' })
+        val host = value.lowercase(java.util.Locale.ROOT)
+        val labels = host.split('.')
+        require(labels.all { it.length in 1..63 && it.first().isLetterOrDigit() && it.last().isLetterOrDigit() && !it.startsWith("xn--") })
+        return host
+    }
+
+    fun storageLocation(host: String, directory: String, identifier: String): ArchiveLocation {
+        val normalized = asciiHost(host)
+        val labels = normalized.split('.')
+        // Domain labels establish the zone boundary; exact fresh item membership is still mandatory.
+        require(labels.size >= 3 && labels.takeLast(2) == listOf("archive", "org"))
+        require(Regex("/[0-9]{1,3}/items/${Regex.escape(identifier(identifier))}").matches(directory))
+        return ArchiveLocation(normalized, directory)
+    }
+
+    fun redirect(current: String, location: String, identifier: String, filename: String, locations: Set<ArchiveLocation>): String {
         require(location.length <= 2048 && !location.contains('\\') && !location.any { it.isISOControl() })
         // Reject ambiguous encodings/traversal before URI resolution normalizes them away.
         require(!Regex("(?i)%2e|%2f|%5c|%25").containsMatchIn(location))
@@ -71,12 +89,17 @@ internal object ArchiveUrls {
         require(resolved.port == -1 || resolved.port == 443)
         val expectedFile = filename(filename)
         val expectedId = identifier(identifier)
-        val validPath = when (resolved.host) {
-            "archive.org" -> resolved.path == "/download/$expectedId/$expectedFile"
-            DELIVERY_HOST -> Regex("/[0-9]{1,3}/items/${Regex.escape(expectedId)}/${Regex.escape(expectedFile)}").matches(resolved.path)
-            else -> false
+        val host = asciiHost(requireNotNull(resolved.host))
+        val expectedPath = if (host == "archive.org") "/download/$expectedId/$expectedFile" else {
+            val coordinate = locations.singleOrNull { it.host == host && resolved.path == "${it.directory}/$expectedFile" }
+                ?: throw IllegalArgumentException("Unannounced storage location.")
+            val validated = storageLocation(coordinate.host, coordinate.directory, expectedId)
+            "${validated.directory}/$expectedFile"
         }
+        val canonical = URI("https", null, host, -1, expectedPath, null, null)
+        val validPath = resolved.rawPath == canonical.rawPath
         require(validPath) { "Unverified resource redirect." }
-        return resolved.toASCIIString()
+        // Normalize host casing/default port so equivalent URLs cannot evade loop detection.
+        return canonical.toASCIIString()
     }
 }

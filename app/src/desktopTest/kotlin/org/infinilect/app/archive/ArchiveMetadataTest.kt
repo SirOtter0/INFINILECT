@@ -6,6 +6,7 @@ import kotlin.test.*
 import org.infinilect.core.*
 
 internal fun archiveFixture(name: String): ByteArray = checkNotNull(ArchiveMetadataTest::class.java.getResourceAsStream("/archive/$name")).use { it.readBytes() }
+internal const val FIXTURE_STORAGE_HOST = "dn760105.eu.archive.org"
 internal fun itemFixture(change: (String) -> String = { it }) = change(archiveFixture("item.json").toString(Charsets.UTF_8)).toByteArray()
 
 class ArchiveMetadataTest {
@@ -24,10 +25,11 @@ class ArchiveMetadataTest {
     }
 
     @Test fun keepsRightsAndLicenseSeparateWithoutInventingPublicDomain() {
-        val item = assertNotNull(ArchiveMetadata.item(itemFixture { it.replace("\"mediatype\":", "\"rights\":\"Original rights statement\",\"mediatype\":") }, "gmb-2015-93040"))
+        val item = assertNotNull(ArchiveMetadata.item(itemFixture { it.replace("\"mediatype\":", "\"rights\":\"Original rights statement\",\"possible-copyright-status\":\"Supplied copyright status\",\"mediatype\":") }, "gmb-2015-93040"))
         assertEquals("Original rights statement", item.rights)
         assertEquals("Original rights statement", item.publication.rights)
         assertEquals("http://creativecommons.org/publicdomain/zero/1.0/", item.licenseUrl)
+        assertEquals("Supplied copyright status", item.possibleCopyrightStatus)
     }
 
     @Test fun incompleteMetadataIsSafeAndMissingItemIsNull() {
@@ -44,6 +46,8 @@ class ArchiveMetadataTest {
             { it.replace("\"mediatype\":", "\"access-restricted-item\":\"true\",\"mediatype\":") },
             { it.replace("\"metadata\":", "\"is_dark\":true,\"metadata\":") },
             { it.replace("\"metadata\":", "\"is_restricted\":true,\"metadata\":") },
+            { it.replace("\"metadata\":", "\"nodownload\":true,\"metadata\":") },
+            { it.replace("\"metadata\":", "\"is_collection\":true,\"metadata\":") },
             { it.replace("\"metadata\":", "\"lendingInfo\":{},\"metadata\":") },
             { it.replace("dutchgovernmentdocuments", "loggedin") },
             { it.replace("\"mediatype\":", "\"lending_status\":\"AVAILABLE\",\"mediatype\":") },
@@ -88,5 +92,40 @@ class ArchiveMetadataTest {
         assertFailsWith<kotlinx.coroutines.CancellationException> {
             ArchiveMetadata.item(itemFixture(), "gmb-2015-93040") { throw kotlinx.coroutines.CancellationException() }
         }
+    }
+
+    @Test fun locationsComeOnlyFromRootInfrastructureFieldsForThisItem() {
+        val item = assertNotNull(ArchiveMetadata.item(itemFixture {
+            it.replace("\"mediatype\":", "\"server\":\"fake.archive.org\",\"dir\":\"/0/items/gmb-2015-93040\",\"mediatype\":")
+        }, "gmb-2015-93040"))
+        assertEquals(setOf(
+            ArchiveLocation("ia903102.us.archive.org", "/35/items/gmb-2015-93040"),
+            ArchiveLocation("ia803102.us.archive.org", "/35/items/gmb-2015-93040"),
+            ArchiveLocation(FIXTURE_STORAGE_HOST, "/0/items/gmb-2015-93040"),
+        ), item.locations)
+        assertTrue(assertNotNull(ArchiveMetadata.item("""{"metadata":{"identifier":"small"},"files":[]}""".toByteArray(), "small")).locations.isEmpty())
+    }
+
+    @Test fun malformedForeignOrExcessiveLocationMetadataFailsClosed() {
+        for (change in listOf<(String) -> String>(
+            { it.replace(FIXTURE_STORAGE_HOST, "archive.org.attacker.example") },
+            { it.replace(FIXTURE_STORAGE_HOST, "https://$FIXTURE_STORAGE_HOST") },
+            { it.replace("/0/items/gmb-2015-93040", "/0/items/another-item") },
+            { it.replace("/0/items/gmb-2015-93040", "/0/items/../gmb-2015-93040") },
+            { it.replace("\"workable\": [{\"server\":", "\"workable\": [{\"missing\":") },
+            { it.replace("\"workable\": [{", "\"workable\": {\"not\":[{").replace("\"/0/items/gmb-2015-93040\"}]}", "\"/0/items/gmb-2015-93040\"}]}}") },
+        )) assertFails { ArchiveMetadata.item(itemFixture(change), "gmb-2015-93040") }
+        val many = (1..17).joinToString(",") { "\"ia$it.us.archive.org\"" }
+        assertFails { ArchiveMetadata.item(itemFixture { it.replace("\"ia903102.us.archive.org\", \"ia803102.us.archive.org\"", many) }, "gmb-2015-93040") }
+    }
+
+    @Test fun ambiguousAccessFlagsAreNotTreatedAsExplicitFalse() {
+        for (flag in listOf("null", "\"\"", "[]", "{}", "true", "\"unknown\"")) {
+            assertTrue(assertNotNull(ArchiveMetadata.item(itemFixture { it.replace("\"metadata\":", "\"nodownload\":$flag,\"metadata\":") }, "gmb-2015-93040")).files.isEmpty())
+            val item = assertNotNull(ArchiveMetadata.item(itemFixture { it.replace("\"format\": \"DjVuTXT\"", "\"private\":$flag,\"format\":\"DjVuTXT\"") }, "gmb-2015-93040"))
+            assertEquals(listOf(PublicationFormat.PDF), item.files.map { it.resource.format })
+        }
+        for (flag in listOf("false", "\"false\"", "0", "\"0\"")) assertEquals(2,
+            assertNotNull(ArchiveMetadata.item(itemFixture { it.replace("\"metadata\":", "\"nodownload\":$flag,\"metadata\":") }, "gmb-2015-93040")).files.size)
     }
 }

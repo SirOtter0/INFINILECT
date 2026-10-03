@@ -9,9 +9,13 @@ import io.ktor.utils.io.ByteReadChannel
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlin.test.*
 import org.infinilect.app.acquisition.*
 import org.infinilect.app.search.SearchException
+import org.infinilect.app.network.PROJECT_USER_AGENT
 import org.infinilect.core.*
 
 private val testId = PublicationId(ARCHIVE_ID, "gmb-2015-93040")
@@ -26,7 +30,7 @@ class InternetArchiveSourceTest {
         val query = "café & page=999"
         InternetArchiveSource(MockEngine { request ->
             calls++
-            assertEquals(ARCHIVE_USER_AGENT, request.headers[HttpHeaders.UserAgent])
+            assertEquals(PROJECT_USER_AGENT, request.headers[HttpHeaders.UserAgent])
             assertEquals("identity", request.headers[HttpHeaders.AcceptEncoding])
             assertEquals("10", request.url.parameters["rows"])
             assertTrue(request.url.parameters["q"]!!.contains("($query)"))
@@ -86,10 +90,11 @@ class InternetArchiveSourceTest {
     @Test fun followsOneVerifiedRedirectAndReturnsFreshSequentialHandles() = runTest {
         var resourceCalls = 0
         InternetArchiveSource(MockEngine { request ->
+            assertEquals(PROJECT_USER_AGENT, request.headers[HttpHeaders.UserAgent])
             when {
                 request.url.encodedPath.startsWith("/metadata/") -> respond(itemFixture(), headers = jsonHeaders)
                 request.url.host == "archive.org" -> respond("", HttpStatusCode.Found,
-                    headersOf(HttpHeaders.Location, "https://${ArchiveUrls.DELIVERY_HOST}/0/items/${testId.localId}/${testResource.key}"))
+                    headersOf(HttpHeaders.Location, "https://$FIXTURE_STORAGE_HOST/0/items/${testId.localId}/${testResource.key}"))
                 else -> { resourceCalls++; respond(ByteArray(2566) { 'A'.code.toByte() }, headers = textHeaders("2566")) }
             }
         }).use { source ->
@@ -151,7 +156,7 @@ class InternetArchiveSourceTest {
     }
 
     @Test fun unsafeResourceRedirectsAndLoopsAreRejected() = runTest {
-        for (target in listOf("https://evil.example/file.txt", ArchiveUrls.download(testId.localId, testResource.key))) {
+        for (target in listOf("https://evil.example/file.txt", ArchiveUrls.download(testId.localId, testResource.key), "https://ARCHIVE.ORG:443/download/${testId.localId}/${testResource.key}")) {
             var calls = 0
             InternetArchiveSource(MockEngine { request ->
                 calls++
@@ -299,6 +304,120 @@ class InternetArchiveSourceTest {
             assertEquals(512L, evidence.last().consumedBytes.get())
             val fresh = source.loadResource(testResource)
             try { assertEquals(1, fresh.read(ByteArray(1))) } finally { fresh.close() }
+        }
+    }
+
+    @Test fun differentItemsUseTheirOwnFreshAnnouncedDeliveryNodes() = runTest {
+        for ((identifier, host) in listOf(testId.localId to FIXTURE_STORAGE_HOST, "public-other" to "dn760106.eu.archive.org")) {
+            val metadata = itemFixture { it.replace(testId.localId, identifier).replace(FIXTURE_STORAGE_HOST, host) }
+            InternetArchiveSource(MockEngine { request ->
+                when {
+                    request.url.encodedPath.startsWith("/metadata/") -> respond(metadata, headers = jsonHeaders)
+                    request.url.host == "archive.org" -> respond("", HttpStatusCode.Found, headersOf(HttpHeaders.Location,
+                        "https://$host/0/items/$identifier/${identifier}_djvu.txt"))
+                    else -> { assertEquals(host, request.url.host); respond(ByteArray(2566), headers = textHeaders()) }
+                }
+            }).use { source ->
+                val publication = assertNotNull(source.getPublication(PublicationId(ARCHIVE_ID, identifier)))
+                val handle = source.loadResource(publication.resources.first { it.format == PublicationFormat.TEXT })
+                try { assertEquals(1, handle.read(ByteArray(1))) } finally { handle.close() }
+            }
+        }
+    }
+
+    @Test fun aRedirectToAnArchiveHostMissingFromFreshMetadataIsRejected() = runTest {
+        var calls = 0
+        InternetArchiveSource(MockEngine { request ->
+            calls++
+            if (request.url.encodedPath.startsWith("/metadata/")) respond(itemFixture(), headers = jsonHeaders)
+            else respond("", HttpStatusCode.Found, headersOf(HttpHeaders.Location,
+                "https://dn760106.eu.archive.org/0/items/${testId.localId}/${testResource.key}"))
+        }).use { source ->
+            assertFailsWith<SearchException> { source.loadResource(testResource) }
+            assertEquals(2, calls)
+        }
+    }
+
+    @Test fun exactlyTwoValidRedirectsSucceedButAThirdIsNeverRequested() = runTest {
+        for (excessive in listOf(false, true)) {
+            val paths = mutableListOf<String>()
+            InternetArchiveSource(MockEngine { request ->
+                paths += request.url.host + request.url.encodedPath
+                when {
+                    request.url.encodedPath.startsWith("/metadata/") -> respond(itemFixture(), headers = jsonHeaders)
+                    request.url.host == "archive.org" -> respond("", HttpStatusCode.Found, headersOf(HttpHeaders.Location,
+                        "https://ia903102.us.archive.org/35/items/${testId.localId}/${testResource.key}"))
+                    request.url.host == "ia903102.us.archive.org" -> respond("", HttpStatusCode.Found, headersOf(HttpHeaders.Location,
+                        "https://ia803102.us.archive.org/35/items/${testId.localId}/${testResource.key}"))
+                    excessive -> respond("", HttpStatusCode.Found, headersOf(HttpHeaders.Location,
+                        "https://$FIXTURE_STORAGE_HOST/0/items/${testId.localId}/${testResource.key}"))
+                    else -> respond(ByteArray(2566), headers = textHeaders())
+                }
+            }).use { source ->
+                if (excessive) assertFailsWith<SearchException> { source.loadResource(testResource) }
+                else source.loadResource(testResource).close()
+                assertEquals(4, paths.size) // Metadata + initial download + two targets.
+                assertTrue(paths.none { it.startsWith(FIXTURE_STORAGE_HOST) })
+            }
+        }
+    }
+
+    @Test fun permissionsAndLocationsAreRefreshedInsideTheSerializedOpenOperation() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val paths = mutableListOf<String>()
+        InternetArchiveSource(MockEngine { request ->
+            paths += request.url.encodedPath
+            if (paths.size == 1) { entered.complete(Unit); release.await() }
+            if (request.url.encodedPath.startsWith("/metadata/")) respond(itemFixture(), headers = jsonHeaders)
+            else respond(ByteChannel(), headers = textHeaders())
+        }).use { source ->
+            val opening = async { source.loadResource(testResource) }
+            entered.await()
+            val details = async(start = CoroutineStart.UNDISPATCHED) { source.getPublication(testId) }
+            release.complete(Unit)
+            val handle = opening.await()
+            try {
+                assertEquals(listOf("/metadata/${testId.localId}", "/download/${testId.localId}/${testResource.key}"), paths)
+                assertFalse(details.isCompleted)
+            } finally { handle.close() }
+            assertNotNull(details.await())
+        }
+    }
+
+    @Test fun oversizedResourceConsumesOnlyOneOverflowByteBeyondItsKnownSize() = runTest {
+        val evidence = ArchiveHttpEvidence("https://archive.org/download/item/file.txt", 200, null)
+        val content = ArchiveResourceContent(ByteReadChannel(ByteArray(4096)), 10, evidence) {}
+        assertFailsWith<InvalidArchiveData> { content.read(ByteArray(1024)) }
+        assertEquals(11L, evidence.consumedBytes.get())
+        assertFailsWith<IllegalStateException> { content.read(ByteArray(1)) }
+    }
+
+    @Test fun concurrentInternalAndConsumerCloseRunsCleanupOnce() = runTest {
+        val cleaned = java.util.concurrent.atomic.AtomicInteger()
+        val content = ArchiveResourceContent(ByteChannel(), 10, ArchiveHttpEvidence("test", 200, null)) { cleaned.incrementAndGet() }
+        coroutineScope { repeat(100) { launch(Dispatchers.Default) { content.close() } } }
+        content.close()
+        assertEquals(1, cleaned.get())
+        assertFailsWith<IllegalStateException> { content.read(ByteArray(1)) }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun anIdleHandleDeadlineReleasesTheSourceWithoutWaitingForConsumerClose() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val engine = MockEngine(MockEngineConfig().apply {
+            this.dispatcher = dispatcher
+            addHandler { request ->
+                if (request.url.encodedPath.startsWith("/metadata/")) respond(itemFixture(), headers = jsonHeaders)
+                else respond(ByteChannel(), headers = textHeaders())
+            }
+        })
+        InternetArchiveSource(engine, streamDispatcher = dispatcher).use { source ->
+            val handle = source.loadResource(testResource)
+            advanceTimeBy(60_001); runCurrent()
+            assertFailsWith<IllegalStateException> { handle.read(ByteArray(1)) }
+            assertNotNull(source.getPublication(testId))
+            handle.close()
         }
     }
 }
