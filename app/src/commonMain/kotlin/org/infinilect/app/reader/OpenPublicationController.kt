@@ -19,12 +19,13 @@ import org.infinilect.core.Publication
 import org.infinilect.core.PublicationFormat
 import org.infinilect.core.PublicationSource
 import org.infinilect.core.ResourceLoader
+import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.app.acquisition.selectResource
 
 internal sealed interface OpenPublicationState {
     data object Idle : OpenPublicationState
     data class Loading(val publication: Publication) : OpenPublicationState
-    data class Ready(val document: TextDocument) : OpenPublicationState
+    data class Ready(val document: TextDocument, val reading: TextReadingProgress? = null) : OpenPublicationState
     data class Error(val publication: Publication, val userMessage: String) : OpenPublicationState
 }
 
@@ -34,6 +35,7 @@ internal class OpenPublicationController(
     private val loader: ResourceLoader,
     private val scope: CoroutineScope,
     private val decodingDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val progress: ProgressPersistence? = null,
 ) {
     private val mutableState = MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
     val state: StateFlow<OpenPublicationState> = mutableState.asStateFlow()
@@ -43,6 +45,7 @@ internal class OpenPublicationController(
 
     fun open(publication: Publication) {
         if (state.value is OpenPublicationState.Loading) return
+        (state.value as? OpenPublicationState.Ready)?.reading?.close()
         if (closed || publication.id.sourceId != source.id) {
             mutableState.value = OpenPublicationState.Error(publication,
                 "This publication is unavailable from the selected source.")
@@ -52,7 +55,7 @@ internal class OpenPublicationController(
         mutableState.value = OpenPublicationState.Loading(publication)
         request = scope.launch {
             try {
-                val document = withTimeout(60_000) {
+                val (document, restored) = withTimeout(60_000) {
                     val details = source.getPublication(publication.id)
                     currentCoroutineContext().ensureActive()
                     if (details == null) {
@@ -61,10 +64,13 @@ internal class OpenPublicationController(
                     check(details.id == publication.id)
                     val resource = selectResource(details, PublicationFormat.TEXT)
                         ?: throw OpeningException("No readable text format is available for this publication.")
-                    loadTextDocument(details, resource, loader, decodingDispatcher)
+                    val loaded = loadTextDocument(details, resource, loader, decodingDispatcher)
+                    val stored = loaded.progressId?.let { progress?.get(it) }
+                    loaded to stored
                 }
                 currentCoroutineContext().ensureActive()
-                if (generation == ticket) mutableState.value = OpenPublicationState.Ready(document)
+                if (generation == ticket) mutableState.value = OpenPublicationState.Ready(document,
+                    progress?.let { TextReadingProgress(document, restored, it, scope) })
             } catch (error: TimeoutCancellationException) {
                 currentCoroutineContext().ensureActive()
                 if (generation == ticket) mutableState.value = OpenPublicationState.Error(publication,
@@ -91,7 +97,10 @@ internal class OpenPublicationController(
     }
 
     /** Back cancels work and invalidates even a noncooperative late result. */
+    fun flushProgress() { (state.value as? OpenPublicationState.Ready)?.reading?.flush() }
+
     fun cancel() {
+        (state.value as? OpenPublicationState.Ready)?.reading?.close()
         generation++
         request?.cancel()
         request = null

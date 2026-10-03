@@ -49,7 +49,8 @@ fun App(
     val scope = rememberCoroutineScope()
     val option = sources[selected]
     val session = remember(option) {
-        ReadingSession(option.source, scope, option.textReadingEnabled, applicationSources.loaderFor(option.source))
+        ReadingSession(option.source, scope, option.textReadingEnabled, applicationSources.loaderFor(option.source),
+            progress = applicationSources.progress)
     }
     DisposableEffect(applicationSources, session) {
         applicationSources.attach(session)
@@ -60,12 +61,14 @@ fun App(
             // Reset collectors when source changes; never render a previous source's state for one frame.
             key(session) {
                 val opening by session.opening.state.collectAsState()
+                val saveFailed by (applicationSources.progress?.saveFailed
+                    ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
                 backHandler(opening.handlesBack(), session::back)
                 when (val current = opening) {
                     OpenPublicationState.Idle -> SearchScreen(session, sources, selected) { index ->
                         if (index != selected) { session.close(); selected = index }
                     }
-                    is OpenPublicationState.Ready -> TextReader(current.document, session::back)
+                    is OpenPublicationState.Ready -> TextReader(current.document, current.reading, saveFailed, session::back)
                     is OpenPublicationState.Loading -> Column(Modifier.fillMaxSize().padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(current.publication.title, style = MaterialTheme.typography.h6)
@@ -161,7 +164,7 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
                 Button(enabled = !loading, onClick = session::nextPage) { Text("Next page") }
             }
         }
-        Text(if (session.textReadingEnabled) "Only public CC0 items with an eligible text file can be opened. No cache or saved reading position."
+        Text(if (session.textReadingEnabled) "Only public CC0 items with an eligible text file can be opened. Reading position is saved locally; reopening still checks the source."
             else "Gutenberg availability in the US does not establish rights in every country.", style = MaterialTheme.typography.caption)
     }
 }

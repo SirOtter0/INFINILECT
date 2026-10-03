@@ -79,7 +79,8 @@ class OpenPublicationControllerTest {
         assertEquals(summary, assertIs<OpenPublicationState.Loading>(controller.state.value).publication)
         advanceUntilIdle()
         val document = assertIs<OpenPublicationState.Ready>(controller.state.value).document
-        assertEquals(TextDocument(id, publication.title, content.bytes.decodeToString()), document)
+        assertEquals(TextDocument(id, publication.title, content.bytes.decodeToString(),
+            ReadingProgressId(id, textResource.key, PublicationFormat.TEXT)), document)
         assertEquals(listOf(id), fixture.requestedIds)
         assertEquals(listOf(textResource), fixture.loaded)
         assertEquals(content.bytes.size, content.position)

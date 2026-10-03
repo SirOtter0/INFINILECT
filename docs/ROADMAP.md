@@ -26,12 +26,16 @@ Open INFINILECT → search for a book → get real results → open one → read
    search public CC0 items, open a TEXT resource through ResourceLoader/
    ResourceContent, validate complete UTF-8 up to 512 KiB, display TextReader,
    and Back to retained query/results. Gutenberg remains search-only. No EPUB/PDF,
-   reader settings or progress persistence. Graphical smoke verification is pending.
+   reader settings or EPUB/PDF support. Graphical smoke verification is pending.
 5. **First disk tier implemented:** bounded automatic resource cache with restart
    reuse only for trustworthy revisions, recency eviction and corruption checks.
-   Current Archive null revisions still reacquire. L1 memory cache and independent
-   progress remain deferred; no SQL/database is needed for this disk slice.
-6. Verify the full path on desktop with real results and document its limits.
+   Current Archive null revisions still reacquire. L1 memory cache remains
+   deferred; no SQL/database is needed for this disk slice.
+6. **Implemented:** independent persistent logical reading progress for TEXT on
+   Desktop/Android, code-point locator/current-line restoration, bounded atomic
+   files and throttled saves. No history/bookmarks/library or source bypass;
+   [progress policy](PROGRESS.md), [ADR 0015](adr/0015-persistent-reading-progress.md).
+7. Verify the full path on desktop with real results and document its limits.
 
 Completion means actual source-backed reading, not a simulated catalog or a
 welcome window. No completed release is implied by `0.0.1-SNAPSHOT`.
@@ -58,10 +62,11 @@ are verified separately from physical-device smoke testing. See
 [ADR 0013](adr/0013-first-android-application.md) and [verification](VERIFICATION.md).
 No reader feature, new format or cache is added by the Android slice.
 
-The next infrastructure slice adds the first persistent disk tier behind
+The first cache infrastructure slice added the persistent disk tier behind
 ResourceLoader on both platforms; see [CACHE.md](CACHE.md) and
 [ADR 0014](adr/0014-persistent-resource-cache.md). No cache was added by the Android
-PR itself. Downloads/progress/L1 memory and future revision mechanisms remain deferred.
+PR itself. Downloads/L1 memory and future revision mechanisms remain deferred. Independent
+TEXT progress is now implemented in a separate persistent user-state store.
 
 ## After the first working slice
 

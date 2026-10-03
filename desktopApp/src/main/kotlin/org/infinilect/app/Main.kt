@@ -4,13 +4,23 @@ package org.infinilect.app
 
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 
 fun main() = application {
     val sources = remember { createApplicationSources() }
     DisposableEffect(sources) { onDispose { sources.close() } }
-    Window(onCloseRequest = ::exitApplication, title = "INFINILECT") {
+    val scope = rememberCoroutineScope()
+    Window(onCloseRequest = {
+        sources.close()
+        scope.launch {
+            withTimeoutOrNull(3_000) { sources.awaitProgressClosed() }
+            exitApplication()
+        }
+    }, title = "INFINILECT") {
         App(sources)
     }
 }

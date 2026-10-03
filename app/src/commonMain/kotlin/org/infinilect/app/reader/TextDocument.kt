@@ -8,6 +8,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.infinilect.core.Publication
+import org.infinilect.core.ReadingProgressId
 import org.infinilect.core.PublicationFormat
 import org.infinilect.core.PublicationId
 import org.infinilect.core.PublicationResource
@@ -18,7 +19,14 @@ import org.infinilect.core.ResourceLoader
 internal const val MAX_TEXT_DOCUMENT_BYTES = 512 * 1024
 
 /** Reader presentation data, with no source, transport, live handle or Compose objects. */
-internal data class TextDocument(val publicationId: PublicationId, val title: String, val text: String)
+internal data class TextDocument(
+    val publicationId: PublicationId,
+    val title: String,
+    val text: String,
+    val progressId: ReadingProgressId? = null,
+) {
+    val locations = TextLocations(text)
+}
 
 internal enum class TextFailure(val userMessage: String) {
     UNKNOWN_SIZE("The text size is unknown, so it cannot be opened safely yet."),
@@ -52,7 +60,8 @@ internal suspend fun loadTextDocument(
         catch (error: CharacterCodingException) { throw TextDocumentException(TextFailure.INVALID_UTF8, error) }
         currentCoroutineContext().ensureActive()
         if (text.isBlank() || '\u0000' in text) throw TextDocumentException(TextFailure.EMPTY)
-        TextDocument(publication.id, publication.title, text)
+        TextDocument(publication.id, publication.title, text,
+            ReadingProgressId(publication.id, resource.key, resource.format))
     }
 }
 

@@ -4,18 +4,34 @@ package org.infinilect.app
 
 import org.infinilect.app.network.createSources
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.util.Log
 import java.io.File
 import java.nio.file.Path
 import org.infinilect.app.cache.CACHE_DIRECTORY_NAME
 import org.infinilect.app.cache.DiskResourceCache
+import org.infinilect.app.progress.PROGRESS_DIRECTORY_NAME
+import org.infinilect.app.progress.ProgressStorageFailure
 
 /** Extract the application-private path immediately; neither cache nor sources retain Context. */
 fun createApplicationSources(context: Context): ApplicationSources {
     val directory = try { androidCacheDirectory(context.applicationContext.cacheDir) } catch (_: Exception) { null }
-    return createSources(DiskResourceCache(directory))
+    val progressDirectory = try { androidProgressDirectory(context.applicationContext.filesDir) } catch (_: Exception) { null }
+    val debuggable = context.applicationContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    return createSources(DiskResourceCache(directory), progressDirectory, progressDiagnostics = { failure ->
+        if (debuggable) Log.w("INFINILECTProgress", "${failure.operation}/${failure.stage}/${failure.reason}")
+    })
 }
 
 internal fun androidCacheDirectory(privateCacheDir: File): Path = privateCacheDir.toPath().resolve(CACHE_DIRECTORY_NAME)
 
-internal fun createApplicationSources(privateCacheDir: File): ApplicationSources =
-    createSources(DiskResourceCache(androidCacheDirectory(privateCacheDir)))
+internal fun createApplicationSources(
+    privateCacheDir: File,
+    privateFilesDir: File? = null,
+    progressDiagnostics: (ProgressStorageFailure) -> Unit = {},
+): ApplicationSources = createSources(
+    DiskResourceCache(androidCacheDirectory(privateCacheDir)), privateFilesDir?.let(::androidProgressDirectory), progressDiagnostics,
+)
+
+internal fun androidProgressDirectory(privateFilesDir: File): Path =
+    privateFilesDir.toPath().resolve(PROGRESS_DIRECTORY_NAME)

@@ -1,6 +1,6 @@
 # Architectural decision records
 
-Accepted decisions for the foundation, search, acquisition and first TEXT reader:
+Accepted decisions for the foundation, search, acquisition and first TEXT reader and persistent user progress:
 
 - [0001: Small multiplatform foundation and pure core](0001-small-foundation.md)
 - [0002: Source-aware identity and independent publication type/format](0002-publication-model.md)
@@ -17,5 +17,7 @@ Accepted decisions for the foundation, search, acquisition and first TEXT reader
 
 - [0013: First Android application target](0013-first-android-application.md)
 - [0014: First persistent automatic resource cache](0014-persistent-resource-cache.md)
+
+- [0015: Persistent logical reading progress](0015-persistent-reading-progress.md)
 
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.
