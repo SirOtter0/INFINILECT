@@ -72,7 +72,7 @@ parser or complete language registry. Cover and summary are deferred: title and
 authors suffice for the initial result list, without image acquisition or rich
 text handling. See [ADR 0007](adr/0007-metadata-and-resource-identity.md).
 
-## Cache pipeline and independent future progress
+## Cache pipeline and independent user progress
 
 ```mermaid
 flowchart LR
@@ -88,8 +88,8 @@ source adapter, OPDS parser, authentication client or catalog search interface.
 The loader routes by SourceId and applies caching before its source fallback.
 Sources return metadata; readers render it. Neither owns the other.
 
-The first disk tier is implemented in app/jvmSharedMain; MemoryCache and progress
-remain deferred. Only stable-revision resources may reuse bytes. Current Archive
+The first disk tier is implemented in app/jvmSharedMain; MemoryCache remains
+deferred. Persistent reading progress is a separate user-state store. Only stable-revision resources may reuse bytes. Current Archive
 null revisions bypass disk lookup/fills and retain fresh metadata/acquisition.
 Platform factories choose app-private storage, inject loaders and own closing after
 session cancellation. See [CACHE.md](CACHE.md) and [ADR 0014](adr/0014-persistent-resource-cache.md).
@@ -136,7 +136,7 @@ External source definitions will be declarative data interpreted by trusted
 engines, not downloaded code. See [Sources](SOURCES.md). Cache, explicit downloads
 and progress have separate lifetimes; see [Cache](CACHE.md).
 
-No complete reader framework, engine registry, downloads or progress persistence is
+No complete reader framework, engine registry or downloads are
 claimed. The bounded disk tier is documented separately. See the [ADRs](adr/README.md).
 
 ## Search slice
@@ -180,14 +180,16 @@ the primary error if cleanup fails. The handle is closed before strict UTF-8
 decoding on Dispatchers.Default. Strip exactly one leading UTF-8 BOM; preserve
 interior BOMs. Empty/whitespace/NUL-bearing text is not shown as a readable document.
 No chunk-list/payload concatenation or unbounded read; decoding necessarily
-creates the final bounded String. TextDocument contains only ID, title and text.
+creates the final bounded String. TextDocument contains ID, title, text, its resource-scoped progress identity and a
+sparse Unicode index, without a live handle or source policy.
 
 OpenPublicationController owns a job in the session's UI scope and exposes
 Idle/Loading/Ready/Error. Ignore duplicate Open while Loading, bound the whole
 operation to 60s, propagate cancellation and use an operation generation to
 prevent stale Ready/Error after Back. Errors are fixed safe messages; no transport
 exceptions/URLs/paths pass to the UI. TextReader receives only TextDocument and a
-Back callback, with title, plain text and vertical scroll.
+Back/logical-position callbacks, with title, plain text, approximate whole
+percentage and vertical scroll.
 
 ReadingSession owns one SearchController, opener, query and search job. UI-thread
 actions are serialized by the UI dispatcher; decoder work returns to that scope
@@ -197,7 +199,7 @@ opening state and keeps source/query/results; it does not refetch. Switching
 source closes/discards the old session, creates a fresh one and resets Compose
 collectors using a session key, so old-source results cannot flash or replace new
 results. No request is started by changing source. Disposal cancels session jobs
-and closes platform sources. Query/results are session-local; no position/history
+and closes platform sources. Query/results are session-local; progress persists independently, without history
 or reusable current Archive bytes (its revisions are null). Automatic disk-cache
 infrastructure is separate from session state. See [ADR 0012](adr/0012-bounded-text-reading.md).
 
@@ -234,11 +236,32 @@ to the Android launcher; source-choice buttons share available width on phones.
 TextReader's title/plain text/vertical scroll/Back remain unchanged.
 
 Recreation/configuration changes/process death lose in-memory session/document/
-scroll state by design. Destruction cancels old work and closes old clients before
-new instances are constructed; no ViewModel/SavedState/persistence added.
+pixel scroll state by design. A logical progress locator persists in filesDir and
+restores after another explicit valid open. Destruction cancels old work/closes clients;
+progress drains on a bounded independent writer. No ViewModel/SavedState is added.
 Manifest denies cleartext and backup, requests INTERNET only directly, and retains
 AndroidX's generated app-scoped signature permission protecting non-exported
 receivers. It is not storage/location/identifier access. Disable EmojiCompat's
 automatic downloadable-font initializer so app startup does not request fonts.
 No telemetry, login or background source requests. The standard debug APK uses
 Android's debug signing only; no release key, distribution or release build goal.
+
+## Persistent reading progress
+
+```text
+PublicationSource / ResourceLoader → publication bytes → Reader
+                                                        │
+                                                  logical locator
+                                                        ▼
+                                                ReadingProgressStore
+```
+
+Resource cache ≠ reading progress. Core owns pure identity/typed logical locator/
+normalized progression/store contracts. App owns sparse code-point mapping, current
+layout approximation, fixed 2s save windows and generation-safe flush on Back/close.
+ProgressPersistence is application-owned and drains without retaining Compose or
+Activity objects; store operations run on IO. Android uses filesDir, Desktop uses
+per-user persistent data paths. Versioned bounded digest-named atomic files preserve
+user state independently of byte revisions/cache eviction. No contents or network
+requests are involved. Details/limits in [PROGRESS.md](PROGRESS.md) and
+[ADR 0015](adr/0015-persistent-reading-progress.md); historical ADRs remain unchanged.

@@ -1,5 +1,98 @@
 # Verification
 
+## Persistent reading progress — 2026-10-03
+
+Fetched/pulled main before creating feature/persistent-reading-progress. Exact main
+**b45649da30553b1317090bf12eda460b82144ba2**, PR #6 merge; GitHub also confirms PR #6
+merged with that SHA. Core/source/cache/reader contracts were inspected first.
+
+### Actual final command and results
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+**BUILD SUCCESSFUL in 1m 48s**, **144 actionable tasks: 136 executed, 8 up-to-date**.
+Core/app/Desktop builds and Android compilation/lint/debug assembly completed.
+No new dependencies/plugins/versions, repository substitutions or Maven 429.
+Existing JDK 21.0.12.1+1/SDK/proxy/trust/dependency cache configuration outside Git
+was used as documented below. No compiler/deprecation/packaging warnings;
+Android lint: **No issues found (0 errors, 0 warnings)**.
+
+| Suite | Executions | Failures / errors / skipped |
+| --- | --- | --- |
+| core:jvmTest | 31 | 0 / 0 / 0 |
+| app:desktopTest | 233 | 0 / 0 / 0 |
+| core:testAndroidHostTest | 31 | 0 / 0 / 0 |
+| app:testAndroidHostTest | 210 | 0 / 0 / 0 |
+| Total | **505** | **0 / 0 / 0** |
+
+**282 unique cases**, **63 new**: pure domain/identity 8, logical Unicode/current-layout
+mapping 10, real temporary-file store 22, persistence/session lifecycle 16, Desktop
+paths 5, Android files/cache separation and injected platform factory 2. Shared tests
+execute on both host targets; unique counts normalize KMP target suffixes.
+androidApp:testDebugUnitTest is NO-SOURCE, not an executed launcher/instrumented suite.
+Gradle configuration/resource tasks marked SKIPPED/NO-SOURCE are not skipped tests.
+
+New tests cover namespace/resource identity, unsafe IDs/digest names, normalized/
+malformed locators, emoji/surrogate/checkpoint boundaries, beginning/middle/EOF/empty,
+changed document lengths, production line-mapping with different synthetic viewports,
+restart/multiple records/newer timestamps, atomic replacement and precommit failure/
+cancellation, checksums/truncation/unknown versions/oversized state, quotas without
+user-state eviction, unrelated files/symlinks/concurrent owners/removal, cache deletion
+and progress corruption independence, null-revision user-state persistence, fixed
+save windows/flush/repeated close/immediate reopen, save failure/timeout, bounded
+pending records, stale callbacks/submissions/source switch and fresh reacquisition.
+All existing Gutenberg/Archive redirect/legal/acquisition/cache/TEXT UTF-8/BOM/size/
+cancellation regressions remain green. Their policies/manifest/dependencies are unchanged.
+
+Intermediate verification: the first targeted run failed one existing TextDocument
+value assertion because its new progress identity was absent from the expectation;
+updated the assertion without weakening it. The first complete build passed. The
+next clean run was interrupted by managed-environment restart during APK packaging;
+source files/tests remained intact. The final full rerun above completed successfully.
+Initial sandbox Gradle launch could not create its local daemon socket; reruns used
+approved execution permissions, no network/proxy bypass or repository change.
+
+### APK inspection and manual limits
+
+Standard task: `./gradlew :androidApp:assembleDebug`.
+APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+Size: **11,405,078 bytes** (about 10.88 MiB).
+SHA-256: **64088e1469aee039b511ad9e81bcef803972e11b95aebc270912b71b755fba9a**.
+
+Used SDK build-tools 36.0.0 aapt2 dump badging/permissions and apksigner verify --verbose.
+Package org.infinilect.app, name INFINILECT, compile/target 37/min 26; standard debug
+v2 signature verifies. Only INTERNET + AndroidX internal app-scoped signature permission;
+no storage permission. Merged manifest retains cleartext=false and backup=false.
+
+No source live checks were run: **0 Gutenberg/Archive/OAPEN requests or content bytes**.
+Normal tests are offline. GitHub publication/Gradle tooling access is separate from
+source integration testing. No DISPLAY/WAYLAND or Android device/emulator: adb devices
+-l returned an empty list. **UI compiled; graphical/device progress-restoration smoke
+not performed.** Android host tests use the host JVM/filesystem, not Android OS.
+macOS/Windows path selection is simulated on Linux; native filesystem/ACL/atomic move
+behavior is not verified there. No unresolved test/build failures are hidden.
+
+Manual smoke pending: install/open → Archive search → open TEXT → scroll → Back →
+reopen → approximate restore; then fully close/restart, search/open again and restore.
+Also check rotation/back/background and clear **cache only**, retaining position.
+Normal fresh Archive acquisition must still occur each time. Abrupt death may lose
+up to the latest 2s save window plus an in-flight write; no universal power-loss or
+pixel-perfect restoration guarantee. Atomic-move/quota/storage failures preserve
+previous committed state and show a fixed save-failure message.
+
+Local Markdown links, GPL-3.0-or-later SPDX, core purity, unchanged dependency/license
+inventory and complete source/generated-artifact/secret diff inspection pass. No APK,
+cache or progress records are committed. Policies and exact bounds are in
+[PROGRESS.md](PROGRESS.md), [ADR 0015](adr/0015-persistent-reading-progress.md) and
+[CACHE.md](CACHE.md). No merge/rebase/squash/history rewrite/force push.
+
 ## First persistent resource cache — 2026-10-03
 
 Started from exact main HEAD **f47f42757cacf2670f01333e4c1306ce18c5a235**, the PR #5

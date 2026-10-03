@@ -28,8 +28,8 @@ conserva la fuente seleccionada, consulta y resultados actuales. Solo admite UTF
 estrictamente válido, con tamaño conocido de hasta **512 KiB**; la ausencia de TEXT
 produce un error controlado. Project Gutenberg sigue siendo **solo búsqueda**.
 
-Es una primera ruta de lectura conservadora, sin persistencia de progreso, ajustes
-de lector, lector EPUB/PDF ni downloads persistentes. La caché de disco automática
+Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
+entre reinicios, sin ajustes de lector, lector EPUB/PDF ni downloads persistentes. La caché de disco automática
 y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
 de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
 Consulta la [política de caché](docs/CACHE.md).
@@ -70,7 +70,8 @@ adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 Android usa la misma selección de fuente, búsqueda y TextReader. Back del sistema
 desde Loading/Reader/Error conserva resultados; en Search sigue al sistema Android.
 Recrear la Activity o perder el proceso inicia una sesión nueva: no se guardan
-consulta/resultados/documento/scroll. No hay tracking ni acceso extra a datos del
+consulta/resultados/documento/scroll en píxeles. El progreso lógico se guarda aparte
+y se restaura tras abrir y adquirir de nuevo correctamente. No hay tracking ni acceso extra a datos del
 dispositivo. INTERNET es la única capacidad de plataforma solicitada; AndroidX
 también declara un permiso interno de firma, exclusivo de la app, para proteger
 receivers no exportados. El icono es geometría original provisional.
@@ -79,7 +80,7 @@ Para un ejemplo pequeño verificado, selecciona Internet Archive y busca
 `identifier:gmb-2015-93040`; después pulsa **Open text**. Es un documento público
 CC0 del gobierno neerlandés. No se enriquecen ni adquieren resultados de forma
 automática. Cambiar de fuente cancela la sesión anterior y vacía consulta/resultados;
-volver desde el lector conserva la sesión actual, sin guardar posición de lectura.
+volver desde el lector conserva la sesión actual, guardando la posición lógica de lectura localmente.
 
 Versiones: Kotlin/compilador Compose 2.4.20, Compose Multiplatform 1.12.1,
 Gradle 9.7.1, AGP 9.3.1, compileSdk 37 / targetSdk 37 / minSdk 26. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
@@ -142,7 +143,8 @@ de lector específica de Android. SQLDelight y Readium no están incluidos.
 
 - [Arquitectura](docs/ARCHITECTURE.md)
 - [Fuentes](docs/SOURCES.md)
-- [Caché, descargas y progreso](docs/CACHE.md)
+- [Caché y descargas](docs/CACHE.md)
+- [Progreso de lectura persistente](docs/PROGRESS.md)
 - [Hoja de ruta](docs/ROADMAP.md)
 - [Decisiones arquitectónicas](docs/adr/README.md)
 - [Cómo contribuir](CONTRIBUTING.md)

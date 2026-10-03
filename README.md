@@ -27,7 +27,7 @@ keeps the selected source, query and current results. Only strictly valid UTF-8
 with known size up to **512 KiB** is supported; unavailable TEXT resources give a
 controlled error. Project Gutenberg remains **search-only**.
 
-This is a conservative first reading path, without progress persistence, reader
+This is a conservative first reading path, with local approximate TEXT progress across restarts, without reader
 settings, EPUB/PDF reader or persistent downloads. Automatic bounded disk caching
 only reuses resources with trustworthy revisions; current Archive resources have
 no revision and reopening still acquires again. See [cache policy](docs/CACHE.md).
@@ -68,7 +68,8 @@ adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 Android uses the same source selection, search and TextReader. System Back from
 Loading/Reader/Error returns to retained results; Back at Search follows Android.
 Activity recreation/process death starts a new session: query/results/document/
-scroll position are not saved. There is no tracking or extra device-data access.
+pixel scroll state are not saved. Logical reading progress is saved separately
+and restores after a new explicit, valid acquisition. There is no tracking or extra device-data access.
 The only requested platform capability is INTERNET; AndroidX also declares an
 internal app-scoped signature permission for non-exported receiver protection.
 The icon is original provisional geometry, not the final logo.
@@ -77,7 +78,7 @@ For a small verified reading example, select Internet Archive and search
 `identifier:gmb-2015-93040`, then press **Open text**. This is a public CC0 Dutch
 government document. Results are not automatically enriched or acquired. Changing
 source cancels the old session and starts with an empty query/results; returning
-from the reader preserves the current session, without saving a reading position.
+from the reader preserves the current session, with the logical reading position saved locally.
 
 Versions: Kotlin/Compose compiler 2.4.20, Compose Multiplatform 1.12.1,
 Gradle 9.7.1, AGP 9.3.1, compileSdk 37 / targetSdk 37 / minSdk 26. See [toolchain evidence](docs/TOOLCHAIN.md) for official compatibility
@@ -139,7 +140,8 @@ implementation. SQLDelight and Readium are not included.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Sources](docs/SOURCES.md)
-- [Cache, downloads and progress](docs/CACHE.md)
+- [Cache and downloads](docs/CACHE.md)
+- [Persistent reading progress](docs/PROGRESS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architectural decisions](docs/adr/README.md)
 - [Contributing](CONTRIBUTING.md)

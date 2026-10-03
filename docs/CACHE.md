@@ -119,12 +119,15 @@ Downloads will be explicit, persistent user storage, architecturally distinct fr
 this automatic cache. Cache eviction must never delete downloads. No download API,
 manager, persistent library or UI is introduced here.
 
-## ReadingProgress (future)
+## Reading progress (independent user state)
 
-Progress must live in its own store keyed by PublicationId, with format/revision
-locators as needed. It must survive cache eviction, missing resources and removal
-of downloads. No progress/history is stored in a cache container or implemented
-by this slice. SQLDelight remains deferred.
+Progress now lives in a separate persistent store, keyed by source-scoped PublicationId,
+resource key and format. Android uses filesDir, Desktop uses per-user data storage;
+never this cache namespace. It survives cache eviction/missing resources, and can
+persist for revision=null resources without making their bytes reusable. Progress
+corruption cannot invalidate cached bytes. No contents/metadata/credentials/history
+are persisted with progress. See [PROGRESS.md](PROGRESS.md) and
+[ADR 0015](adr/0015-persistent-reading-progress.md). Downloads and SQLDelight remain deferred.
 
 See [ADR 0014](adr/0014-persistent-resource-cache.md) and actual offline verification
 in [VERIFICATION.md](VERIFICATION.md).
