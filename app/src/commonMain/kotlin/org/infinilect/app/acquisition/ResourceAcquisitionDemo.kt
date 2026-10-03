@@ -13,7 +13,7 @@ internal class DirectResourceLoader(private val source: PublicationSource) : Res
 }
 
 /** Callers specify the supported demonstration format; this is not a product preference order. */
-internal fun selectDemoResource(publication: Publication, format: PublicationFormat): PublicationResource? =
+internal fun selectResource(publication: Publication, format: PublicationFormat): PublicationResource? =
     publication.resources.firstOrNull { it.format == format }
 
 internal data class AcquisitionEvidence(val format: PublicationFormat, val sizeBytes: Long?, val sampledBytes: Int)

@@ -296,8 +296,8 @@ class InternetArchiveSourceTest {
             else respond(ByteArray(2566) { 'A'.code.toByte() }, headers = textHeaders())
         }, observe = { evidence += it }).use { source ->
             val publication = assertNotNull(source.getPublication(testId))
-            assertEquals(testResource, selectDemoResource(publication, PublicationFormat.TEXT))
-            assertNull(selectDemoResource(publication, PublicationFormat.EPUB))
+            assertEquals(testResource, selectResource(publication, PublicationFormat.TEXT))
+            assertNull(selectResource(publication, PublicationFormat.EPUB))
             val acquired = demonstrateAcquisition(DirectResourceLoader(source), testResource)
             assertEquals(512, acquired.sampledBytes)
             assertEquals(2566L, acquired.sizeBytes)

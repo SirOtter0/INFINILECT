@@ -19,7 +19,7 @@ object InternetArchiveAcquisitionCheck {
                 val result = page.publications.single { it.id.localId == "gmb-2015-93040" }
                 val publication = checkNotNull(source.getPublication(result.id))
                 check(publication.rights == "http://creativecommons.org/publicdomain/zero/1.0/")
-                val resource = checkNotNull(selectDemoResource(publication, PublicationFormat.TEXT))
+                val resource = checkNotNull(selectResource(publication, PublicationFormat.TEXT))
                 val evidence = demonstrateAcquisition(DirectResourceLoader(source), resource)
                 println("Item=${publication.id.localId}; rights/license=${publication.rights}; file=${resource.key}")
                 println("Resource ready: ${evidence.format}; size=${evidence.sizeBytes}; UTF-8 prefix consumed=${evidence.sampledBytes} bytes")
