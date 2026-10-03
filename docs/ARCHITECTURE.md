@@ -265,3 +265,6 @@ per-user persistent data paths. Versioned bounded digest-named atomic files pres
 user state independently of byte revisions/cache eviction. No contents or network
 requests are involved. Details/limits in [PROGRESS.md](PROGRESS.md) and
 [ADR 0015](adr/0015-persistent-reading-progress.md); historical ADRs remain unchanged.
+Android permissions use the no-follow POSIX path attribute view, avoiding the
+unsupported FileStore query. Durable restart tests instantiate new stores/writers;
+same-process restoration through RAM is explicitly insufficient evidence of a save.

@@ -1,5 +1,118 @@
 # Verification
 
+## Blocking Android progress-persistence correction — 2026-10-03
+
+Continued existing feature/persistent-reading-progress / PR #7 from
+fde75c4ee938e14d6691b89f01868fa844094c62. Fetch confirmed current main remains
+b45649da30553b1317090bf12eda460b82144ba2 (merged PR #6); no main/branch/history rewrite.
+The user physically tested the **original** PR #7 APK: same-process Back/reopen
+restored, complete terminate/relaunch did not, and the reader showed a save failure.
+That report supersedes any inference of Android persistence from earlier host tests.
+
+### Root cause, evidence and fix
+
+Original FileReadingProgressStore.operation created the progress directory then
+privatePermissions called Files.getFileStore(path). Official Android API 26 and
+current libcore providers explicitly throw SecurityException("getFileStore") under
+SELinux policy; failure occurs at DIRECTORY_PERMISSIONS before lock creation or
+record writing. operation swallowed the exception as false. ProgressPersistence's
+recent RAM map masked that failure during same-process reopen. Desktop/Android
+**host** suites used a desktop JVM provider which permits FileStore queries.
+[Official source links and exact guarantees](PROGRESS.md#android-compatibility-correction--2026-10-03).
+
+Replace the filesystem-wide probe with the supported no-follow path POSIX attribute
+view, preserving owner-only permissions. Keep private filesDir storage, locking,
+force(true), same-directory ATOMIC_MOVE/REPLACE_EXISTING, checksums, quotas and old-file
+preservation. No destructive move fallback. Add safe operation/stage/reason diagnostics,
+with enum-only Android debug logging under INFINILECTProgress. No identifiers/paths/
+contents/exceptions logged; release logging disabled. UI failure reporting remains.
+Temp cleanup now cannot mask an original failure or a completed durable commit.
+
+### Actual commands and results
+
+Targeted command executed twice while adding regressions:
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+The first new Android factory restart test mixed auto-advancing test time with a
+real IO lookup and hit its artificial timeout; place that production-factory lookup
+on the real Default dispatcher (no production timeout change). Removed a redundant
+conversion warning in test code. The second targeted run passed without warnings.
+
+Complete final command:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+**BUILD SUCCESSFUL in 1m 46s**, **144 actionable tasks: 136 executed, 8 up-to-date**.
+No compiler/deprecation/packaging warnings; lint **No issues found (0 errors/warnings)**.
+Existing toolchain/SDK/proxy/trust/cache configuration unchanged; no new dependencies,
+permissions, versions, Maven 429 or permanent repository changes.
+
+| Suite | Executions | Failures / errors / skipped |
+| --- | --- | --- |
+| core:jvmTest | 31 | 0 / 0 / 0 |
+| app:desktopTest | 243 | 0 / 0 / 0 |
+| core:testAndroidHostTest | 31 | 0 / 0 / 0 |
+| app:testAndroidHostTest | 221 | 0 / 0 / 0 |
+| Total | **526** | **0 / 0 / 0** |
+
+**293 unique cases**, **11 new for this correction** (10 shared durability/diagnostic
+cases, 1 Android factory-owner recreation case). androidApp:testDebugUnitTest remains
+NO-SOURCE; Gradle task SKIPPED labels are not skipped test cases. All normal tests offline.
+Existing source/acquisition/cache/TEXT/Unicode/lifecycle regressions remain green.
+
+New tests use actual temporary files and fresh writer/store instances with no recent
+map shared. They verify final .progress records, process-restart simulation, repeated
+owners, cache deletion, RAM-only restoration after failed save, no false durability,
+failure clearing after a successful commit, retained previous records after commit
+failure, exact permission-stage diagnostics and observer isolation. The Android-like
+provider throws on getFileStore exactly as documented while delegating path attributes,
+locks/writes/rename to real host files: it is a compatibility fixture, **not Android OS**.
+Reintroducing the old probe fails the positive commit/restart test.
+
+### New APK and physical retest required
+
+APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+Size: **11,421,462 bytes**.
+SHA-256: **`b239eea2ceff934a94d611f38d2525eb7b5a459ac6d8430d9aa349570e3b1ccf`**.
+Build task: `:androidApp:assembleDebug`; official SDK aapt2 dump badging/permissions
+and apksigner verify --verbose pass. Package org.infinilect.app, min 26 / target 37 /
+compile 37, INFINILECT label, debug v2 signature. Permissions unchanged: INTERNET
+and the existing AndroidX internal app-scoped signature permission; no storage permission.
+
+No new live source checks/requests were made. Official Android documentation and GitHub
+access are separate research/publication traffic. adb devices -l is empty; no display
+or device/emulator is available. **The corrected APK has not been physically tested.**
+Original user-reported failure remains documented; passing host fixtures cannot prove
+physical acceptance. Retest on the same device using the same app data:
+
+1. A: open TEXT, scroll, wait at least 3 seconds, Back, reopen. Restore approximately
+   with **no save-failure message**.
+2. B: open/scroll/wait at least 3 seconds/Back; completely terminate, relaunch,
+   search/open the same publication. Restore with **no save-failure message**.
+3. C: clear **cache only**, preserving app data/storage; relaunch/search/open. The
+   saved logical position must remain.
+4. D: normal fresh Internet Archive acquisition must occur on every reopen;
+   revision=null/cache bypass and all source/security checks are unchanged.
+
+If a device save still fails, debug logcat tag INFINILECTProgress identifies the
+storage stage/reason without private paths or contents. No error UI suppression.
+Normal process restart guarantees do not promise every power-loss/storage-device
+failure; abrupt death can still lose the latest unsaved window. Atomic commit
+failure preserves the prior valid record. No source/cache/core-policy changes,
+APK/progress/cache artifacts, secrets, merge, squash, rebase or force push.
+
+
 ## Persistent reading progress — 2026-10-03
 
 Fetched/pulled main before creating feature/persistent-reading-progress. Exact main

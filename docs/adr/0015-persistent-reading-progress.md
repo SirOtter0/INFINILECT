@@ -47,3 +47,15 @@ persistence is introduced. No dependencies, permission or source-policy changes.
 No atomic-rename support means save failure with the previous committed state intact.
 Real Android/layout/process-death behavior still requires physical smoke testing.
 Exact format, bounds, paths and lifecycle are in [PROGRESS.md](../PROGRESS.md).
+
+## Android implementation correction — 2026-10-03
+
+Physical review of the first PR #7 APK showed RAM restoration working but durable
+saves failing. Android libcore throws SecurityException from Files.getFileStore;
+the initial host-oriented permission probe prevented every record operation.
+Use the supported no-follow POSIX path attribute view instead, retaining permissions,
+short file locks and same-directory atomic rename. Add safe internal stage diagnostics
+and new-writer/new-store restart tests that cannot be satisfied by RAM. This corrects
+platform compatibility without changing the decision, format, lifecycle, cache
+separation or source policy. Official evidence and guarantees are documented in
+[PROGRESS.md](../PROGRESS.md); the new APK still requires physical-device retesting.

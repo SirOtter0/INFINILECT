@@ -92,7 +92,50 @@ rename fallback. Atomic rename is not a guarantee against every power-loss/devic
 filesystem failure. Only reserved progress/temp names are managed; root/record/lock
 symlinks fail closed and no outside target is read or modified. Removing an owned
 symlink name during temp cleanup removes only that link, never its target. POSIX owner-only
-permissions; Windows inherits the user's directory ACLs.
+permissions are applied through a no-follow **path** PosixFileAttributeView; Windows
+inherits the user's directory ACLs when that view is absent. No FileStore probe.
+
+### Android compatibility correction — 2026-10-03
+
+The first PR #7 APK failed durable saves on a physical Android device even though
+same-process restoration worked through ProgressPersistence's `recent` RAM map.
+The original permission helper called Files.getFileStore(path). Android's official
+[API 26 LinuxFileSystemProvider](https://android.googlesource.com/platform/libcore/+/android-8.0.0_r1/ojluni/src/main/java/sun/nio/fs/LinuxFileSystemProvider.java)
+and [current provider](https://android.googlesource.com/platform/libcore/+/refs/heads/main/ojluni/src/main/java/sun/nio/fs/LinuxFileSystemProvider.java)
+explicitly throw SecurityException("getFileStore") because filesystem-wide information
+is unavailable under Android SELinux policy. This occurred at directory permissions,
+before the lock or any record was created; operation() reduced the exception to false.
+Host JVM tests used the desktop provider, which allows that query.
+
+The corrected helper obtains the path's PosixFileAttributeView with NOFOLLOW_LINKS
+and sets the same owner-only permissions directly. Android's official
+[UnixFileSystemProvider](https://android.googlesource.com/platform/libcore/+/android-8.0.0_r1/ojluni/src/main/java/sun/nio/fs/UnixFileSystemProvider.java)
+supports this view and [UnixFileAttributeViews](https://android.googlesource.com/platform/libcore/+/android-8.0.0_r1/ojluni/src/main/java/sun/nio/fs/UnixFileAttributeViews.java)
+uses fchmod for no-follow access. Permissions are not silently ignored on POSIX.
+FileChannel locking/no-follow access/descriptor force remain unchanged. Same-directory
+ATOMIC_MOVE remains required: official Android
+[UnixCopyFile](https://android.googlesource.com/platform/libcore/+/android-8.0.0_r1/ojluni/src/main/java/sun/nio/fs/UnixCopyFile.java)
+implements it with rename, with no copy/delete fallback in the atomic branch.
+A failed commit preserves the previous file; temporary cleanup cannot mask the
+original diagnosed failure or report an already committed record as failed.
+These guarantees cover normal process restart and interrupted precommit writes,
+not every power-loss/storage-device failure. No destructive fallback was added.
+
+Internal diagnostics identify operation/stage/reason (directory creation/permissions,
+lock, encoding/read/decode, quota, temp open/write/sync, commit and cleanup). They
+contain no paths, publication IDs, content or exception messages. Android debug
+builds log these enum values under `INFINILECTProgress`; release builds do not log
+them. A typical original failure is `SAVE/DIRECTORY_PERMISSIONS/SECURITY`. The UI's
+save-failure warning is retained and clears only after a later successful store save.
+No telemetry or persistence-triggered network access is added.
+
+Regression tests include an Android-like host filesystem provider that rejects
+getFileStore but permits real path attributes, locking and atomic writes; it is
+not an Android device. They verify final .progress files and restoration through
+new store **and** writer instances, discarding all `recent` state. RAM restoration
+after failed save is explicitly tested as non-durable. Repeated platform-owner
+recreation and cache-only deletion are covered. Physical retesting of the corrected
+APK remains required; see [verification](VERIFICATION.md).
 
 ## Storage and concurrency
 

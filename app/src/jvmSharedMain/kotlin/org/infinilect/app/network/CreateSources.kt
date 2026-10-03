@@ -11,13 +11,20 @@ import org.infinilect.app.cache.DiskResourceCache
 import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.app.progress.FileReadingProgressStore
 import org.infinilect.app.progress.progressTime
+import org.infinilect.app.progress.ProgressStorageFailure
 import java.nio.file.Path
 
-internal fun createSources(cache: DiskResourceCache, progressDirectory: Path? = null): ApplicationSources {
+internal fun createSources(
+    cache: DiskResourceCache,
+    progressDirectory: Path? = null,
+    progressDiagnostics: (ProgressStorageFailure) -> Unit = {},
+): ApplicationSources {
     val gutenberg = try { GutenbergSource() } catch (error: Throwable) { cache.close(); throw error }
     val archive = try { InternetArchiveSource() }
     catch (error: Throwable) { try { gutenberg.close() } finally { cache.close() }; throw error }
-    val progress = ProgressPersistence(FileReadingProgressStore(progressDirectory), clock = ::progressTime)
+    val progress = ProgressPersistence(
+        FileReadingProgressStore(progressDirectory, onFailure = progressDiagnostics), clock = ::progressTime,
+    )
     return ApplicationSources(listOf(
         SourceOption("Project Gutenberg", gutenberg),
         SourceOption("Internet Archive", archive, textReadingEnabled = true),

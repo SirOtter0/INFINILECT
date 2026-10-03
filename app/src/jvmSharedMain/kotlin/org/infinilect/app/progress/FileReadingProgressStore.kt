@@ -14,7 +14,11 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.*
+import java.nio.file.attribute.PosixFileAttributeView
 import java.nio.file.attribute.PosixFilePermissions
+import org.infinilect.app.progress.ProgressStorageFailure.Operation
+import org.infinilect.app.progress.ProgressStorageFailure.Stage
+import org.infinilect.app.progress.ProgressStorageFailure.Reason
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -38,78 +42,106 @@ internal class FileReadingProgressStore(
     private val maxBytes: Long = 16L * 1024 * 1024,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val beforeCommit: () -> Unit = {}, // Failure/cancellation seam for real-files tests.
+    private val setPrivatePermissions: (Path, Boolean) -> Unit = ::privateProgressPermissions,
+    private val onFailure: (ProgressStorageFailure) -> Unit = {},
 ) : ReadingProgressStore {
     init { require(maxEntries > 0 && maxBytes > 0) }
 
-    override suspend fun get(id: ReadingProgressId): ReadingProgress? = operation(null) { root, _ ->
-        val identity = encodeIdentity(id)
-        read(root.resolve(name(identity)), id)
+    // Filesystem API seams let host tests reproduce Android/provider failures precisely.
+    override suspend fun get(id: ReadingProgressId): ReadingProgress? = operation(Operation.GET, null) { root, attempt ->
+        val identity = attempt.at(Stage.IDENTITY) { encodeIdentity(id) }
+        read(root.resolve(name(identity)), id, attempt)
     }
 
-    override suspend fun save(progress: ReadingProgress): Boolean = operation(false) { root, context ->
-        val identity = encodeIdentity(progress.id)
+    override suspend fun save(progress: ReadingProgress): Boolean = operation(Operation.SAVE, false) { root, attempt ->
+        val context = attempt.context
+        val identity = attempt.at(Stage.IDENTITY) { encodeIdentity(progress.id) }
         val target = root.resolve(name(identity))
-        val previous = read(target, progress.id)
+        val previous = read(target, progress.id, attempt)
         if (previous != null && previous.updatedAtEpochMillis >= progress.updatedAtEpochMillis)
             return@operation previous == progress || previous.updatedAtEpochMillis > progress.updatedAtEpochMillis
-        val bytes = encodeRecord(progress, identity)
+        val bytes = attempt.at(Stage.RECORD_ENCODE) { encodeRecord(progress, identity) }
         var count = 0
         var total = 0L
         var scanned = 0
-        Files.newDirectoryStream(root).use { entries ->
-            for (entry in entries) {
-                context.ensureActive()
-                if (++scanned > 4096) return@operation false
-                val filename = entry.fileName.toString()
-                if (tempName.matches(filename)) { Files.deleteIfExists(entry); continue }
-                if (recordName.matches(filename)) {
-                    if (!Files.isRegularFile(entry, NOFOLLOW_LINKS)) return@operation false
-                    count++
-                    val size = Files.size(entry)
-                    if (size > maxBytes - total) return@operation false
-                    total += size
+        val scanValid = attempt.at(Stage.DIRECTORY_SCAN) {
+            Files.newDirectoryStream(root).use { entries ->
+                for (entry in entries) {
+                    context.ensureActive()
+                    if (++scanned > 4096) return@use false
+                    val filename = entry.fileName.toString()
+                    if (tempName.matches(filename)) { Files.deleteIfExists(entry); continue }
+                    if (recordName.matches(filename)) {
+                        if (!Files.isRegularFile(entry, NOFOLLOW_LINKS)) return@use false
+                        count++
+                        val size = Files.size(entry)
+                        if (size > maxBytes - total) return@use false
+                        total += size
+                    }
                 }
+                true
             }
         }
-        val replacing = Files.exists(target, NOFOLLOW_LINKS)
-        if ((!replacing && count >= maxEntries) || total - (if (replacing) Files.size(target) else 0) > maxBytes - bytes.size)
-            return@operation false
+        if (!scanValid) { attempt.reject(Stage.DIRECTORY_SCAN, Reason.LIMIT); return@operation false }
+        val withinQuota = attempt.at(Stage.QUOTA) {
+            val replacing = Files.exists(target, NOFOLLOW_LINKS)
+            (replacing || count < maxEntries) &&
+                total - (if (replacing) Files.size(target) else 0) <= maxBytes - bytes.size
+        }
+        if (!withinQuota) { attempt.reject(Stage.QUOTA, Reason.LIMIT); return@operation false }
         val temp = root.resolve("t-${UUID.randomUUID()}.part")
         try {
-            FileChannel.open(temp, CREATE_NEW, WRITE, NOFOLLOW_LINKS).use { channel ->
-                privatePermissions(temp, false)
-                val buffer = ByteBuffer.wrap(bytes)
-                while (buffer.hasRemaining()) { context.ensureActive(); channel.write(buffer) }
-                channel.force(true)
+            attempt.at(Stage.TEMP_OPEN) { FileChannel.open(temp, CREATE_NEW, WRITE, NOFOLLOW_LINKS) }.use { channel ->
+                attempt.at(Stage.TEMP_PERMISSIONS) { setPrivatePermissions(temp, false) }
+                attempt.at(Stage.TEMP_WRITE) {
+                    val buffer = ByteBuffer.wrap(bytes)
+                    while (buffer.hasRemaining()) { context.ensureActive(); channel.write(buffer) }
+                }
+                attempt.at(Stage.TEMP_SYNC) { channel.force(true) }
             }
-            beforeCommit()
-            context.ensureActive()
-            Files.move(temp, target, ATOMIC_MOVE, REPLACE_EXISTING)
+            attempt.at(Stage.COMMIT) {
+                beforeCommit()
+                context.ensureActive()
+                Files.move(temp, target, ATOMIC_MOVE, REPLACE_EXISTING)
+            }
             true
-        } finally { Files.deleteIfExists(temp) }
+        } finally {
+            // Cleanup cannot hide the diagnosed original failure or a successful commit.
+            try { attempt.at(Stage.TEMP_CLEANUP) { Files.deleteIfExists(temp) } }
+            catch (_: Exception) { }
+        }
     }
 
-    override suspend fun remove(id: ReadingProgressId): Boolean = operation(false) { root, _ ->
-        Files.deleteIfExists(root.resolve(name(encodeIdentity(id)))); true
+    override suspend fun remove(id: ReadingProgressId): Boolean = operation(Operation.REMOVE, false) { root, attempt ->
+        val identity = attempt.at(Stage.IDENTITY) { encodeIdentity(id) }
+        attempt.at(Stage.REMOVE) { Files.deleteIfExists(root.resolve(name(identity))) }; true
     }
 
-    private suspend fun <T> operation(fallback: T, action: (Path, kotlin.coroutines.CoroutineContext) -> T): T = withContext(dispatcher) {
+    private suspend fun <T> operation(operation: Operation, fallback: T, action: (Path, Attempt) -> T): T = withContext(dispatcher) {
         val context = currentCoroutineContext()
         context.ensureActive()
+        val attempt = Attempt(operation, context)
         try {
             synchronized(processLock) {
                 // All operations below are small blocking files; use the captured coroutine context.
                 context.ensureActive()
-                val root = directory?.takeIf { it.isAbsolute } ?: return@synchronized fallback
-                Files.createDirectories(root)
-                if (!Files.isDirectory(root, NOFOLLOW_LINKS)) return@synchronized fallback
-                privatePermissions(root, true)
-                FileChannel.open(root.resolve(".progress.lock"), CREATE, WRITE, NOFOLLOW_LINKS).use { channel ->
-                    privatePermissions(root.resolve(".progress.lock"), false)
-                    val lock = channel.tryLock() ?: return@synchronized fallback
+                val root = directory?.takeIf { it.isAbsolute } ?: run {
+                    attempt.reject(Stage.PATH, Reason.UNAVAILABLE); return@synchronized fallback
+                }
+                attempt.at(Stage.DIRECTORY_CREATE) { Files.createDirectories(root) }
+                if (!attempt.at(Stage.DIRECTORY_VALIDATE) { Files.isDirectory(root, NOFOLLOW_LINKS) }) {
+                    attempt.reject(Stage.DIRECTORY_VALIDATE, Reason.INVALID); return@synchronized fallback
+                }
+                attempt.at(Stage.DIRECTORY_PERMISSIONS) { setPrivatePermissions(root, true) }
+                val lockPath = root.resolve(".progress.lock")
+                attempt.at(Stage.LOCK_OPEN) { FileChannel.open(lockPath, CREATE, WRITE, NOFOLLOW_LINKS) }.use { channel ->
+                    attempt.at(Stage.LOCK_PERMISSIONS) { setPrivatePermissions(lockPath, false) }
+                    val lock = attempt.at(Stage.LOCK_ACQUIRE) { channel.tryLock() } ?: run {
+                        attempt.reject(Stage.LOCK_ACQUIRE, Reason.BUSY); return@synchronized fallback
+                    }
                     lock.use {
                         // No suspension inside this monitor/OS lock: action only uses synchronous IO.
-                        action(root, context)
+                        action(root, attempt)
                     }
                 }
             }
@@ -117,23 +149,54 @@ internal class FileReadingProgressStore(
         catch (_: Exception) { fallback }
     }
 
-    private fun read(path: Path, expected: ReadingProgressId): ReadingProgress? { return try {
-        if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) return null
-        FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
-            val size = channel.size()
-            if (size !in 48..MAX_PROGRESS_RECORD_BYTES.toLong()) return null
-            val buffer = ByteBuffer.allocate(size.toInt())
-            while (buffer.hasRemaining()) if (channel.read(buffer) <= 0) return null
-            if (channel.size() != size) return null
-            decodeRecord(buffer.array()).takeIf { it.id == expected }
+    private fun read(path: Path, expected: ReadingProgressId, attempt: Attempt): ReadingProgress? { return try {
+        val bytes = attempt.at(Stage.RECORD_READ) {
+            if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) return null
+            FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
+                val size = channel.size()
+                if (size !in 48..MAX_PROGRESS_RECORD_BYTES.toLong()) {
+                    attempt.reject(Stage.RECORD_READ, Reason.INVALID); return null
+                }
+                val buffer = ByteBuffer.allocate(size.toInt())
+                while (buffer.hasRemaining()) if (channel.read(buffer) <= 0) {
+                    attempt.reject(Stage.RECORD_READ, Reason.INVALID); return null
+                }
+                if (channel.size() != size) { attempt.reject(Stage.RECORD_READ, Reason.INVALID); return null }
+                buffer.array()
+            }
         }
-    } catch (_: Exception) { null }
+        attempt.at(Stage.RECORD_DECODE) { decodeRecord(bytes).takeIf { it.id == expected } }
+    } catch (error: CancellationException) { throw error }
+    catch (_: Exception) { null }
+    }
+
+    private inner class Attempt(val operation: Operation, val context: kotlin.coroutines.CoroutineContext) {
+        inline fun <T> at(stage: Stage, block: () -> T): T = try { block() }
+        catch (error: CancellationException) { throw error }
+        catch (error: Exception) {
+            val reason = when (error) {
+                is SecurityException -> Reason.SECURITY
+                is UnsupportedOperationException -> Reason.UNSUPPORTED
+                is java.io.IOException -> Reason.IO
+                is IllegalArgumentException -> Reason.INVALID
+                else -> Reason.OTHER
+            }
+            reject(stage, reason)
+            throw error
+        }
+        fun reject(stage: Stage, reason: Reason) {
+            // Diagnostics are best-effort and must never change storage outcomes.
+            try { onFailure(ProgressStorageFailure(operation, stage, reason)) } catch (_: Exception) { }
+        }
     }
 }
 
-private fun privatePermissions(path: Path, directory: Boolean) {
-    if (Files.getFileStore(path).supportsFileAttributeView("posix"))
-        Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(if (directory) "rwx------" else "rw-------"))
+internal fun privateProgressPermissions(path: Path, directory: Boolean) {
+    // Android libcore getFileStore() always throws SecurityException. A path attribute
+    // view is supported there (API 26+) and applies permissions without filesystem probing.
+    // Non-POSIX providers (e.g. Windows) retain the existing inherited private-directory ACL.
+    Files.getFileAttributeView(path, PosixFileAttributeView::class.java, NOFOLLOW_LINKS)
+        ?.setPermissions(PosixFilePermissions.fromString(if (directory) "rwx------" else "rw-------"))
 }
 
 private fun digest(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
