@@ -6,10 +6,12 @@ issue and record accepted decisions in an ADR before expanding the module graph.
 
 Use JDK 21 and the checked-in wrapper. Run `./gradlew build` before submitting a
 pull request, report the commands and results, and state any checks you could not
-perform. Core and search/source tests are deterministic: `./gradlew :core:jvmTest :app:desktopTest`.
+perform. Install the Android SDK as described in README; shared Android host tests are
+`./gradlew :app:testAndroidHostTest :core:testAndroidHostTest`.
+Core and search/source tests are deterministic: `./gradlew :core:jvmTest :app:desktopTest`.
 The opt-in `./gradlew :app:gutenbergSearchCheck --args="shakespeare"` requests
 one real page and is not part of the normal build. For the desktop UI, also run
-`./gradlew :app:run` in a graphical session.
+`./gradlew :desktopApp:run` in a graphical session.
 Use Kotlin's official style. Add meaningful tests for domain invariants and new
 behavior. Keep README.md and README.es.md aligned when changing user-facing status
 or setup instructions. English is the shared language for code and architecture;

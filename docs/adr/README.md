@@ -15,4 +15,6 @@ Accepted decisions for the foundation, search, acquisition and first TEXT reader
 - [0011: First verified source-specific acquisition](0011-verified-source-acquisition.md)
 - [0012: Minimal bounded text reading slice](0012-bounded-text-reading.md)
 
+- [0013: First Android application target](0013-first-android-application.md)
+
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.

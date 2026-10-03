@@ -15,7 +15,8 @@ Que Project Gutenberg ofrezca una obra en EE. UU. no implica que sea de dominio 
 
 ## Estado
 
-El proyecto está en una fase muy temprana. La aplicación de escritorio ahora busca
+El proyecto está en una fase muy temprana. Desktop y la primera aplicación Android
+debug comparten la misma UI. La aplicación busca
 en el catálogo OPDS oficial de Project Gutenberg y muestra resultados reales,
 autores e idiomas cuando la fuente los proporciona. La búsqueda se envía mediante
 una acción explícita; la siguiente página solo se solicita al pulsar **Next page**.
@@ -39,23 +40,37 @@ para adquisición. No se anuncia fuente/UI OAPEN ni lector PDF.
 
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
 → obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS es la primera fuente de búsqueda funcional.
-Escritorio es el primer destino ejecutable; Android e iOS son destinos futuros,
-no compilaciones actualmente soportadas.
+Desktop y Android son destinos ejecutables. Android requiere API 26+; iOS queda
+para el futuro. Se verifica el APK; la prueba física está pendiente.
 
 ## Compilar y ejecutar
 
-Instala JDK 21. El wrapper Gradle incluido descarga Gradle en el primer uso;
+Instala JDK 21 y Android SDK (plataforma 37, build-tools 36.0.0). Configura
+`ANDROID_HOME` o un `local.properties` no versionado con la ruta del SDK. El wrapper Gradle incluido descarga Gradle en el primer uso;
 las dependencias requieren acceso a Internet.
 
 ```sh
 ./gradlew :core:jvmTest :app:desktopTest
 ./gradlew build
-./gradlew :app:run
+./gradlew :desktopApp:run
 ```
 
 En Windows utiliza `gradlew.bat`. La ejecución requiere un escritorio gráfico
 y conexión a Internet para buscar.
-Todavía no se incluyen instaladores nativos ni aplicaciones móviles.
+No se incluyen instaladores nativos. Para compilar/instalar el APK debug estándar:
+
+```sh
+./gradlew :app:testAndroidHostTest :core:testAndroidHostTest :androidApp:assembleDebug
+adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
+```
+
+Android usa la misma selección de fuente, búsqueda y TextReader. Back del sistema
+desde Loading/Reader/Error conserva resultados; en Search sigue al sistema Android.
+Recrear la Activity o perder el proceso inicia una sesión nueva: no se guardan
+consulta/resultados/documento/scroll. No hay tracking ni acceso extra a datos del
+dispositivo. INTERNET es la única capacidad de plataforma solicitada; AndroidX
+también declara un permiso interno de firma, exclusivo de la app, para proteger
+receivers no exportados. El icono es geometría original provisional.
 
 Para un ejemplo pequeño verificado, selecciona Internet Archive y busca
 `identifier:gmb-2015-93040`; después pulsa **Open text**. Es un documento público
@@ -64,7 +79,7 @@ automática. Cambiar de fuente cancela la sesión anterior y vacía consulta/res
 volver desde el lector conserva la sesión actual, sin guardar posición de lectura.
 
 Versiones: Kotlin/compilador Compose 2.4.20, Compose Multiplatform 1.12.1,
-Gradle 9.7.1. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
+Gradle 9.7.1, AGP 9.3.1, compileSdk 37 / targetSdk 37 / minSdk 26. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
 y los [avisos de terceros](THIRD_PARTY_NOTICES.md).
 
 El transporte Gutenberg utiliza Ktor 3.6.0 fuera de core. El parser de escritorio
@@ -92,7 +107,7 @@ El primero solicita un registro OAI-PMH y hace solo HEAD; el segundo busca un
 documento gubernamental CC0 y consume hasta 512 bytes mediante ResourceLoader.
 No registra ni guarda texto. Consulta límites y política conservadora de hosts/
 acceso en los documentos de cada fuente. El parser JSON kotlinx.serialization-json
-1.11.0 (Apache-2.0) es solo de escritorio; core sigue puro.
+1.11.0 (Apache-2.0) se comparte entre JVM/Android; core sigue puro.
 
 El nuevo check de documento completo usa la misma lógica de búsqueda/apertura/sesión
 que la UI, verifica UTF-8 estricto y Back, y solo registra cantidades, nunca texto:
@@ -108,14 +123,15 @@ Los resultados reales de verificación y límites del entorno están en [VERIFIC
 
 ## Estructura inicial pequeña
 
-- `core`: modelos y contratos en Kotlin puro en `commonMain`; destino JVM para verificar.
-- `app`: UI Compose compartida de búsqueda/TextReader, carga/estado de sesión independientes
-  de la fuente, adaptadores y entrada de escritorio; depende de `core`.
-  La [migración documentada](docs/adr/0008-platform-entrypoints.md) separará interfaz
-  compartida y aplicaciones de escritorio/Android cuando se incorpore Android.
+- `core`: modelos/contratos Kotlin puros en `commonMain`, targets JVM y biblioteca Android.
+- `app`: UI Compose, sesión/controladores/reader compartidos; `jvmSharedMain` comparte
+  políticas y mapping de fuentes. Desktop usa HTTP Java/StAX; Android HTTP Android/XmlPull.
+- `desktopApp`: launcher, runtime del sistema y empaquetado Desktop; depende de `app`.
+- `androidApp`: Activity, Back/insets, manifest y APK; depende de `app`.
+  [Decisión Android](docs/adr/0013-first-android-application.md) desarrolla ADR 0008.
 - `docs`: arquitectura, política de fuentes, caché, hoja de ruta y decisiones.
 
-Ktor es el cliente HTTP de la fuente de escritorio, fuera de `core`. SQLDelight se añadirá cuando la
+Ktor es el cliente HTTP de los adapters de plataforma, fuera de `core`. SQLDelight se añadirá cuando la
 persistencia lo necesite. Readium solo podrá incorporarse en una implementación
 de lector específica de Android. SQLDelight y Readium no están incluidos.
 

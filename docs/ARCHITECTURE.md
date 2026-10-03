@@ -4,26 +4,36 @@
 
 ## Foundation, search and bounded TEXT reading implemented today
 
-Two modules are sufficient: `core` and `app`. Both use Kotlin Multiplatform source
-sets, with JVM/desktop as the only configured targets. More targets and modules
-will be introduced with working implementations, not empty placeholders.
+Four modules now have concrete consumers: `core`, `app` (shared KMP library),
+`desktopApp` and `androidApp`. The dependency direction is both launchers → app →
+core. No empty registry/engine/navigation modules. Keeping the established `app`
+name avoids an unnecessary rename; it no longer packages a Desktop application.
 
-`core/commonMain` contains Kotlin-only models and suspend contracts. It has no
-Compose, Readium, Ktor, SQLDelight or platform dependency. `app/commonMain` owns the
-search/TextReader UI and small Compose-free controllers using coroutines StateFlow.
-`app/desktopMain` owns the launcher, GutenbergSource, Ktor Java transport and the
-JDK StAX parser. The launcher injects PublicationSource through SearchController
-and closes both configured sources at shutdown. The dependency direction is
-`app → core`; core never refers to app.
+`core/commonMain` remains Kotlin-only models/suspend contracts, without Compose,
+Readium, Ktor, SQLDelight or Android APIs. JVM and Android are build targets, not
+platform code in the domain. `app/commonMain` owns the same shared Compose UI,
+ReadingSession, SearchController, opener, TextDocument and TextReader.
 
-InternetArchiveSource in desktopMain implements search, details and bounded
-acquisition. The launcher supplies two explicit source choices: Gutenberg search
-and public-CC0 Internet Archive text reading. One source/session is active at a
-time; no registry or simultaneous search. Shared DirectResourceLoader and neutral
-format selection are reused by the first TextReader and the existing prefix demo.
-No cache/download store. HTTP/JSON, access gates and streaming
-lifecycle stay in the desktop adapter. Core contracts are sufficient and unchanged.
-See [ADR 0011](adr/0011-verified-source-acquisition.md).
+`app/jvmSharedMain` is explicitly shared by Desktop and Android: Java-compatible
+URI/Base64 validation, metadata/OPDS mapping, Ktor engine-independent transport
+and acquisition rules. These APIs are supported at minSdk 26. This is not a claim
+that JVM source code works on iOS. `desktopMain` supplies Ktor Java and JDK StAX;
+`androidMain` supplies Ktor Android (HttpURLConnection) and platform XmlPull.
+Both share one OPDS mapping/limits implementation through a tiny XML-token seam.
+OAPEN diagnostics and live CLI checks remain Desktop-only.
+
+`desktopApp` owns Window/application/OS runtime. `androidApp` owns MainActivity,
+manifest/insets/Android Back and APK packaging. Neither owns source policies.
+Platform factories create ApplicationSources without initiating requests. It
+attaches the active ReadingSession and cancels it before closing both clients,
+idempotently. Composition disposal detaches/cancels sessions; Activity destruction
+and Desktop disposal close sources. No Activity/Context is retained by adapters.
+
+The same UI offers Gutenberg search-only and public-CC0 Internet Archive TEXT
+reading, one explicitly selected source at a time. No simultaneous search or
+registry. DirectResourceLoader/neutral format selection remain unchanged; no
+cache/download store. Core contracts and Archive access/redirect/revision limits
+are unchanged. See [ADR 0013](adr/0013-first-android-application.md).
 
 ## Domain
 
@@ -128,7 +138,7 @@ replaces the displayed page, keeping memory bounded; a failed next-page request
 keeps the previous results and token for an explicit retry. Cancellation propagates
 and restores the previous/idle state. No cache, retry loop or prefetcher is involved.
 
-GutenbergSource is a trusted, desktop-specific adapter, not a core implementation
+GutenbergSource is a trusted platform adapter with shared mapping and policies, not a core implementation
 or an external plugin. It enforces feed, URL, timeout and XML limits. Detail and
 acquisition methods validate source ownership and throw UnsupportedOperationException:
 no false not-found result or fabricated resource bytes. See [Sources](SOURCES.md)
@@ -175,7 +185,7 @@ opening state and keeps source/query/results; it does not refetch. Switching
 source closes/discards the old session, creates a fresh one and resets Compose
 collectors using a session key, so old-source results cannot flash or replace new
 results. No request is started by changing source. Disposal cancels session jobs
-and closes desktop sources. Query/results are session-local; no position/history
+and closes platform sources. Query/results are session-local; no position/history
 or content cache. See [ADR 0012](adr/0012-bounded-text-reading.md).
 
 ## Acquisition verification and lifecycle
@@ -195,25 +205,27 @@ registry or simultaneous-source search is introduced. The later bounded
 TextReader uses a fresh handle and consumes the entire eligible small resource;
 the historical prefix check remains independent.
 
-## Evolution when Android is added (no modules added now)
+## First Android target and lifecycle
 
-Keep the two current modules until a working Android entry point needs more.
-Follow JetBrains' [AGP 9 migration guidance](https://www.jetbrains.com/help/kotlin-multiplatform-dev/multiplatform-project-agp-9-migration.html)
-and [module configuration guidance](https://www.jetbrains.com/help/kotlin-multiplatform-dev/multiplatform-project-configuration.html):
+[ADR 0008](adr/0008-platform-entrypoints.md) is retained as historical planning;
+[ADR 0013](adr/0013-first-android-application.md) applies its boundaries with `app`
+retained as the shared library name. Both pure core and app use the official
+Android-KMP library plugin; only androidApp applies com.android.application with
+AGP built-in Kotlin. There is no application/KMP plugin combination in one module.
 
-1. Turn today's `app/commonMain` into a shared UI library, named `sharedUi`.
-2. Move `app/desktopMain/Main.kt`, the desktop application plugin configuration,
-   OS runtime dependency, desktop Gutenberg transport/parser and packaging into
-   `desktopApp`, depending on `sharedUi`. Choose an Android transport/parser only
-   when that target is added; JDK StAX is not shared Kotlin code.
-3. Add `androidApp` for Activity, manifest, lifecycle, permissions and application
-   packaging, depending on `sharedUi`. Use the Android-KMP library plugin for
-   Android targets in shared libraries; do not combine `com.android.application`
-   with the Kotlin Multiplatform plugin in a shared module under AGP 9.
-4. Keep `sharedUi → core`; both platform apps consume shared UI. Configure core's
-   additional target at that point without adding Android APIs to its common code.
-   Android-only Readium objects and adapters stay behind the Android reader boundary.
+App receives a composable platform Back callback, with no Android imports in
+shared UI. Enabled only in Loading/Ready/Error, Android Back calls session.back:
+cancel the opener, invalidate late responses, retain source/query/results. At
+root Search, system Back follows Activity behavior. Insets/keyboard padding belong
+to the Android launcher; source-choice buttons share available width on phones.
+TextReader's title/plain text/vertical scroll/Back remain unchanged.
 
-Shared UI source/package boundaries already allow this move without changing the
-domain API. No launchers, Android plugins, empty modules or packaging changes are
-introduced in this pass. See [ADR 0008](adr/0008-platform-entrypoints.md).
+Recreation/configuration changes/process death lose in-memory session/document/
+scroll state by design. Destruction cancels old work and closes old clients before
+new instances are constructed; no ViewModel/SavedState/persistence added.
+Manifest denies cleartext and backup, requests INTERNET only directly, and retains
+AndroidX's generated app-scoped signature permission protecting non-exported
+receivers. It is not storage/location/identifier access. Disable EmojiCompat's
+automatic downloadable-font initializer so app startup does not request fonts.
+No telemetry, login or background source requests. The standard debug APK uses
+Android's debug signing only; no release key, distribution or release build goal.

@@ -15,7 +15,8 @@ Project Gutenberg's availability in the US does not establish public-domain stat
 
 ## Status
 
-Very early development. The desktop app now searches the official Project
+Very early development. Desktop and the first Android debug app share the same UI.
+The app searches the official Project
 Gutenberg OPDS catalog and shows real book results, authors and languages when
 supplied. Search is submitted explicitly; the next page is fetched only when
 you press **Next page**. There is no automatic search or prefetching.
@@ -38,23 +39,37 @@ pending official guidance. No OAPEN source/UI or PDF reader is claimed.
 
 The deliberately small v0.0.1 goal is: open INFINILECT → search for a book → get
 real results → open one → read it. Project Gutenberg/OPDS is the first functional search source.
-Desktop is the initial executable target; Android and iOS are future targets,
-not currently supported builds.
+Desktop and Android are executable targets. Android requires API 26+; iOS remains
+future work. APK compilation is verified; physical-device smoke testing is pending.
 
 ## Build and run
 
-Install JDK 21. The checked-in Gradle wrapper downloads Gradle on first use;
+Install JDK 21 and the Android SDK (platform 37, build-tools 36.0.0). Set
+`ANDROID_HOME` or an untracked `local.properties` SDK path. The checked-in Gradle wrapper downloads Gradle on first use;
 Internet access is needed for dependencies.
 
 ```sh
 ./gradlew :core:jvmTest :app:desktopTest
 ./gradlew build
-./gradlew :app:run
+./gradlew :desktopApp:run
 ```
 
 On Windows, use `gradlew.bat`. Running requires a graphical desktop and an
 Internet connection for search. Native
-installers and mobile launchers are not included yet.
+installers are not included. Build/install the standard debug APK with:
+
+```sh
+./gradlew :app:testAndroidHostTest :core:testAndroidHostTest :androidApp:assembleDebug
+adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
+```
+
+Android uses the same source selection, search and TextReader. System Back from
+Loading/Reader/Error returns to retained results; Back at Search follows Android.
+Activity recreation/process death starts a new session: query/results/document/
+scroll position are not saved. There is no tracking or extra device-data access.
+The only requested platform capability is INTERNET; AndroidX also declares an
+internal app-scoped signature permission for non-exported receiver protection.
+The icon is original provisional geometry, not the final logo.
 
 For a small verified reading example, select Internet Archive and search
 `identifier:gmb-2015-93040`, then press **Open text**. This is a public CC0 Dutch
@@ -63,7 +78,7 @@ source cancels the old session and starts with an empty query/results; returning
 from the reader preserves the current session, without saving a reading position.
 
 Versions: Kotlin/Compose compiler 2.4.20, Compose Multiplatform 1.12.1,
-Gradle 9.7.1. See [toolchain evidence](docs/TOOLCHAIN.md) for official compatibility
+Gradle 9.7.1, AGP 9.3.1, compileSdk 37 / targetSdk 37 / minSdk 26. See [toolchain evidence](docs/TOOLCHAIN.md) for official compatibility
 references and [third-party notices](THIRD_PARTY_NOTICES.md) for license information.
 
 Gutenberg transport uses Ktor 3.6.0 outside core. The desktop parser uses JDK 21's
@@ -89,7 +104,7 @@ Two additional opt-in checks never run during tests/build:
 The first requests one OAI-PMH record and HEAD only; the second searches a verified
 CC0 government document and consumes at most 512 bytes through ResourceLoader.
 No publication text is logged/saved. See source docs for limits and the narrow
-host/access policy. JSON parsing uses desktop kotlinx.serialization-json 1.11.0
+host/access policy. JSON parsing uses shared JVM/Android kotlinx.serialization-json 1.11.0
 (Apache-2.0); core remains Kotlin-only.
 
 The new full-document check uses the same search/open/session logic as the UI,
@@ -106,14 +121,15 @@ Actual verification and environment limitations are recorded in [VERIFICATION.md
 
 ## Small starting structure
 
-- `core`: pure Kotlin domain models and contracts in `commonMain`; JVM target for verification.
-- `app`: shared Compose search/TextReader UI, source-independent loading/session state,
-  desktop adapters and entry point; depends on `core`.
-  [Documented migration](docs/adr/0008-platform-entrypoints.md) separates shared UI,
-  desktop and Android entry points when Android is actually added.
+- `core`: pure Kotlin models/contracts in `commonMain`, JVM and Android library targets.
+- `app`: shared Compose UI, session/controllers/reader; `jvmSharedMain` shares source
+  policies/mapping. Desktop uses Java HTTP/StAX; Android uses Android HTTP/XmlPull.
+- `desktopApp`: Desktop launcher, OS runtime and packaging, depending on `app`.
+- `androidApp`: Activity, Back/insets, manifest and APK, depending on `app`.
+  [Android decision](docs/adr/0013-first-android-application.md) refines ADR 0008.
 - `docs`: architecture, source policy, cache design, roadmap and decision records.
 
-Ktor is the HTTP client in the desktop source, outside `core`. SQLDelight will be added
+Ktor is the HTTP client in platform source adapters, outside `core`. SQLDelight will be added
 when persistence needs it. Readium may be used only by an Android-specific reader
 implementation. SQLDelight and Readium are not included.
 

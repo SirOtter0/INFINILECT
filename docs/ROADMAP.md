@@ -52,14 +52,20 @@ smoke validation remain separate. Gutenberg acquisition stays deferred pending
 official guidance. The small government-document example is not a claim that
 v0.0.1's full book/release roadmap is complete.
 
-Next slice, after reviewing this reading path: bounded memory/disk cache behind
-ResourceLoader, with restart-safe eviction and progress kept independent. No
-cache implementation begins in this reading PR.
+The first Android target now shares this exact reading path; build/APK inspection
+are verified separately from physical-device smoke testing. See
+[ADR 0013](adr/0013-first-android-application.md) and [verification](VERIFICATION.md).
+No reader feature, new format or cache is added by the Android slice.
+
+After physical Android/Desktop validation: bounded memory/disk cache behind
+ResourceLoader, with restart-safe eviction and independent progress. No cache
+implementation begins in this Android PR.
 
 ## After the first working slice
 
-Add Android and iOS targets with build verification, using the platform-entrypoint
-migration in ARCHITECTURE/ADR 0008, accessible reader controls,
+Android is now implemented as a separate launcher consuming the shared app library;
+physical smoke verification remains pending. Add iOS with its own adapters/build
+verification, accessible reader controls,
 additional formats based on real needs, and explicit persistent downloads. If
 Readium is selected, isolate it in an Android-specific reader. Expand the module
 structure when concrete implementations justify it. A validated declarative
