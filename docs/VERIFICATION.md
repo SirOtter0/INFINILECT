@@ -1,5 +1,128 @@
 # Verification
 
+
+## PR #10 — bounded large TEXT reading — 2026-10-04
+
+Fetched current origin/main and verified merged PR #9 before creating
+`feature/streaming-large-text-reader`. Exact base:
+**6adf9cf85495da88bfab630bf5009c285eace029**. Refetched before delivery;
+main remained at that SHA. No previous branch/history was reused or rewritten.
+
+Final clean command (existing environment JDK/SDK/Gradle home, no repository changes):
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m 7s; 146 actionable tasks: 138 executed, 8 up-to-date.**
+Final code was frozen before this run. Targeted Desktop/Android regressions and
+intermediate clean builds also ran during implementation; after the final cleanup
+review the full clean command above was rerun. No Maven 429, permanent repository
+workaround, dependency/version update or schema migration was needed.
+
+| Task | Test executions | Failures | Errors | Skips |
+|---|---:|---:|---:|---:|
+| :core:jvmTest | 38 | 0 | 0 | 0 |
+| :app:desktopTest | 369 | 0 | 0 | 0 |
+| :core:testAndroidHostTest | 38 | 0 | 0 | 0 |
+| :app:testAndroidHostTest | 349 | 0 | 0 | 0 |
+| Total | **794** | **0** | **0** | **0** |
+
+**433 unique class/method cases**, deduplicating target suffixes; **37 new cases**
+(34 FileTextDocumentTest + 3 LargeTextSessionTest), executed on both app targets.
+`:androidApp:testDebugUnitTest` is **NO-SOURCE**, not a device test/skipped test.
+Android host tests run a host JVM, not Android filesystem/Compose instrumentation.
+Lint report: **zero issues (zero errors/warnings)**. No Kotlin/Gradle/dependency
+warnings in the final clean build. Resource/no-source task SKIPPED markers are
+Gradle task statuses, not skipped test cases. The opt-in live task separately
+emitted existing SLF4J no-provider/NOP warnings; no logging dependency was added.
+
+Coverage includes full 16 MiB generated streaming fixture (no giant fixture String),
+max read buffer/request and primitive-index bounds, eight-window cache bounds,
+small/BOM-only/interior BOM, every UTF-8 chunk boundary, supplementary characters,
+malformed encodings, short/extra/changing sizes, one-byte excess probe, unknown/
+over-limit rejection before reading, zero/NUL/whitespace, cancellation during
+acquisition/ongoing indexing/progress lookup, close on terminal paths, beginning/
+middle/end/backward indexed navigation, old locator compatibility, changed-length
+approximation, durable .progress record + fresh persistence/store owner restore,
+normal temporary cleanup, owner close, stale/active owner distinction, unrelated
+files, namespace/OS-parent symlinks, backing truncation, cache-only eviction and
+same-owner re-preparation, private Android/per-user Desktop paths, saved-Library
+source re-resolution, successful History, retained Search/Back and fresh null-revision
+reacquisition. Existing source/cache/SQLDelight/Android-PRAGMA/progress/catalog tests
+remain present and green. Test API assertions now use bounded windows/global code
+points; previous regression cases were retained, including full-limit/overflow.
+
+An early new durable-reopen test used the store's real IO dispatcher beneath a
+virtual timeout: corrected the test to inject its scheduler, assert the committed
+.progress file and discard all RAM state before restoration. A diagnostic-message
+assertion also accidentally matched the fixed phrase 'private temporary storage';
+it now checks the injected private detail. No persistence implementation was changed.
+
+### One real large-TEXT check
+
+Metadata-only discovery made **six official requests**, all HTTP 200, consuming
+**25,486 bytes**. It selected Dutch government item `stcrt-2015-37219`, whose
+metadata explicitly declares `http://creativecommons.org/publicdomain/zero/1.0/`,
+public/non-lending text, with `stcrt-2015-37219_djvu.txt`, **589,899 bytes**. No large
+PDF/dump was acquired. This exceeds the old 524,288-byte TEXT limit.
+
+Exactly once, at **2026-10-03T23:03:09.378684620Z** (2026-10-04 in Europe/Madrid):
+
+```sh
+./gradlew :app:internetArchiveTextReadingCheck --args=stcrt-2015-37219 \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+| Request | Status | Application-consumed bytes |
+|---|---:|---:|
+| Official Advanced Search | 200 | 635 |
+| Item metadata / getPublication | 200 | 5,654 |
+| Fresh acquisition metadata | 200 | 5,654 |
+| Official /download item/file permalink | 302 | 0 |
+| Fresh-metadata-authorized dn760106.eu.archive.org/0/items/item/file | 200 | 589,899 |
+
+**Five acquisition-check requests, one validated redirect, 601,842 bytes total**;
+full resource consumed/closed, **589,204 Unicode code points, 551 indexed windows**,
+strict UTF-8 Ready, Back retained query/results. No content printed, no retries,
+403 or 429. Discovery plus check: **11 requests, 627,328 consumed bytes**. The
+check used the real shared session/controller/preparation path, not a UI fixture.
+Cleanup/private-path review refinements afterward were tested offline; the live
+check was not repeated. Live source evidence does not imply graphical scrolling
+or physical-device validation.
+
+### APK and environmental limits
+
+Task: `:androidApp:assembleDebug`.
+Path: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+Size: **11,618,414 bytes**.
+SHA-256: **a895459bd1933e336788c8ea26e2e0fdd2ae9e1dc278a54849d12da95476099d**.
+
+APK inspected with SDK aapt2/apksigner: org.infinilect.app, visible name INFINILECT,
+compile/target SDK37, min SDK26, HTTPS/cleartext policy unchanged. Permissions
+match PR #9: INTERNET and existing app-local signature-scoped AndroidX receiver
+permission; no storage permission. Debug signature is verified and its SHA-256
+certificate matches the PR #9 APK, supporting an in-place debug update. No release
+signing/distribution, manifest change, permission change or generated APK commit.
+
+No DISPLAY/WAYLAND_DISPLAY; authorized `adb devices -l` returned an empty list.
+**UI compiled, but graphical Desktop/physical Android smoke tests were not performed.**
+The user's prior PR #9 device results are distinct from this new slice. Execute
+[the exact physical A–J plan](TEXT_READER.md#verification-and-physical-plan),
+including cache-only deletion and complete process restart. New private-file
+provider behavior, lazy layout/restoration and device scrolling need that review.
+
+`git diff --check`, full `git diff origin/main...HEAD --check`, local Markdown link
+check and complete diff inspection passed before delivery. Core/source/security/
+resource-cache/progress-store/schema/dependency/manifest diffs are empty. New code
+has GPL-3.0-or-later SPDX headers. No secrets or generated database/progress/cache/
+reader backing/APK/build artifacts are versioned. This is not v0.0.1 completion;
+known costs/limits are in [TEXT_READER.md](TEXT_READER.md) and
+[ADR 0017](adr/0017-indexed-text-document.md). PR is left open, without merge.
+
 ## PR #9 catalog Library actions — 2026-10-03
 
 Verified starting main: **bb7dc10728c8560df47f8d21e4bf8535439e7686**, the PR #8

@@ -81,7 +81,7 @@ map to TEXT/`text/plain`; `Text PDF`/`PDF` plus `.pdf` map to PDF/`application/p
 These MIME expectations are validated against HTTP Content-Type, not invented
 source MIME fields. No EPUB/HTML/archive acquisition. Demo verifies a UTF-8 TEXT
 prefix, not all files' charsets or PDF validity. The separate TextReader consumes
-the complete selected TEXT under its lower 512 KiB limit and rejects invalid UTF-8.
+the complete selected TEXT under its lower 16 MiB preparation limit and rejects invalid UTF-8.
 
 Resource keys are validated filenames, never URLs. Size must be known, positive,
 at most 64 MiB. Hashes supplied by IA are not verified by a prefix check:
@@ -212,9 +212,12 @@ or automatically enriched. No compatible TEXT gives a controlled error; PDF/EPUB
 are never selected by this reader.
 
 Source rights/access/host/64 MiB limits remain unchanged. Reader requires known,
-stable positive size **≤512 KiB**, exact EOF and valid complete UTF-8 (one leading
-BOM removed). Whole open operation is bounded to 60s. Each reopening acquires
-again; no cache, persistent download, progress or reader settings. The following
+stable positive size **≤16 MiB**, exact EOF and valid complete UTF-8 (one leading
+BOM removed). Whole open operation is bounded to 60s. Each reopening still acquires
+again because revisions remain unknown. The later resource cache infrastructure,
+persistent progress and Library/History are separate; no persistent Download or
+reader settings. PR #10 indexes private temporary TEXT files and lazily displays
+bounded windows; [TEXT_READER.md](TEXT_READER.md). The following
 new opt-in task uses the same session/controllers, reads the full small verified
 government text, reports counts only and verifies Back:
 

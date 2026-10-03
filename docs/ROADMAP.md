@@ -24,7 +24,7 @@ Open INFINILECT → search for a book → get real results → open one → read
    graphical desktop; see VERIFICATION.md. This is a search slice, not v0.0.1 completion.
 4. **Implemented for a narrow subset:** select Internet Archive in Desktop,
    search public CC0 items, open a TEXT resource through ResourceLoader/
-   ResourceContent, validate complete UTF-8 up to 512 KiB, display TextReader,
+   ResourceContent, incrementally validate/index UTF-8 up to 16 MiB, display TextReader,
    and Back to retained query/results. Gutenberg remains search-only. No EPUB/PDF,
    reader settings or EPUB/PDF support. Graphical smoke verification is pending.
 5. **First disk tier implemented:** bounded automatic resource cache with restart
@@ -39,9 +39,12 @@ Open INFINILECT → search for a book → get real results → open one → read
    SQLDelight database, shared Search/Library/History navigation and source-resolved
    reopen. No cached metadata authorization or progress migration. The user reports
    that corrected PR #8 Library/History survive physical Android process restart;
-   the new catalog-action A–J plan still needs device verification. [Policy](LIBRARY_HISTORY.md),
+   PR #9 physical testing also confirmed catalog actions and the basic reading flow. [Policy](LIBRARY_HISTORY.md),
    [ADR 0016](adr/0016-local-library-history.md).
-8. Verify the full path on Desktop and Android with real results and document its limits.
+8. **Implemented in PR #10:** disk-backed indexed TEXT preparation, bounded lazy
+   windows and existing logical progress compatibility. Large-publication physical
+   A–J verification remains pending; [TEXT policy](TEXT_READER.md).
+9. Verify the full path on Desktop and Android with real results and document its limits.
 
 Completion means actual source-backed reading, not a simulated catalog or a
 welcome window. No completed release is implied by `0.0.1-SNAPSHOT`.
@@ -100,5 +103,4 @@ Search/Reader share membership, and Library/History retain simple metadata lists
 Saving changes no History, ReadingProgress or cached bytes and makes no source
 request. Later opening still resolves PublicationId through its owning source;
 stored metadata/rights/URLs never authorize acquisition. No schema/dependency
-change, cover requests or broader reader features. New physical verification is
-pending; [policy and manual plan](LIBRARY_HISTORY.md#pr-9-catalog-action-physical-test-plan).
+change, cover requests or broader reader features. PR #9 physical testing has passed; [policy and manual plan](LIBRARY_HISTORY.md#pr-9-catalog-action-physical-test-plan).

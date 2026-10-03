@@ -24,8 +24,9 @@ you press **Next page**. There is no automatic search or prefetching.
 Select **Internet Archive** to search public CC0 text items, press **Open text**,
 and read a real TEXT resource in the first minimal TextReader. **Back to results**
 keeps the selected source, query and current results. Only strictly valid UTF-8
-with known size up to **512 KiB** is supported; unavailable TEXT resources give a
-controlled error. Project Gutenberg remains **search-only**.
+with known size up to **16 MiB** is supported; unavailable TEXT resources give a
+controlled error. Text is prepared in private temporary storage and displayed
+through bounded lazy windows; [reader policy](docs/TEXT_READER.md). Project Gutenberg remains **search-only**.
 
 This is a conservative first reading path, with local approximate TEXT progress across restarts, without reader
 settings, EPUB/PDF reader or persistent downloads. Automatic bounded disk caching
@@ -122,7 +123,7 @@ verifies strict UTF-8 and Back, and logs only counts, never publication text:
 ```
 
 It is opt-in, never runs in tests/build, and reads one small verified document
-under the 512 KiB reader limit. This CLI check is not a graphical UI smoke test.
+under the 16 MiB reader limit. This CLI check is not a graphical UI smoke test.
 
 Actual verification and environment limitations are recorded in [VERIFICATION.md](docs/VERIFICATION.md).
 
