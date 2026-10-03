@@ -67,7 +67,9 @@ class OpenPublicationControllerTest {
             }
         }
         fun controller(scope: TestScope) = OpenPublicationController(source, loader, scope,
-            StandardTestDispatcher(scope.testScheduler))
+            StandardTestDispatcher(scope.testScheduler)).also { value ->
+                scope.coroutineContext[Job]?.invokeOnCompletion { value.close() }
+            }
     }
 
     @Test fun opensSelectedTextOnceConsumesFullResourceAndCloses() = runTest {
@@ -79,8 +81,10 @@ class OpenPublicationControllerTest {
         assertEquals(summary, assertIs<OpenPublicationState.Loading>(controller.state.value).publication)
         advanceUntilIdle()
         val document = assertIs<OpenPublicationState.Ready>(controller.state.value).document
-        assertEquals(TextDocument(id, publication.title, content.bytes.decodeToString(),
-            ReadingProgressId(id, textResource.key, PublicationFormat.TEXT)), document)
+        assertEquals(id, document.publicationId)
+        assertEquals(publication.title, document.title)
+        assertEquals(ReadingProgressId(id, textResource.key, PublicationFormat.TEXT), document.progressId)
+        assertEquals(content.bytes.decodeToString(), document.window(0).text)
         assertEquals(listOf(id), fixture.requestedIds)
         assertEquals(listOf(textResource), fixture.loaded)
         assertEquals(content.bytes.size, content.position)
@@ -161,7 +165,7 @@ class OpenPublicationControllerTest {
         val content = Content(ByteArray(MAX_TEXT_DOCUMENT_BYTES) { 65 }, chunk = 8192)
         val controller = Fixture(acquire = { content }).controller(this)
         controller.open(summary); advanceUntilIdle()
-        assertEquals(MAX_TEXT_DOCUMENT_BYTES, assertIs<OpenPublicationState.Ready>(controller.state.value).document.text.length)
+        assertEquals(MAX_TEXT_DOCUMENT_BYTES, assertIs<OpenPublicationState.Ready>(controller.state.value).document.codePoints)
         assertEquals(MAX_TEXT_DOCUMENT_BYTES, content.position); assertEquals(1, content.closes)
     }
 
@@ -216,7 +220,7 @@ class OpenPublicationControllerTest {
         val content = Content(expected.encodeToByteArray(), chunk = 1)
         val controller = Fixture(acquire = { content }).controller(this)
         controller.open(summary); advanceUntilIdle()
-        assertEquals(expected, assertIs<OpenPublicationState.Ready>(controller.state.value).document.text)
+        assertEquals(expected, assertIs<OpenPublicationState.Ready>(controller.state.value).document.window(0).text)
         assertEquals(1, content.closes)
     }
 
@@ -224,7 +228,7 @@ class OpenPublicationControllerTest {
         val content = Content("\uFEFFtext\uFEFFend".encodeToByteArray(), chunk = 1)
         val controller = Fixture(acquire = { content }).controller(this)
         controller.open(summary); advanceUntilIdle()
-        assertEquals("text\uFEFFend", assertIs<OpenPublicationState.Ready>(controller.state.value).document.text)
+        assertEquals("text\uFEFFend", assertIs<OpenPublicationState.Ready>(controller.state.value).document.window(0).text)
         assertEquals(1, content.closes)
     }
 
@@ -274,7 +278,7 @@ class OpenPublicationControllerTest {
         assertIs<OpenPublicationState.Error>(controller.state.value)
         fail = false
         controller.open(summary); advanceUntilIdle()
-        assertEquals("retry", assertIs<OpenPublicationState.Ready>(controller.state.value).document.text)
+        assertEquals("retry", assertIs<OpenPublicationState.Ready>(controller.state.value).document.window(0).text)
         assertEquals(2, fixture.loaded.size)
     }
 
@@ -327,9 +331,9 @@ class OpenPublicationControllerTest {
         val controller = Fixture(acquire = { if (acquisitions++ == 0) old else fresh }).controller(this)
         controller.open(summary); runCurrent()
         controller.cancel(); controller.open(summary); runCurrent()
-        assertEquals("fresh", assertIs<OpenPublicationState.Ready>(controller.state.value).document.text)
+        assertEquals("fresh", assertIs<OpenPublicationState.Ready>(controller.state.value).document.window(0).text)
         gate.complete(Unit); advanceUntilIdle()
-        assertEquals("fresh", assertIs<OpenPublicationState.Ready>(controller.state.value).document.text)
+        assertEquals("fresh", assertIs<OpenPublicationState.Ready>(controller.state.value).document.window(0).text)
         assertEquals(1, old.closes); assertEquals(1, fresh.closes)
     }
 

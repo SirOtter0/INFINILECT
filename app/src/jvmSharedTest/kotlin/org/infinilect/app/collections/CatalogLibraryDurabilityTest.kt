@@ -125,7 +125,7 @@ class CatalogLibraryDurabilityTest {
         assertTrue(f.progressStore.save(ReadingProgress(key,ReadingLocator.Text(6,10),0.6,1)))
         f.session.openSearch(f.source.catalog);advanceUntilIdle()
         val ready=assertIs<OpenPublicationState.Ready>(f.session.opening.value)
-        assertEquals("Fresh title",ready.document.title);assertEquals(6,assertNotNull(ready.reading).utf16Offset.value)
+        assertEquals("Fresh title",ready.document.title);assertEquals(6,assertNotNull(ready.reading).codePointOffset.value)
         assertEquals(true,f.session.collections.reader.value.inLibrary);assertEquals(1,f.source.metadata);assertEquals(1,f.source.loads)
         f.session.collections.toggleLibrary();advanceUntilIdle();f.session.back();advanceUntilIdle()
         assertEquals(false,f.session.collections.membership.value.forPublication(f.source.catalog.id).inLibrary)

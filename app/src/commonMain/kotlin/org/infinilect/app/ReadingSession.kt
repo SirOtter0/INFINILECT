@@ -26,12 +26,13 @@ internal class ReadingSession(
     private val scope: CoroutineScope,
     val textReadingEnabled: Boolean,
     loader: ResourceLoader = DirectResourceLoader(source),
-    decodingDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    decodingDispatcher: CoroutineDispatcher = org.infinilect.app.reader.textPreparationDispatcher,
     progress: ProgressPersistence? = null,
+    preparer: org.infinilect.app.reader.TextPreparer = org.infinilect.app.reader.defaultTextPreparer(),
     onOpened: (Publication) -> Unit = {},
 ) : ApplicationSessionLifetime {
     val search = SearchController(source)
-    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, onOpened)
+    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, preparer, onOpened)
     private val mutableQuery = MutableStateFlow("")
     val query: StateFlow<String> = mutableQuery.asStateFlow()
     private var searchJob: Job? = null

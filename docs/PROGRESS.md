@@ -40,12 +40,14 @@ nonnegative and older saves cannot replace newer committed state.
 
 ## TEXT location and approximation
 
-Offsets count Unicode code points in the decoded String **after** stripping one
-leading UTF-8 BOM. A surrogate pair counts as one point; a UTF-16 layout index inside
-it rounds down. The persisted offset never splits a pair or a UTF-8 sequence.
-A sparse index checkpoints every 256 code points so scroll reports do not rescan
-the whole document. The existing strict UTF-8/BOM/exact EOF and 512 KiB byte cap
-are unchanged; this does not detect other encodings or change text normalization.
+Offsets count Unicode code points in decoded text **after** stripping one leading
+UTF-8 BOM. PR #10 prepares a disk-backed indexed document instead of a whole String.
+The persisted identity/locator/format is unchanged: **no migration**. A global
+sparse byte/code-point index locates a bounded display window; its small UTF-16
+index checkpoints every 256 points. A surrogate pair counts once and a layout
+index inside it rounds down. No whole-document rescan/string is needed to restore.
+Strict UTF-8/BOM/exact EOF semantics remain, with a separate 16 MiB preparation cap;
+see [TEXT_READER.md](TEXT_READER.md). No other encoding or normalization is inferred.
 
 0 is the beginning; offset == length is EOF; empty text maps to 0/0 progression
 (the loader still rejects empty reading documents). Negative/invalid persisted
@@ -55,8 +57,8 @@ length changed, restore the saved normalized proportion in the new length.
 This is an approximation: same-length edits can move passages, and no checksum or
 fabricated source revision is inferred. A resource-key change does not transfer it.
 
-Compose translates the offset to the containing line's top using the **current**
-TextLayoutResult, clamped to the current scroll range. Reports use the top visible
+Compose selects the indexed window, then translates its local offset to the
+containing line's top using that window's **current** TextLayoutResult/lazy viewport. Reports use the top visible
 line's text offset. Pixels exist only during layout and are never persisted.
 Viewport/density/wrapping changes can alter the exact line; no exact pixel promise.
 Restoration itself does not overwrite a stored position with its rounded line.

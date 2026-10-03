@@ -17,7 +17,7 @@ internal enum class Destination { SEARCH, LIBRARY, HISTORY }
 internal class ApplicationSession(
     private val sources: ApplicationSources,
     scope: CoroutineScope,
-    private val decodingDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val decodingDispatcher: CoroutineDispatcher = org.infinilect.app.reader.textPreparationDispatcher,
     private val clock: () -> Long = sources.progress?.clock ?: { Clock.System.now().toEpochMilliseconds() },
 ) : ApplicationSessionLifetime {
     private val job=SupervisorJob(scope.coroutineContext[Job])
@@ -28,7 +28,7 @@ internal class ApplicationSession(
     val destination=mutableDestination.asStateFlow()
     val collections=CollectionsController(sources.collections,this.scope,clock)
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
-        sources.loaderFor(option.source),decodingDispatcher,sources.progress) { publication ->
+        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer) { publication ->
         collections.enteredReader(publication)
         sources.collections?.recordOpened(publication,clock())
     }

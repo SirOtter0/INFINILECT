@@ -25,8 +25,9 @@ No hay búsqueda automática ni precarga.
 Selecciona **Internet Archive** para buscar textos públicos CC0, pulsa **Open text**
 y lee un recurso TEXT real en el primer TextReader mínimo. **Back to results**
 conserva la fuente seleccionada, consulta y resultados actuales. Solo admite UTF-8
-estrictamente válido, con tamaño conocido de hasta **512 KiB**; la ausencia de TEXT
-produce un error controlado. Project Gutenberg sigue siendo **solo búsqueda**.
+estrictamente válido, con tamaño conocido de hasta **16 MiB**; la ausencia de TEXT
+produce un error controlado. El texto usa preparación temporal privada y ventanas acotadas;
+[política del lector](docs/TEXT_READER.md). Project Gutenberg sigue siendo **solo búsqueda**.
 
 Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
 entre reinicios, sin ajustes de lector, lector EPUB/PDF ni downloads persistentes. La caché de disco automática
@@ -126,7 +127,7 @@ que la UI, verifica UTF-8 estricto y Back, y solo registra cantidades, nunca tex
 ```
 
 Es opt-in, no se ejecuta en tests/build y lee un único documento pequeño verificado
-bajo el límite de 512 KiB. El check CLI no equivale a una prueba gráfica de la UI.
+bajo el límite de 16 MiB. El check CLI no equivale a una prueba gráfica de la UI.
 
 Los resultados reales de verificación y límites del entorno están en [VERIFICATION.md](docs/VERIFICATION.md).
 

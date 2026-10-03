@@ -24,7 +24,8 @@ fun createApplicationSources(context: Context): ApplicationSources {
         onFailure = androidCollectionsDiagnostics(debuggable))
     return createSources(DiskResourceCache(directory), progressDirectory, progressDiagnostics = { failure ->
         if (debuggable) Log.w("INFINILECTProgress", "${failure.operation}/${failure.stage}/${failure.reason}")
-    }, collections = ApplicationCollections(store.library,store.history,release = store::close))
+    }, collections = ApplicationCollections(store.library,store.history,release = store::close),
+        textDirectory = org.infinilect.app.reader.androidTextDirectory(appContext.cacheDir.toPath()))
 }
 
 internal fun androidCacheDirectory(privateCacheDir: File): Path = privateCacheDir.toPath().resolve(CACHE_DIRECTORY_NAME)
@@ -35,6 +36,7 @@ internal fun createApplicationSources(
     progressDiagnostics: (ProgressStorageFailure) -> Unit = {},
 ): ApplicationSources = createSources(
     DiskResourceCache(androidCacheDirectory(privateCacheDir)), privateFilesDir?.let(::androidProgressDirectory), progressDiagnostics,
+    textDirectory = org.infinilect.app.reader.androidTextDirectory(privateCacheDir.toPath()),
 )
 
 internal fun androidProgressDirectory(privateFilesDir: File): Path =

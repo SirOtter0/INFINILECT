@@ -172,17 +172,22 @@ with the existing source-neutral helper. No PDF/EPUB fallback. Acquisition still
 refreshes permissions/location metadata within InternetArchiveSource; its public
 CC0 scope, fail-closed redirects, 64 MiB source cap and null revisions are unchanged.
 
-The app-level **512 KiB** document cap is separate and lower. Require a known,
-positive stable size, allocate one size+1 payload buffer, read sequential chunks
-of at most 8 KiB, verify exact EOF/declared length, and probe at most one excess
-byte. Unknown/changed/oversized sizes, short/long streams or invalid read counts
-fail safely. Close in finally on success, failure and cancellation, preserving
-the primary error if cleanup fails. The handle is closed before strict UTF-8
-decoding on Dispatchers.Default. Strip exactly one leading UTF-8 BOM; preserve
-interior BOMs. Empty/whitespace/NUL-bearing text is not shown as a readable document.
-No chunk-list/payload concatenation or unbounded read; decoding necessarily
-creates the final bounded String. TextDocument contains ID, title, text, its resource-scoped progress identity and a
-sparse Unicode index, without a live handle or source policy.
+The app-level **16 MiB** preparation cap is separate and lower than the source's
+64 MiB acquisition limit. Require a known, positive stable size and exact EOF,
+with at most one excess probe byte. Strict incremental UTF-8 decoding/indexing
+uses at-most-8-KiB requests, carries split sequences and closes ResourceContent on
+all terminal paths. One leading BOM is omitted logically; interior BOMs remain.
+Empty/whitespace/NUL-bearing text is rejected. No whole-book String/ByteArray.
+
+Application-owned FileTextPreparer writes a private session file and builds two
+bounded primitive byte/code-point indexes. TextDocument exposes total code points,
+window lookup and suspend bounded window reads without source/transport/filesystem
+APIs. Each window is at most 2,048 points; cache at most eight decoded windows.
+Shared Compose lazily lays out visible windows. Production preparation/window IO
+runs on Dispatchers.IO. Android uses cacheDir/reader-text-v1; Desktop uses private
+per-user cache conventions. Normal close removes files off the UI thread; owner
+locks permit conservative stale cleanup. These files are neither ResourceCache
+nor Downloads. [TEXT policy](TEXT_READER.md), [ADR 0017](adr/0017-indexed-text-document.md).
 
 OpenPublicationController owns a job in the session's UI scope and exposes
 Idle/Loading/Ready/Error. Ignore duplicate Open while Loading, bound the whole
@@ -193,7 +198,7 @@ Back/logical-position callbacks, with title, plain text, approximate whole
 percentage and vertical scroll.
 
 ReadingSession owns one SearchController, opener, query and search job. UI-thread
-actions are serialized by the UI dispatcher; decoder work returns to that scope
+actions are serialized by the UI dispatcher; preparation work returns to that scope
 before state publication. ApplicationSession now owns the small Search/Library/History destinations;
 Idle shows the selected destination, Loading/Error the opening screen, Ready the
 reader. Back resets opening state and returns to its origin, keeping Search
@@ -219,7 +224,7 @@ opens a sequential HTTP stream. Its producer keeps Ktor's public scoped streamin
 response alive until close/cancellation; close aborts without waiting for transfer
 or materializing the file. A later consumer must open a fresh handle. That acquisition
 slice introduced no cache, registry or simultaneous-source search. The later bounded
-TextReader uses a fresh handle and consumes the entire eligible small resource;
+TextReader preparation uses a fresh handle and consumes the entire eligible bounded resource;
 the historical prefix check remains independent.
 
 ## First Android target and lifecycle

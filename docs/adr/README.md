@@ -21,4 +21,6 @@ Accepted decisions for the foundation, search, acquisition and first TEXT reader
 - [0015: Persistent logical reading progress](0015-persistent-reading-progress.md)
 - [0016: Persistent local library and reading history](0016-local-library-history.md)
 
+- [0017: Bounded indexed TEXT documents](0017-indexed-text-document.md)
+
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.

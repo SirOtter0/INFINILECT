@@ -126,7 +126,7 @@ resource-acquisition experiment. It uses official advanced search/item JSON APIs
 and documented individual download permalinks, supporting only public CC0 text
 items with validated TEXT/PDF files. Desktop now selects either Gutenberg search
 or Internet Archive search/first TEXT reading, one active source at a time.
-The source-neutral TextReader requires full strict UTF-8 with known size ≤512 KiB;
+The source-neutral TextReader requires full strict UTF-8 with known size ≤16 MiB;
 PDF/EPUB are not opened. Archive's existing opt-in prefix demo still reads at most
 512 bytes; its new full-text check uses the same session/controller as the UI.
 No arbitrary metadata URL is acquired. Fresh item-scoped delivery locations, permission

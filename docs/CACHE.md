@@ -61,7 +61,9 @@ returning bytes. Verification uses a 64 KiB buffer and checks cancellation. Cach
 files are immutable while owned. Corruption/missing metadata/payload disagreement
 is a miss and invalid files are deleted best-effort. A mid-handle I/O failure is
 reported rather than silently mixing cached and newly acquired bytes.
-The reader's separate 512 KiB TEXT/UTF-8/BOM/EOF policy remains unchanged.
+The reader's separate 16 MiB TEXT preparation policy preserves strict UTF-8/BOM/EOF
+checks. Session reader backing files are separate from this resource cache; see
+[TEXT_READER.md](TEXT_READER.md).
 
 ## Budget and approximate LRU
 

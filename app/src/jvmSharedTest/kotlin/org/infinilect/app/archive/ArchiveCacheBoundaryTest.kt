@@ -38,7 +38,8 @@ class ArchiveCacheBoundaryTest {
                         val publication = assertNotNull(source.getPublication(id))
                         assertTrue(publication.resources.all { it.revision == null })
                         val document = loadTextDocument(publication, resource, loader, StandardTestDispatcher(testScheduler))
-                        assertEquals(2566, document.text.length)
+                        assertEquals(2566, document.codePoints)
+                        document.close()
                     }
                     assertEquals(4, metadata); assertEquals(2, downloads)
                     assertFalse(Files.exists(directory.resolve("resource-cache-v1")))
