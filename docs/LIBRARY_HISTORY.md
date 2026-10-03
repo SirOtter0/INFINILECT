@@ -166,3 +166,59 @@ J. No storage/save failure messages during normal operation.
 The small existing example is identifier:gmb-2015-93040. IA resources still have
 revision=null: every reopen must run the usual fresh acquisition checks, including
 when progress or saved metadata exists. Do not clear app data/storage for step H.
+
+## Android result-returning PRAGMA correction — 2026-10-03
+
+Physical testing of the original PR #8 APK at cae78d92145604c336f1ccc56e9a0ac2c6cd34f9
+found Library/History unavailable while PR #7 progress survived the update. That
+report overrides any inference of Android durability from JDBC/host tests above.
+
+The Android onConfigure callback used execSQL for busy_timeout=3000. This PRAGMA
+returns a row; Android's non-query execution rejects SQLITE_ROW. Every operation
+also used SQLDelight execute for max_page_count assignment, which likewise returns
+a row. AndroidSqliteDriver 2.4.0 implements execute via executeUpdateDelete, so
+that call is a second independent blocker after configuration is corrected.
+JDBC accepts these result-returning statements via its generic execute path;
+previous host tests did not exercise the Android callback/non-query contract.
+
+Official evidence:
+
+- [AOSP API 26 native executeNonQuery](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-8.0.0_r1/core/jni/android_database_SQLiteConnection.cpp):
+  SQLITE_ROW throws; nativeExecute and nativeExecuteForChangedRowCount share it.
+- [AOSP API 26 SQLiteConnection](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-8.0.0_r1/core/java/android/database/sqlite/SQLiteConnection.java):
+  result-returning PRAGMA assignments use executeForLong rather than execute.
+- [SQLDelight exact Android driver](https://github.com/sqldelight/sqldelight/blob/2.4.0/drivers/android-driver/src/main/java/app/cash/sqldelight/driver/android/AndroidSqliteDriver.kt):
+  AndroidPreparedStatement.execute calls executeUpdateDelete; executeQuery uses a cursor.
+- [SQLite max_page_count](https://www.sqlite.org/pragma.html#pragma_max_page_count)
+  explicitly says both forms return the maximum page count;
+  [busy_timeout](https://www.sqlite.org/pragma.html#pragma_busy_timeout) queries/sets the handler.
+
+Fix: query busy_timeout through SupportSQLiteDatabase.query, consume exactly one
+3000-ms value and close the cursor. Query max_page_count through SqlDriver.executeQuery
+inside the same transaction/connection, and require the returned count to equal
+the intended 64-MiB page limit. No quota, timeout, foreign-key, synchronous FULL,
+atomic transaction or corruption policy is dropped. Cursor/driver cleanup remains
+explicit. No schema/version/storage path changes, no RAM fallback, and the original
+user-visible error remains. Existing progress/source/cache implementations are intact.
+
+CollectionsStorageFailure carries only fixed operation/stage/reason enums. Stage
+markers cover storage path, driver, configure, schema, transaction, page limits,
+queries/mutations, commit and close. Errors/cancellation still return/propagate as
+before; diagnostic failures cannot change the outcome. Android logs these enums
+under INFINILECTCollections only when ApplicationInfo.FLAG_DEBUGGABLE is set;
+release logs nothing. No exception messages/classes, IDs, titles, URLs, SQL, paths,
+contents or telemetry cross that boundary. Capture failure-only debug output with:
+
+```sh
+adb logcat -s INFINILECTCollections:W '*:S'
+```
+
+Offline regressions invoke the production callback through a JDBC-backed
+SupportSQLiteDatabase/Cursor seam that rejects result-returning commands like
+AOSP, and exercise store transactions with the same strict command contract.
+New store/driver restart tests prove committed bytes, not RAM restoration. These
+are **host simulations**, not Android OS/provider execution. No device log was
+available to independently confirm the first exception on the user's device;
+source evidence identifies two concrete incompatible calls in the tested path.
+The new APK must repeat the physical A–J plan, including terminate/relaunch,
+cache-only deletion, progress preservation and normal fresh source acquisition.

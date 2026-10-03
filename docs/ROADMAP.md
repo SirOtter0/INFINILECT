@@ -89,3 +89,12 @@ a complete plugin system are outside v0.0.1 and this search slice.
 Gutenberg documents XML OPDS retirement planned for 2027 and an OPDS2 testing feed
 requiring contact. Recheck the official interface before further source work;
 do not silently substitute an aggregator or an undocumented endpoint.
+
+## v0.1 follow-up — Library actions from catalog results
+
+The experimental local-library slice currently adds publications only from the
+reader. Add a metadata-only Library action directly to search/catalog results so
+opening a publication is not required to save its snapshot. Saved results must
+still re-resolve PublicationId through the owning PublicationSource on later open;
+stored metadata/rights/URLs must never authorize acquisition. This is deferred,
+not implemented in the PR #8 Android storage correction.

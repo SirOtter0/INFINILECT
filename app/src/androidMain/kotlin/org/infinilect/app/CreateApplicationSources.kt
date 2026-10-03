@@ -20,7 +20,8 @@ fun createApplicationSources(context: Context): ApplicationSources {
     val directory = try { androidCacheDirectory(context.applicationContext.cacheDir) } catch (_: Exception) { null }
     val progressDirectory = try { androidProgressDirectory(context.applicationContext.filesDir) } catch (_: Exception) { null }
     val debuggable = context.applicationContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-    val store = SqlCollectionsStore({ androidCollectionsDriver(appContext) })
+    val store = SqlCollectionsStore({ androidCollectionsDriver(appContext) },
+        onFailure = androidCollectionsDiagnostics(debuggable))
     return createSources(DiskResourceCache(directory), progressDirectory, progressDiagnostics = { failure ->
         if (debuggable) Log.w("INFINILECTProgress", "${failure.operation}/${failure.stage}/${failure.reason}")
     }, collections = ApplicationCollections(store.library,store.history,release = store::close))
