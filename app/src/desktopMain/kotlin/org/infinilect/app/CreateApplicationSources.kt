@@ -6,5 +6,11 @@ import org.infinilect.app.network.createSources
 import org.infinilect.app.cache.DiskResourceCache
 import org.infinilect.app.cache.desktopCacheDirectory
 import org.infinilect.app.progress.desktopProgressDirectory
+import org.infinilect.app.collections.*
 
-fun createApplicationSources(): ApplicationSources = createSources(DiskResourceCache(desktopCacheDirectory()), desktopProgressDirectory())
+fun createApplicationSources(): ApplicationSources {
+    val progress = desktopProgressDirectory()
+    val store = SqlCollectionsStore({ desktopCollectionsDriver(desktopCollectionsFile(progress)) })
+    return createSources(DiskResourceCache(desktopCacheDirectory()), progress,
+        collections = ApplicationCollections(store.library,store.history,release = store::close))
+}

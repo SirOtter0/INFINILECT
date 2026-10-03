@@ -30,6 +30,7 @@ internal fun TextReader(
     reading: TextReadingProgress?,
     saveFailed: Boolean,
     onBack: () -> Unit,
+    backLabel: String = "Back to results",
 ) {
     val scroll = rememberScrollState()
     var layout by remember(document) { mutableStateOf<TextLayoutResult?>(null) }
@@ -51,7 +52,7 @@ internal fun TextReader(
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(document.title, style = MaterialTheme.typography.h6, modifier = Modifier.weight(1f))
-            Button(onClick = onBack) { Text("Back to results") }
+            Button(onClick = onBack) { Text(backLabel) }
         }
         if (reading != null) {
             val percent = (document.locations.progression(document.locations.locator(offset)) * 100).toInt()

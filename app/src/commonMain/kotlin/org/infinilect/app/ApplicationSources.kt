@@ -6,6 +6,7 @@ import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.core.PublicationSource
 import org.infinilect.core.ResourceLoader
+import org.infinilect.app.collections.ApplicationCollections
 
 /** One platform application owns these clients and the currently attached session.
  * UI-thread lifecycle: cancel the session before closing transport, exactly once.
@@ -15,9 +16,10 @@ class ApplicationSources internal constructor(
     internal val options: List<SourceOption>,
     private val createLoader: (PublicationSource) -> ResourceLoader = { DirectResourceLoader(it) },
     internal val progress: ProgressPersistence? = null,
+    internal val collections: ApplicationCollections? = null,
     private val releaseSources: () -> Unit,
 ) {
-    private var session: ReadingSession? = null
+    private var session: ApplicationSessionLifetime? = null
     private var closed = false
 
     internal fun loaderFor(source: PublicationSource): ResourceLoader {
@@ -25,20 +27,20 @@ class ApplicationSources internal constructor(
         return createLoader(source)
     }
 
-    internal fun attach(value: ReadingSession) {
+    internal fun attach(value: ApplicationSessionLifetime) {
         check(!closed) { "Application sources are closed." }
         if (session !== value) session?.close()
         session = value
     }
 
-    internal fun detach(value: ReadingSession) {
+    internal fun detach(value: ApplicationSessionLifetime) {
         value.close()
         if (session === value) session = null
     }
 
-    fun flushProgress() { session?.opening?.flushProgress() }
+    fun flushProgress() { session?.flushProgress() }
 
-    suspend fun awaitProgressClosed() { progress?.awaitClosed() }
+    suspend fun awaitProgressClosed() { progress?.awaitClosed(); collections?.awaitClosed() }
 
     fun close() {
         if (closed) return
@@ -46,8 +48,14 @@ class ApplicationSources internal constructor(
         session?.close()
         session = null
         progress?.close()
+        collections?.close()
         releaseSources()
     }
+}
+
+internal interface ApplicationSessionLifetime {
+    fun flushProgress()
+    fun close()
 }
 
 // Platform factories choose private storage; no Context/filesystem type enters common UI.

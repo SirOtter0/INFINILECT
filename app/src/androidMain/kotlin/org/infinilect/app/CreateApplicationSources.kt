@@ -12,15 +12,18 @@ import org.infinilect.app.cache.CACHE_DIRECTORY_NAME
 import org.infinilect.app.cache.DiskResourceCache
 import org.infinilect.app.progress.PROGRESS_DIRECTORY_NAME
 import org.infinilect.app.progress.ProgressStorageFailure
+import org.infinilect.app.collections.*
 
 /** Extract the application-private path immediately; neither cache nor sources retain Context. */
 fun createApplicationSources(context: Context): ApplicationSources {
+    val appContext = context.applicationContext
     val directory = try { androidCacheDirectory(context.applicationContext.cacheDir) } catch (_: Exception) { null }
     val progressDirectory = try { androidProgressDirectory(context.applicationContext.filesDir) } catch (_: Exception) { null }
     val debuggable = context.applicationContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    val store = SqlCollectionsStore({ androidCollectionsDriver(appContext) })
     return createSources(DiskResourceCache(directory), progressDirectory, progressDiagnostics = { failure ->
         if (debuggable) Log.w("INFINILECTProgress", "${failure.operation}/${failure.stage}/${failure.reason}")
-    })
+    }, collections = ApplicationCollections(store.library,store.history,release = store::close))
 }
 
 internal fun androidCacheDirectory(privateCacheDir: File): Path = privateCacheDir.toPath().resolve(CACHE_DIRECTORY_NAME)
