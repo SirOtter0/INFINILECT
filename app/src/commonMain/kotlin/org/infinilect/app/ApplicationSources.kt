@@ -2,17 +2,19 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app
 
+import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.core.PublicationSource
 import org.infinilect.core.ResourceLoader
 
 /** One platform application owns these clients and the currently attached session.
  * UI-thread lifecycle: cancel the session before closing transport, exactly once.
- * Contains no Activity/Context, registry, persistence or automatic requests.
+ * Contains no Activity/Context, filesystem or automatic requests.
  */
 class ApplicationSources internal constructor(
     internal val options: List<SourceOption>,
     private val createLoader: (PublicationSource) -> ResourceLoader = { DirectResourceLoader(it) },
+    internal val progress: ProgressPersistence? = null,
     private val releaseSources: () -> Unit,
 ) {
     private var session: ReadingSession? = null
@@ -34,11 +36,16 @@ class ApplicationSources internal constructor(
         if (session === value) session = null
     }
 
+    fun flushProgress() { session?.opening?.flushProgress() }
+
+    suspend fun awaitProgressClosed() { progress?.awaitClosed() }
+
     fun close() {
         if (closed) return
         closed = true
         session?.close()
         session = null
+        progress?.close()
         releaseSources()
     }
 }

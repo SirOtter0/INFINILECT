@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.app.reader.OpenPublicationController
 import org.infinilect.app.reader.OpenPublicationState
@@ -26,9 +27,10 @@ internal class ReadingSession(
     val textReadingEnabled: Boolean,
     loader: ResourceLoader = DirectResourceLoader(source),
     decodingDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    progress: ProgressPersistence? = null,
 ) {
     val search = SearchController(source)
-    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher)
+    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress)
     private val mutableQuery = MutableStateFlow("")
     val query: StateFlow<String> = mutableQuery.asStateFlow()
     private var searchJob: Job? = null

@@ -5,5 +5,6 @@ package org.infinilect.app
 import org.infinilect.app.network.createSources
 import org.infinilect.app.cache.DiskResourceCache
 import org.infinilect.app.cache.desktopCacheDirectory
+import org.infinilect.app.progress.desktopProgressDirectory
 
-fun createApplicationSources(): ApplicationSources = createSources(DiskResourceCache(desktopCacheDirectory()))
+fun createApplicationSources(): ApplicationSources = createSources(DiskResourceCache(desktopCacheDirectory()), desktopProgressDirectory())

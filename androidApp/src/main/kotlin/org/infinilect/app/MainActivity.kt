@@ -29,6 +29,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        if (::sources.isInitialized) sources.flushProgress()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         // Cancels the current session first; aborts streaming/client/engine afterward.
         // Re-creation deliberately starts a new session; no retained Activity/clients.

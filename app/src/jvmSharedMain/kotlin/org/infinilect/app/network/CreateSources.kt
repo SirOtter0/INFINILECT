@@ -8,15 +8,20 @@ import org.infinilect.app.archive.InternetArchiveSource
 import org.infinilect.app.gutenberg.GutenbergSource
 import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.app.cache.DiskResourceCache
+import org.infinilect.app.progress.ProgressPersistence
+import org.infinilect.app.progress.FileReadingProgressStore
+import org.infinilect.app.progress.progressTime
+import java.nio.file.Path
 
-internal fun createSources(cache: DiskResourceCache): ApplicationSources {
+internal fun createSources(cache: DiskResourceCache, progressDirectory: Path? = null): ApplicationSources {
     val gutenberg = try { GutenbergSource() } catch (error: Throwable) { cache.close(); throw error }
     val archive = try { InternetArchiveSource() }
     catch (error: Throwable) { try { gutenberg.close() } finally { cache.close() }; throw error }
+    val progress = ProgressPersistence(FileReadingProgressStore(progressDirectory), clock = ::progressTime)
     return ApplicationSources(listOf(
         SourceOption("Project Gutenberg", gutenberg),
         SourceOption("Internet Archive", archive, textReadingEnabled = true),
-    ), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }) {
+    ), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress) {
         try { cache.close() } finally { try { gutenberg.close() } finally { archive.close() } }
     }
 }
