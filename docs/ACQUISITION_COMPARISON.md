@@ -37,3 +37,8 @@ The decision follows rights/access/byte evidence, not convenience alone. OAPEN
 metadata is usable; transfer and client discovery remain separate gates. No
 OapenSource, bypass, aggregator, scraping or change to Gutenberg.
 [ADR 0011](adr/0011-verified-source-acquisition.md).
+
+The subsequent [bounded TEXT reading slice](adr/0012-bounded-text-reading.md)
+connects the selected Archive source to Desktop UI. This comparison's original
+acquisition/redirect experiments remain historical; the new consumer adds no
+source, acquisition-policy expansion or OAPEN/Gutenberg download behavior.

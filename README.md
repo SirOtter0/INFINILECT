@@ -20,10 +20,14 @@ Gutenberg OPDS catalog and shows real book results, authors and languages when
 supplied. Search is submitted explicitly; the next page is fetched only when
 you press **Next page**. There is no automatic search or prefetching.
 
-An independent desktop Internet Archive adapter demonstrates real acquisition of
-a public CC0 text through PublicationSource/ResourceContent, with an opt-in CLI
-check and bounded UTF-8 prefix. This is a conservative subset, not a second source
-in the current UI. No cache, persistent downloads or reader is implemented;
+Select **Internet Archive** to search public CC0 text items, press **Open text**,
+and read a real TEXT resource in the first minimal TextReader. **Back to results**
+keeps the selected source, query and current results. Only strictly valid UTF-8
+with known size up to **512 KiB** is supported; unavailable TEXT resources give a
+controlled error. Project Gutenberg remains **search-only**.
+
+This is a conservative first reading path, with no cache, persistence, reader
+settings, EPUB/PDF reader or persistent downloads. Reopening acquires again;
 **v0.0.1 is not complete**. [Acquisition scope](docs/INTERNET_ARCHIVE.md).
 
 OAPEN's official alternate metadata interface is accessible and supplies download
@@ -51,6 +55,12 @@ Internet access is needed for dependencies.
 On Windows, use `gradlew.bat`. Running requires a graphical desktop and an
 Internet connection for search. Native
 installers and mobile launchers are not included yet.
+
+For a small verified reading example, select Internet Archive and search
+`identifier:gmb-2015-93040`, then press **Open text**. This is a public CC0 Dutch
+government document. Results are not automatically enriched or acquired. Changing
+source cancels the old session and starts with an empty query/results; returning
+from the reader preserves the current session, without saving a reading position.
 
 Versions: Kotlin/Compose compiler 2.4.20, Compose Multiplatform 1.12.1,
 Gradle 9.7.1. See [toolchain evidence](docs/TOOLCHAIN.md) for official compatibility
@@ -82,12 +92,23 @@ No publication text is logged/saved. See source docs for limits and the narrow
 host/access policy. JSON parsing uses desktop kotlinx.serialization-json 1.11.0
 (Apache-2.0); core remains Kotlin-only.
 
+The new full-document check uses the same search/open/session logic as the UI,
+verifies strict UTF-8 and Back, and logs only counts, never publication text:
+
+```sh
+./gradlew :app:internetArchiveTextReadingCheck
+```
+
+It is opt-in, never runs in tests/build, and reads one small verified document
+under the 512 KiB reader limit. This CLI check is not a graphical UI smoke test.
+
 Actual verification and environment limitations are recorded in [VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Small starting structure
 
 - `core`: pure Kotlin domain models and contracts in `commonMain`; JVM target for verification.
-- `app`: shared Compose search UI/state, neutral acquisition demo, desktop adapters and entry point; depends on `core`.
+- `app`: shared Compose search/TextReader UI, source-independent loading/session state,
+  desktop adapters and entry point; depends on `core`.
   [Documented migration](docs/adr/0008-platform-entrypoints.md) separates shared UI,
   desktop and Android entry points when Android is actually added.
 - `docs`: architecture, source policy, cache design, roadmap and decision records.

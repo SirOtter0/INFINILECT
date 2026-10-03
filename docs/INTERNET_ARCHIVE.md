@@ -2,8 +2,9 @@
 
 Initial real integration verified **2026-10-02**; delivery/lifecycle review and
 one new integration check **2026-10-03**. Narrow
-desktop adapter for public **CC0 text items**, plus CLI demonstration; not complete
-Archive support or a reader. Gutenberg UI/policy unchanged. Core has no source,
+desktop adapter for public **CC0 text items**, now consumed by the first minimal
+Desktop TextReader as well as CLI demonstrations; not complete Archive support.
+Gutenberg remains search-only, with unchanged source policy. Core has no source,
 HTTP, JSON or platform dependency.
 
 ## Official interfaces and access
@@ -79,7 +80,8 @@ Unknown licensing yields no selectable files. Only `DjVuTXT`/`Text` plus `.txt`
 map to TEXT/`text/plain`; `Text PDF`/`PDF` plus `.pdf` map to PDF/`application/pdf`.
 These MIME expectations are validated against HTTP Content-Type, not invented
 source MIME fields. No EPUB/HTML/archive acquisition. Demo verifies a UTF-8 TEXT
-prefix, not all files' charsets or PDF validity.
+prefix, not all files' charsets or PDF validity. The separate TextReader consumes
+the complete selected TEXT under its lower 512 KiB limit and rejects invalid UTF-8.
 
 Resource keys are validated filenames, never URLs. Size must be known, positive,
 at most 64 MiB. Hashes supplied by IA are not verified by a prefix check:
@@ -197,3 +199,36 @@ matching the fresh MDAPI primary-node/directory pair. One redirect; no 403/429 o
 retry. This demonstrates another announced node, not all items/hosts/formats.
 Gutenberg/OAPEN live checks were not repeated. No full-file checksum/content
 validation, reader or graphical UI was run.
+
+## First Desktop reading consumer — 2026-10-03
+
+Select Internet Archive, submit a search and explicitly press Open text. The
+opener fetches details, selects TEXT, opens through DirectResourceLoader, consumes
+and closes the complete bounded resource, strictly decodes UTF-8 and passes a
+TextDocument to the source-independent Compose TextReader. Back retains the
+selected source/query/results. Changing source starts a fresh session; no
+cross-source matching or simultaneous search. Search results are not prefetched
+or automatically enriched. No compatible TEXT gives a controlled error; PDF/EPUB
+are never selected by this reader.
+
+Source rights/access/host/64 MiB limits remain unchanged. Reader requires known,
+stable positive size **≤512 KiB**, exact EOF and valid complete UTF-8 (one leading
+BOM removed). Whole open operation is bounded to 60s. Each reopening acquires
+again; no cache, persistent download, progress or reader settings. The following
+new opt-in task uses the same session/controllers, reads the full small verified
+government text, reports counts only and verifies Back:
+
+```sh
+./gradlew :app:internetArchiveTextReadingCheck
+```
+
+It never runs in build/test/check and is not graphical UI validation. Exact live
+result and environment limitations are recorded in [VERIFICATION.md](VERIFICATION.md).
+The earlier prefix/redirect observations above remain historical evidence.
+
+**Once at 2026-10-03T08:06:48.622357109Z:** full-text check succeeded with 5
+requests, HTTP 200/200/200/302/200, one validated redirect to
+`dn760105.eu.archive.org`. **13,878 application-consumed bytes**, including the
+complete **2,566-byte TEXT**, decoded to **2,562 UTF-16 characters**. Exact
+size/EOF and strict UTF-8 passed; handle closed and Back retained query/results.
+No 403/429, retry, text logging or persistence. No graphical smoke test.

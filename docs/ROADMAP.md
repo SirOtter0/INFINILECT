@@ -22,9 +22,11 @@ Open INFINILECT → search for a book → get real results → open one → read
 3. **Implemented:** Compose search/results UI, Idle/Loading/Results/Empty/Error,
    explicit Next page action with no prefetch. Visual execution still needs a
    graphical desktop; see VERIFICATION.md. This is a search slice, not v0.0.1 completion.
-4. Resolve one supported representation through ResourceLoader/ResourceContent
-   and implement a minimal reader (prefer TEXT if the verified source offers it),
-   with a measured byte limit, verified charset and source metadata display.
+4. **Implemented for a narrow subset:** select Internet Archive in Desktop,
+   search public CC0 items, open a TEXT resource through ResourceLoader/
+   ResourceContent, validate complete UTF-8 up to 512 KiB, display TextReader,
+   and Back to retained query/results. Gutenberg remains search-only. No EPUB/PDF,
+   cache, persistence or reader settings. Graphical smoke verification is pending.
 5. Add bounded memory/disk caching with restart-safe eviction and an independent
    progress store; verify progress survives clearing cache. Add SQLDelight only
    if this persistence implementation needs it.
@@ -43,10 +45,16 @@ contracts, consumed up to 512 bytes and closed. A neutral CLI demo proves the
 flow; no multiple-source UI, cache, persistent download, lending or reader.
 [Comparison](ACQUISITION_COMPARISON.md), [scope](INTERNET_ARCHIVE.md).
 
-Next: review the deliberately narrow rights/host/resource rules before expanding
-acquisition or connecting a minimal TEXT reader. Full-file charset/checksum and
-reader behavior still need verification. Gutenberg acquisition remains deferred
-pending official guidance; this experiment does not complete v0.0.1.
+That prefix experiment is now followed by the first UI TEXT reading slice:
+[ADR 0012](adr/0012-bounded-text-reading.md). Full bounded UTF-8 validation is
+implemented; full-file checksum revisions, broader charsets/formats and graphical
+smoke validation remain separate. Gutenberg acquisition stays deferred pending
+official guidance. The small government-document example is not a claim that
+v0.0.1's full book/release roadmap is complete.
+
+Next slice, after reviewing this reading path: bounded memory/disk cache behind
+ResourceLoader, with restart-safe eviction and progress kept independent. No
+cache implementation begins in this reading PR.
 
 ## After the first working slice
 

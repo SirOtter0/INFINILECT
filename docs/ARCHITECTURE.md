@@ -2,7 +2,7 @@
 
 > A source obtains publications. A reader displays them. INFINILECT connects both.
 
-## Foundation, search and acquisition experiment implemented today
+## Foundation, search and bounded TEXT reading implemented today
 
 Two modules are sufficient: `core` and `app`. Both use Kotlin Multiplatform source
 sets, with JVM/desktop as the only configured targets. More targets and modules
@@ -10,17 +10,18 @@ will be introduced with working implementations, not empty placeholders.
 
 `core/commonMain` contains Kotlin-only models and suspend contracts. It has no
 Compose, Readium, Ktor, SQLDelight or platform dependency. `app/commonMain` owns the
-search UI and a small Compose-free search controller using coroutines StateFlow.
+search/TextReader UI and small Compose-free controllers using coroutines StateFlow.
 `app/desktopMain` owns the launcher, GutenbergSource, Ktor Java transport and the
 JDK StAX parser. The launcher injects PublicationSource through SearchController
-and closes the source at shutdown. The dependency direction is
+and closes both configured sources at shutdown. The dependency direction is
 `app → core`; core never refers to app.
 
-Independent InternetArchiveSource in desktopMain implements search, details and
-bounded acquisition; current launcher/UI still injects Gutenberg only. Shared
-DirectResourceLoader, neutral format selection and a prefix consumer demonstrate
-`Publication → PublicationResource → ResourceContent` in an opt-in CLI task.
-No registry/cache/download store/reader. HTTP/JSON, access gates and streaming
+InternetArchiveSource in desktopMain implements search, details and bounded
+acquisition. The launcher supplies two explicit source choices: Gutenberg search
+and public-CC0 Internet Archive text reading. One source/session is active at a
+time; no registry or simultaneous search. Shared DirectResourceLoader and neutral
+format selection are reused by the first TextReader and the existing prefix demo.
+No cache/download store. HTTP/JSON, access gates and streaming
 lifecycle stay in the desktop adapter. Core contracts are sufficient and unchanged.
 See [ADR 0011](adr/0011-verified-source-acquisition.md).
 
@@ -55,7 +56,7 @@ parser or complete language registry. Cover and summary are deferred: title and
 authors suffice for the initial result list, without image acquisition or rich
 text handling. See [ADR 0007](adr/0007-metadata-and-resource-identity.md).
 
-## Intended reading flow (not implemented)
+## Future cache/progress flow (not implemented)
 
 ```mermaid
 flowchart LR
@@ -113,12 +114,13 @@ External source definitions will be declarative data interpreted by trusted
 engines, not downloaded code. See [Sources](SOURCES.md). Cache, explicit downloads
 and progress have separate lifetimes; see [Cache](CACHE.md).
 
-No full reader, engine registry, persistence framework or cache implementation is
+No complete reader framework, engine registry, persistence or cache implementation is
 claimed by the current foundation. See the [ADRs](adr/README.md).
 
 ## Search slice
 
 `SearchScreen → SearchController → PublicationSource → GutenbergSource → Ktor/OPDS`.
+The same controller works with InternetArchiveSource; no duplicated search logic.
 Shared UI observes Idle, Loading, Results, Empty and Error through StateFlow and
 never parses XML or handles HTTP. Only submit/Next page actions initiate requests;
 busy actions are ignored and the source serializes HTTP operations. Pagination
@@ -131,6 +133,50 @@ or an external plugin. It enforces feed, URL, timeout and XML limits. Detail and
 acquisition methods validate source ownership and throw UnsupportedOperationException:
 no false not-found result or fabricated resource bytes. See [Sources](SOURCES.md)
 and [ADR 0009](adr/0009-gutenberg-search.md) for the deliberately limited capabilities.
+
+## First end-to-end TEXT reading slice
+
+```text
+SearchScreen → SearchController → PublicationSource.search
+explicit Open text → OpenPublicationController → PublicationSource.getPublication
+→ selectResource(TEXT) → DirectResourceLoader → PublicationSource.loadResource
+→ ResourceContent → bounded strict UTF-8 loading → TextDocument → TextReader
+```
+
+Only Internet Archive currently enables Open text; Gutenberg remains search-only.
+The opener verifies detail identity and selects the first advertised TEXT resource
+with the existing source-neutral helper. No PDF/EPUB fallback. Acquisition still
+refreshes permissions/location metadata within InternetArchiveSource; its public
+CC0 scope, fail-closed redirects, 64 MiB source cap and null revisions are unchanged.
+
+The app-level **512 KiB** document cap is separate and lower. Require a known,
+positive stable size, allocate one size+1 payload buffer, read sequential chunks
+of at most 8 KiB, verify exact EOF/declared length, and probe at most one excess
+byte. Unknown/changed/oversized sizes, short/long streams or invalid read counts
+fail safely. Close in finally on success, failure and cancellation, preserving
+the primary error if cleanup fails. The handle is closed before strict UTF-8
+decoding on Dispatchers.Default. Strip exactly one leading UTF-8 BOM; preserve
+interior BOMs. Empty/whitespace/NUL-bearing text is not shown as a readable document.
+No chunk-list/payload concatenation or unbounded read; decoding necessarily
+creates the final bounded String. TextDocument contains only ID, title and text.
+
+OpenPublicationController owns a job in the session's UI scope and exposes
+Idle/Loading/Ready/Error. Ignore duplicate Open while Loading, bound the whole
+operation to 60s, propagate cancellation and use an operation generation to
+prevent stale Ready/Error after Back. Errors are fixed safe messages; no transport
+exceptions/URLs/paths pass to the UI. TextReader receives only TextDocument and a
+Back callback, with title, plain text and vertical scroll.
+
+ReadingSession owns one SearchController, opener, query and search job. UI-thread
+actions are serialized by the UI dispatcher; decoder work returns to that scope
+before state publication. Open state doubles as the two-screen navigation state:
+Idle = Search, Loading/Error = opening screen, Ready = Reader. Back resets only
+opening state and keeps source/query/results; it does not refetch. Switching
+source closes/discards the old session, creates a fresh one and resets Compose
+collectors using a session key, so old-source results cannot flash or replace new
+results. No request is started by changing source. Disposal cancels session jobs
+and closes desktop sources. Query/results are session-local; no position/history
+or content cache. See [ADR 0012](adr/0012-bounded-text-reading.md).
 
 ## Acquisition verification and lifecycle
 
@@ -145,7 +191,9 @@ closes its prefix-test handle. Archive validates ownership/fresh permissions and
 opens a sequential HTTP stream. Its producer keeps Ktor's public scoped streaming
 response alive until close/cancellation; close aborts without waiting for transfer
 or materializing the file. A later consumer must open a fresh handle. No cache,
-registry, reader or simultaneous-source UI is introduced.
+registry or simultaneous-source search is introduced. The later bounded
+TextReader uses a fresh handle and consumes the entire eligible small resource;
+the historical prefix check remains independent.
 
 ## Evolution when Android is added (no modules added now)
 
