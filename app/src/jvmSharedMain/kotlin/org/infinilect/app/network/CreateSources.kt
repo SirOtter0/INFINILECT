@@ -20,6 +20,7 @@ internal fun createSources(
     progressDirectory: Path? = null,
     progressDiagnostics: (ProgressStorageFailure) -> Unit = {},
     collections: ApplicationCollections? = null,
+    textDirectory: Path? = org.infinilect.app.reader.desktopTextDirectory(),
 ): ApplicationSources {
     val gutenberg = try { GutenbergSource() } catch (error: Throwable) { collections?.close(); cache.close(); throw error }
     val archive = try { InternetArchiveSource() }
@@ -27,10 +28,11 @@ internal fun createSources(
     val progress = ProgressPersistence(
         FileReadingProgressStore(progressDirectory, onFailure = progressDiagnostics), clock = ::progressTime,
     )
+    val textPreparer = org.infinilect.app.reader.FileTextPreparer(textDirectory)
     return ApplicationSources(listOf(
         SourceOption("Project Gutenberg", gutenberg),
         SourceOption("Internet Archive", archive, textReadingEnabled = true),
-    ), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections) {
+    ), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer) {
         try { cache.close() } finally { try { gutenberg.close() } finally { archive.close() } }
     }
 }

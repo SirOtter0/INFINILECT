@@ -17,6 +17,7 @@ class ApplicationSources internal constructor(
     private val createLoader: (PublicationSource) -> ResourceLoader = { DirectResourceLoader(it) },
     internal val progress: ProgressPersistence? = null,
     internal val collections: ApplicationCollections? = null,
+    internal val textPreparer: org.infinilect.app.reader.TextPreparer = org.infinilect.app.reader.defaultTextPreparer(),
     private val releaseSources: () -> Unit,
 ) {
     private var session: ApplicationSessionLifetime? = null
@@ -40,7 +41,7 @@ class ApplicationSources internal constructor(
 
     fun flushProgress() { session?.flushProgress() }
 
-    suspend fun awaitProgressClosed() { progress?.awaitClosed(); collections?.awaitClosed() }
+    suspend fun awaitProgressClosed() { progress?.awaitClosed(); collections?.awaitClosed(); textPreparer.awaitClosed() }
 
     fun close() {
         if (closed) return
@@ -49,6 +50,7 @@ class ApplicationSources internal constructor(
         session = null
         progress?.close()
         collections?.close()
+        textPreparer.close()
         releaseSources()
     }
 }

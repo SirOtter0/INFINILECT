@@ -21,24 +21,23 @@ internal class TextReadingProgress(
     private val persistence: ProgressPersistence,
     private val scope: CoroutineScope,
 ) {
-    private val locations = document.locations
-    private val mutableOffset = MutableStateFlow(locations.restore(restored?.takeIf { it.id == document.progressId }))
-    val utf16Offset: StateFlow<Int> = mutableOffset.asStateFlow()
+    private val mutableOffset = MutableStateFlow(document.restore(restored))
+    val codePointOffset: StateFlow<Int> = mutableOffset.asStateFlow()
     private var pending: ReadingProgress? = null
     private var timer: Job? = null
     private var active = true
     private var lastTimestamp = restored?.updatedAtEpochMillis ?: 0
 
-    fun report(utf16Offset: Int) {
+    fun report(codePointOffset: Int) {
         if (!active) return
         val id = document.progressId ?: return
-        val locator = locations.locator(utf16Offset)
-        val offset = locations.utf16Offset(locator.codePointOffset)
+        val offset = codePointOffset.coerceIn(0, document.codePoints)
+        val locator = ReadingLocator.Text(offset.toLong(), document.codePoints.toLong())
         if (offset == mutableOffset.value) return
         mutableOffset.value = offset
         val now = persistence.clock().coerceAtLeast(0)
         lastTimestamp = maxOf(now, if (lastTimestamp == Long.MAX_VALUE) lastTimestamp else lastTimestamp + 1)
-        pending = ReadingProgress(id, locator, locations.progression(locator), lastTimestamp)
+        pending = ReadingProgress(id, locator, document.progression(offset), lastTimestamp)
         if (timer?.isActive != true) timer = scope.launch {
             delay(PROGRESS_SAVE_INTERVAL_MILLIS)
             flush()

@@ -13,10 +13,12 @@ import org.infinilect.core.PublicationResource
 import org.infinilect.core.ResourceContent
 import org.infinilect.core.ResourceLoader
 
-/** Opt-in: the UI's actual search/open/session path, complete small text, no content logging. */
+/** Opt-in: the UI's actual search/open/session path, complete bounded text, no content logging. */
 object InternetArchiveTextReadingCheck {
     @JvmStatic fun main(args: Array<String>) = runBlocking {
-        require(args.isEmpty())
+        require(args.size <= 1)
+        val identifier = args.singleOrNull() ?: "gmb-2015-93040"
+        ArchiveUrls.identifier(identifier)
         println("Internet Archive full text reading check at ${Instant.now()}")
         val observations = mutableListOf<ArchiveHttpEvidence>()
         var declared: Long? = null
@@ -38,20 +40,20 @@ object InternetArchiveTextReadingCheck {
                 }
                 val session = ReadingSession(source, this, textReadingEnabled = true, loader = measured)
                 try {
-                    session.editQuery("identifier:gmb-2015-93040")
+                    session.editQuery("identifier:$identifier")
                     session.submitSearch()
                     val search = session.search.state.first { it is SearchState.Results || it is SearchState.Empty || it is SearchState.Error }
                     check(search is SearchState.Results) { "Real search did not return the test item." }
-                    val publication = search.result.page.publications.single { it.id.localId == "gmb-2015-93040" }
+                    val publication = search.result.page.publications.single { it.id.localId == identifier }
                     session.open(publication)
                     val opened = session.opening.state.first { it is OpenPublicationState.Ready || it is OpenPublicationState.Error }
                     check(opened is OpenPublicationState.Ready) { "Full text acquisition/validation failed." }
                     check(opened.document.publicationId == publication.id && handleClosed && consumed == declared)
                     println("Item=${publication.id.localId}; format=TEXT; declared bytes=$declared; consumed bytes=$consumed")
-                    println("Decoded UTF-16 characters=${opened.document.text.length}; strict UTF-8 document ready; handle closed")
+                    println("Decoded code points=${opened.document.codePoints}; indexed windows=${opened.document.windowCount}; strict UTF-8 document ready; handle closed")
                     session.back()
                     check(session.opening.state.value is OpenPublicationState.Idle && session.search.state.value === search)
-                    check(session.query.value == "identifier:gmb-2015-93040")
+                    check(session.query.value == "identifier:$identifier")
                     println("Back retained query/results. No publication text logged. Graphical smoke test not performed.")
                 } finally { session.close() }
             }

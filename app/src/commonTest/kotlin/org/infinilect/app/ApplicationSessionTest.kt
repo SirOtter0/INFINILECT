@@ -83,7 +83,7 @@ class ApplicationSessionTest {
             override suspend fun remove(id: ReadingProgressId)=true
         },StandardTestDispatcher(testScheduler))
         val owner=owner(source,fake,progress);val session=session(owner);session.navigate(Destination.LIBRARY)
-        repeat(2){session.openSaved(snapshot);advanceUntilIdle();assertEquals(6,assertNotNull(assertIs<OpenPublicationState.Ready>(session.opening.value).reading).utf16Offset.value);session.back();advanceUntilIdle()}
+        repeat(2){session.openSaved(snapshot);advanceUntilIdle();assertEquals(6,assertNotNull(assertIs<OpenPublicationState.Ready>(session.opening.value).reading).codePointOffset.value);session.back();advanceUntilIdle()}
         assertEquals(2,source.metadata);assertEquals(2,source.acquisitions);assertNull(source.resource.cacheKey);finish(session,owner)
     }
     @Test fun cancellingSavedOpenRecordsNoHistoryAndReturnsToOrigin()=runTest {

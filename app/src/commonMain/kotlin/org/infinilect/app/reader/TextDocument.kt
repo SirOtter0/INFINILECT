@@ -3,103 +3,84 @@
 package org.infinilect.app.reader
 
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
-import org.infinilect.core.Publication
-import org.infinilect.core.ReadingProgressId
-import org.infinilect.core.PublicationFormat
-import org.infinilect.core.PublicationId
-import org.infinilect.core.PublicationResource
-import org.infinilect.core.ResourceContent
-import org.infinilect.core.ResourceLoader
+import org.infinilect.core.*
+import kotlin.math.roundToInt
 
-/** Small documents/short books only: bound full decoding and the first plain-text UI. */
-internal const val MAX_TEXT_DOCUMENT_BYTES = 512 * 1024
+// Reader preparation has its own finite disk/CPU budget; acquisition remains capped at 64 MiB.
+internal const val MAX_TEXT_DOCUMENT_BYTES = 16 * 1024 * 1024
+internal const val TEXT_READ_BUFFER_BYTES = 8192
+internal const val TEXT_WINDOW_CODE_POINTS = 2048
+internal const val TEXT_MIN_WINDOW_CODE_POINTS = 1024
+internal const val TEXT_WINDOW_CACHE_ENTRIES = 8
 
-/** Reader presentation data, with no source, transport, live handle or Compose objects. */
-internal data class TextDocument(
+internal data class TextWindow(val index: Int, val startCodePoint: Int, val text: String) {
+    val locations = TextLocations(text)
+    fun globalOffset(utf16Offset: Int): Int = startCodePoint + locations.locator(utf16Offset).codePointOffset.toInt()
+}
+
+/** No transport/platform types. Window IO is suspendable; close is nonblocking/idempotent. */
+internal interface TextWindows {
+    val codePoints: Int
+    val count: Int
+    fun start(index: Int): Int
+    suspend fun read(index: Int): TextWindow
+    fun close()
+}
+
+internal class TextDocument(
     val publicationId: PublicationId,
     val title: String,
-    val text: String,
+    internal val windows: TextWindows,
     val progressId: ReadingProgressId? = null,
 ) {
-    val locations = TextLocations(text)
+    val codePoints: Int get() = windows.codePoints
+    val windowCount: Int get() = windows.count
+    fun windowStart(index: Int): Int = windows.start(index)
+    suspend fun window(index: Int): TextWindow = windows.read(index)
+    fun windowFor(offset: Int): Int {
+        val target = offset.coerceIn(0, codePoints)
+        var low = 0; var high = windowCount - 1
+        while (low < high) {
+            val mid = (low + high + 1) / 2
+            if (windowStart(mid) <= target) low = mid else high = mid - 1
+        }
+        return low
+    }
+    fun restore(progress: ReadingProgress?): Int {
+        if (progress == null || progress.id != progressId) return 0
+        val locator = progress.locator as? ReadingLocator.Text ?: return 0
+        return if (locator.documentCodePoints == codePoints.toLong()) locator.codePointOffset.coerceIn(0, codePoints.toLong()).toInt()
+        else (progress.progression * codePoints).roundToInt().coerceIn(0, codePoints)
+    }
+    fun progression(offset: Int): Double = if (codePoints == 0) 0.0 else offset.coerceIn(0, codePoints).toDouble() / codePoints
+    fun close() = windows.close()
 }
 
 internal enum class TextFailure(val userMessage: String) {
-    UNKNOWN_SIZE("The text size is unknown, so it cannot be opened safely yet."),
-    TOO_LARGE("This text exceeds the 512 KiB reader limit."),
+    UNKNOWN_SIZE("This text cannot be opened safely because its size is unknown."),
+    TOO_LARGE("This text exceeds the 16 MiB supported reader limit."),
     EMPTY("This resource has no readable text."),
     INCONSISTENT_SIZE("The text transfer was incomplete or changed. Please try again."),
     INVALID_UTF8("This text is not valid UTF-8."),
+    STORAGE("Could not prepare this text in private temporary storage. Please try again."),
 }
-
 internal class TextDocumentException(val failure: TextFailure, cause: Throwable? = null) :
     Exception(failure.userMessage, cause)
 
-/** Owns one fresh handle, closes before decoding, and allocates one bounded payload array. */
+internal interface TextPreparer {
+    suspend fun prepare(publication: Publication, resource: PublicationResource, loader: ResourceLoader,
+                        dispatcher: CoroutineDispatcher): TextDocument
+    fun close() {}
+    suspend fun awaitClosed() {}
+}
+internal expect val textPreparationDispatcher: CoroutineDispatcher
+internal expect fun defaultTextPreparer(): TextPreparer
+
 internal suspend fun loadTextDocument(
-    publication: Publication,
-    resource: PublicationResource,
-    loader: ResourceLoader,
-    decodingDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    publication: Publication, resource: PublicationResource, loader: ResourceLoader,
+    decodingDispatcher: CoroutineDispatcher = textPreparationDispatcher,
+    preparer: TextPreparer = defaultTextPreparer(),
 ): TextDocument {
     require(resource.format == PublicationFormat.TEXT && resource in publication.resources)
-    currentCoroutineContext().ensureActive()
-    val bytes = consumeText(loader.load(resource))
-    return withContext(decodingDispatcher) {
-        currentCoroutineContext().ensureActive()
-        // Remove exactly one leading UTF-8 BOM; preserve all other text, including interior BOMs.
-        val documentBytes = bytes.size - 1 // Exclude the overflow probe.
-        val start = if (documentBytes >= 3 && bytes[0] == 0xef.toByte() &&
-            bytes[1] == 0xbb.toByte() && bytes[2] == 0xbf.toByte()) 3 else 0
-        // The last array position is the overflow probe, not document data.
-        val text = try { bytes.decodeToString(start, documentBytes, throwOnInvalidSequence = true) }
-        catch (error: CharacterCodingException) { throw TextDocumentException(TextFailure.INVALID_UTF8, error) }
-        currentCoroutineContext().ensureActive()
-        if (text.isBlank() || '\u0000' in text) throw TextDocumentException(TextFailure.EMPTY)
-        TextDocument(publication.id, publication.title, text,
-            ReadingProgressId(publication.id, resource.key, resource.format))
-    }
-}
-
-private suspend fun consumeText(content: ResourceContent): ByteArray {
-    var failure: Throwable? = null
-    try {
-        currentCoroutineContext().ensureActive()
-        val declared = content.sizeBytes ?: throw TextDocumentException(TextFailure.UNKNOWN_SIZE)
-        if (declared > MAX_TEXT_DOCUMENT_BYTES) throw TextDocumentException(TextFailure.TOO_LARGE)
-        if (declared < 0) throw TextDocumentException(TextFailure.INCONSISTENT_SIZE)
-        if (declared == 0L) throw TextDocumentException(TextFailure.EMPTY)
-        // Check known size before allocation; one extra byte detects an overlong stream.
-        val bytes = ByteArray(declared.toInt() + 1)
-        var total = 0
-        while (true) {
-            currentCoroutineContext().ensureActive()
-            if (content.sizeBytes != declared) throw TextDocumentException(TextFailure.INCONSISTENT_SIZE)
-            val requested = minOf(8192, bytes.size - total)
-            val count = content.read(bytes, total, requested)
-            currentCoroutineContext().ensureActive()
-            if (content.sizeBytes != declared) throw TextDocumentException(TextFailure.INCONSISTENT_SIZE)
-            if (count == -1) {
-                if (total.toLong() != declared) throw TextDocumentException(TextFailure.INCONSISTENT_SIZE)
-                return bytes
-            }
-            if (count !in 1..requested || count > declared - total)
-                throw TextDocumentException(TextFailure.INCONSISTENT_SIZE)
-            total += count
-        }
-    } catch (error: Throwable) {
-        failure = error
-        throw error
-    } finally {
-        try { content.close() }
-        catch (closeError: Throwable) {
-            val primary = failure
-            if (primary == null) throw closeError
-            if (primary !== closeError) primary.addSuppressed(closeError)
-        }
-    }
+    return preparer.prepare(publication, resource, loader, decodingDispatcher)
 }

@@ -69,7 +69,7 @@ class ProgressLifecycleTest {
         val store=Store(); val p=persistence(store)
         val stored=ReadingProgress(id,ReadingLocator.Text(4,10),0.4,1)
         val reading=reading(p,restored=stored)
-        assertEquals(4,reading.utf16Offset.value)
+        assertEquals(4,reading.codePointOffset.value)
         reading.report(4); reading.close(); p.close(); p.awaitClosed()
         assertTrue(store.saved.isEmpty())
     }
@@ -129,7 +129,7 @@ class ProgressLifecycleTest {
         val newPersistence=persistence(store); val recreated=session(newPersistence)
         recreated.open(source.publication); advanceUntilIdle()
         val second=assertNotNull(assertIs<OpenPublicationState.Ready>(recreated.opening.state.value).reading)
-        assertEquals(6,second.utf16Offset.value)
+        assertEquals(6,second.codePointOffset.value)
         assertEquals(2,source.metadataRequests); assertEquals(2,source.acquisitions); assertEquals(2,source.handlesClosed)
         assertNull(source.resource.revision); assertNull(source.resource.cacheKey)
         recreated.close(); newPersistence.close(); newPersistence.awaitClosed()

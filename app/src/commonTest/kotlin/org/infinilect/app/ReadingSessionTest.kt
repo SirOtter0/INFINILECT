@@ -66,7 +66,7 @@ class ReadingSessionTest {
         session.open(results.result.page.publications.single()); runCurrent()
         assertIs<OpenPublicationState.Loading>(session.opening.state.value)
         gate.complete(Unit); advanceUntilIdle()
-        assertEquals("text", assertIs<OpenPublicationState.Ready>(session.opening.state.value).document.text)
+        assertEquals("text", assertIs<OpenPublicationState.Ready>(session.opening.state.value).document.window(0).text)
         assertEquals(1, source.closes)
         session.back()
         assertIs<OpenPublicationState.Idle>(session.opening.state.value)
