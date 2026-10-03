@@ -44,10 +44,11 @@ internal suspend fun loadTextDocument(
     return withContext(decodingDispatcher) {
         currentCoroutineContext().ensureActive()
         // Remove exactly one leading UTF-8 BOM; preserve all other text, including interior BOMs.
-        val start = if (bytes.size >= 4 && bytes[0] == 0xef.toByte() &&
+        val documentBytes = bytes.size - 1 // Exclude the overflow probe.
+        val start = if (documentBytes >= 3 && bytes[0] == 0xef.toByte() &&
             bytes[1] == 0xbb.toByte() && bytes[2] == 0xbf.toByte()) 3 else 0
         // The last array position is the overflow probe, not document data.
-        val text = try { bytes.decodeToString(start, bytes.size - 1, throwOnInvalidSequence = true) }
+        val text = try { bytes.decodeToString(start, documentBytes, throwOnInvalidSequence = true) }
         catch (error: CharacterCodingException) { throw TextDocumentException(TextFailure.INVALID_UTF8, error) }
         currentCoroutineContext().ensureActive()
         if (text.isBlank() || '\u0000' in text) throw TextDocumentException(TextFailure.EMPTY)

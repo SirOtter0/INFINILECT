@@ -63,3 +63,46 @@ SQLDelight and Readium are **not included**. Check their exact versions, license
 transitive dependencies and notices when an implementation needs them.
 Before any packaged release, produce an artifact-specific notice inventory and
 include all required upstream license/copyright files, including native components.
+
+
+## First Android target — 2026-10-03
+
+The original code remains GPL-3.0-or-later. Third-party licenses are unchanged.
+The following new direct platform/test/build declarations were checked against
+upstream release documentation and published source/POM license declarations:
+
+| Dependency/plugin | Version | License | Module / purpose / official source |
+| --- | --- | --- | --- |
+| Android Gradle Plugin: application and Android-KMP library plugins | 9.3.1 | Apache-2.0 | androidApp and core/app respectively; build tooling. [Google release](https://developer.android.com/build/releases/agp-9-3-0-release-notes), [published POM](https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/9.3.1/gradle-9.3.1.pom). |
+| Kotlin JVM Gradle plugin | 2.4.20 | Apache-2.0 | desktopApp launcher, same Kotlin toolchain. [Upstream license](https://github.com/JetBrains/kotlin/blob/v2.4.20/license/LICENSE.txt). |
+| Ktor Android engine | 3.6.0 | Apache-2.0 | app/androidMain, officially maintained HttpURLConnection transport; no OkHttp dependency. [Tagged source/license](https://github.com/ktorio/ktor/tree/3.6.0/ktor-client/ktor-client-android). |
+| AndroidX Activity Compose | 1.13.0 | Apache-2.0 | androidApp, ComponentActivity/setContent/BackHandler. [Official release](https://developer.android.com/jetpack/androidx/releases/activity). |
+| AndroidX Compose Foundation | 1.12.1 | Apache-2.0 | androidApp, system/keyboard inset wrapper; same Android Compose version already selected by shared Compose. [Google POM](https://dl.google.com/dl/android/maven2/androidx/compose/foundation/foundation/1.12.1/foundation-1.12.1.pom). |
+| AndroidX Startup runtime | 1.2.0 | Apache-2.0 | androidApp, explicit manifest provider dependency (already transitive at 1.1.1); disable EmojiCompat automatic downloadable-font initialization. [Stable release](https://developer.android.com/jetpack/androidx/releases/startup), [POM](https://dl.google.com/dl/android/maven2/androidx/startup/startup-runtime/1.2.0/startup-runtime-1.2.0.pom). |
+| kXML2 | 2.3.0 | MIT | app/androidHostTest only, real XML tokenization on the host where Android APIs are stubs; never in the APK. The MIT header is in the [published sources](https://repo.maven.apache.org/maven2/net/sf/kxml/kxml2/2.3.0/kxml2-2.3.0-sources.jar), copied to [kxml2-MIT.txt](third-party/kxml2-MIT.txt). |
+
+AndroidX runtime transitive dependencies (including coroutines-android) keep their
+Apache-2.0 licenses. Existing SLF4J stays MIT. AndroidX graphics-path 1.0.1 supplies
+a prebuilt native library under Apache-2.0; [official native sources](https://android.googlesource.com/platform/frameworks/support/+/refs/heads/androidx-main/graphics/graphics-path/src/main/cpp/)
+carry AOSP notices. Debug packaging retains that upstream library/symbols unchanged.
+These runtime licenses are compatible with GPL-3.0-or-later; no analytics/advertising
+SDK, charset detector or reader framework is added to app runtime.
+
+Production Android XML parsing uses the OS XmlPull API, not the test kXML jar.
+The [current AOSP parser factory](https://android.googlesource.com/platform/libcore/+/refs/heads/main/luni/src/main/java/libcore/util/XmlObjectFactory.java)
+identifies the platform KXmlParser. AOSP wrapper code is Apache-2.0; the parser's
+[official Android 8 implementation](https://android.googlesource.com/platform/libcore/+/refs/tags/android-8.0.0_r1/xml/src/main/java/org/kxml2/io/KXmlParser.java)
+has the MIT attribution to Stefan Haustein. Platform libraries are supplied by
+Android, not copied into the APK. Android SDK command-line/build/platform tools
+are external prerequisites governed by [SDK terms](https://developer.android.com/studio/terms),
+not project libraries or redistributed SDK binaries.
+
+The full [current graph inventory](docs/ANDROID_DEPENDENCIES.md) distinguishes
+runtime, host tests and tooling, including metadata/BOM components. AGP brings
+additional separately licensed tooling, including Bouncy Castle (MIT), JDOM's
+BSD-style license, JNA's Apache-2.0/LGPL dual option and universalchardet (MPL-1.1).
+The latter is **AGP tooling only**, not a reader charset detector. JUnit EPL-1.0
+and test kXML are absent from the APK. Do not bundle test/build-tool classes into
+product artifacts. Preserve upstream notices if those tools themselves are
+redistributed. The future packaged-release/native notice audit remains required;
+this task produces only a local debug APK and no release distribution.

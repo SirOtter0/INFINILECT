@@ -105,3 +105,6 @@ internal class OpenPublicationController(
 
     private class OpeningException(message: String) : Exception(message)
 }
+
+/** Platform Back is handled only away from the root search screen. */
+internal fun OpenPublicationState.handlesBack(): Boolean = this !is OpenPublicationState.Idle

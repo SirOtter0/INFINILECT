@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "INFINILECT"
-include(":core", ":app")
+include(":core", ":app", ":desktopApp", ":androidApp")

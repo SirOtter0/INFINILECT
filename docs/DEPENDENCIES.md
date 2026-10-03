@@ -1,6 +1,49 @@
-# Resolved dependency inventory
+# Dependencies and licenses
 
-The acquisition experiment adds one desktop-only JSON runtime module:
+## Current Android/Desktop declarations — 2026-10-03
+
+Core domain dependencies remain Kotlin-only. Android build plugins/targets do not
+add Android/Compose/Ktor APIs to core/commonMain. Shared app retains Compose 1.12.1,
+coroutines 1.11.0, Ktor 3.6.0 and serialization-json 1.11.0. The Desktop Java engine
+and OS Compose runtime remain on Desktop; neither enters the Android APK.
+
+| New explicit declaration | Version | License | Module / necessity |
+| --- | --- | --- | --- |
+| com.android.application | 9.3.1 | Apache-2.0 | androidApp APK packaging, built-in Kotlin. |
+| com.android.kotlin.multiplatform.library | 9.3.1 | Apache-2.0 | core/app Android library variants; required with AGP 9/KMP separation. |
+| org.jetbrains.kotlin.jvm | 2.4.20 | Apache-2.0 | desktopApp JVM launcher, unchanged compiler version. |
+| io.ktor:ktor-client-android | 3.6.0 | Apache-2.0 | app/androidMain engine; engine-independent policies stay shared. |
+| androidx.activity:activity-compose | 1.13.0 | Apache-2.0 | androidApp Activity/Compose/Back. |
+| androidx.compose.foundation:foundation | 1.12.1 | Apache-2.0 | androidApp safe system/keyboard insets, same Compose version. |
+| androidx.startup:startup-runtime | 1.2.0 | Apache-2.0 | androidApp manifest directly references its provider to remove automatic downloadable-font initialization; compile/runtime consistent. |
+| net.sf.kxml:kxml2 | 2.3.0 | MIT | app/androidHostTest only: real tokenization against the Android token adapter; no runtime parser dependency. |
+
+Official version/license URLs and copies are in [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md)
+and [TOOLCHAIN](TOOLCHAIN.md). [ANDROID_DEPENDENCIES](ANDROID_DEPENDENCIES.md) records
+the complete current resolved component graphs, POM licenses and upstream exceptions.
+Graph components include metadata/BOM redirects and project roots; they are not
+counts of jars/classes bundled in an APK. Runtime/tests/build tooling are separate.
+Tests and opt-in CLI diagnostics are never packaged in either application.
+
+Common controller/session/reader tests run on both targets. Engine-independent
+Archive policy/source tests use MockEngine on Desktop and Android host. Desktop
+StAX/OPDS source fixtures remain in desktopTest. Android uses a fake token parser
+and test-only upstream kXML for real XML fixtures; upstream kXML does not implement
+Android's optional process-docdecl feature, so the host shim accepts only its
+verified disabled default. Production Android requires explicit DTD disablement,
+without a fallback. Host tests are not a claim of Android OS/emulator execution.
+
+No permanent repository substitution, logging backend, storage/database,
+navigation/DI framework, PDF/EPUB engine or telemetry dependency is added.
+
+## Historical Desktop artifact inventory — 2026-10-02
+
+The artifact tables below retain the previous Desktop acquisition graph and its
+license evidence. The current component graphs above supersede their old counts
+and source-set scope after separating platform launchers.
+
+
+At that earlier acquisition step, the project added one desktop-only JSON runtime module:
 `kotlinx-serialization-json:1.11.0`, reusing Ktor's already resolved
 serialization-core 1.11.0. Dynamic JsonElement parsing needs no serialization
 compiler plugin. This avoids a handwritten JSON parser; Ktor has no built-in JSON

@@ -4,7 +4,7 @@ package org.infinilect.app.archive
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
-import io.ktor.client.engine.java.Java
+import org.infinilect.app.network.platformHttpEngine
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.header
@@ -32,7 +32,7 @@ internal data class ArchiveHttpEvidence(val url: String, val status: Int, val lo
 
 /** Deliberately narrow public-CC0 text adapter, independent of the current Gutenberg UI. */
 internal class InternetArchiveSource(
-    private val engine: HttpClientEngine = Java.create(),
+    private val engine: HttpClientEngine = platformHttpEngine(),
     private val userAgent: String = PROJECT_USER_AGENT,
     private val observe: (ArchiveHttpEvidence) -> Unit = {},
     streamDispatcher: CoroutineDispatcher = Dispatchers.IO,

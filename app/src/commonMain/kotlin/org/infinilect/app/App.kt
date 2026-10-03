@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import org.infinilect.app.reader.OpenPublicationState
+import org.infinilect.app.reader.handlesBack
 import org.infinilect.app.reader.TextReader
 import org.infinilect.app.search.SearchState
 import org.infinilect.core.PublicationSource
@@ -39,17 +40,25 @@ import org.infinilect.core.PublicationSource
 internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false)
 
 @Composable
-internal fun App(sources: List<SourceOption>) {
+fun App(
+    applicationSources: ApplicationSources,
+    backHandler: @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit = { _, _ -> },
+) {
+    val sources = applicationSources.options
     var selected by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val option = sources[selected]
     val session = remember(option) { ReadingSession(option.source, scope, option.textReadingEnabled) }
-    DisposableEffect(session) { onDispose { session.close() } }
+    DisposableEffect(applicationSources, session) {
+        applicationSources.attach(session)
+        onDispose { applicationSources.detach(session) }
+    }
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             // Reset collectors when source changes; never render a previous source's state for one frame.
             key(session) {
                 val opening by session.opening.state.collectAsState()
+                backHandler(opening.handlesBack(), session::back)
                 when (val current = opening) {
                     OpenPublicationState.Idle -> SearchScreen(session, sources, selected) { index ->
                         if (index != selected) { session.close(); selected = index }
@@ -95,7 +104,7 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
         Text("Open knowledge. Infinite reading.")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             sources.forEachIndexed { index, source ->
-                Button(enabled = index != selected, onClick = { onSource(index) }) { Text(source.name) }
+                Button(modifier = Modifier.weight(1f), enabled = index != selected, onClick = { onSource(index) }) { Text(source.name) }
             }
         }
         Text("Source: ${sources[selected].name}")
@@ -133,7 +142,7 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
             if (displayed.page.publications.isEmpty()) Text("No publications found for “${displayed.query}”.")
             else Text("Results for “${displayed.query}”")
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(displayed.page.publications, key = { it.id }) { publication ->
+                items(displayed.page.publications, key = { it.id.resultKey() }) { publication ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(publication.title, style = MaterialTheme.typography.h6)
                         if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))

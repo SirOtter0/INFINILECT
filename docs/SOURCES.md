@@ -7,7 +7,7 @@ source. Resource keys are opaque and must be resolved by their owning source.
 ## First source: Project Gutenberg / OPDS
 
 Gutenberg is the first functional source, currently **search only** on desktop.
-`GutenbergSource : PublicationSource` lives in `app/desktopMain`; shared UI receives
+`GutenbergSource : PublicationSource` lives in `app/jvmSharedMain`; shared UI receives
 only core publications/search pages. No Gutendex, mirror catalog or other aggregator
 is used. No human-facing HTML catalog page is fetched or scraped.
 
@@ -108,8 +108,11 @@ or namespace declarations per element, 16 KiB per attribute or captured text fie
 arbitrary link fetching occurs. This is a Gutenberg subset, not full OPDS validation.
 See [JDK XMLInputFactory documentation](https://docs.oracle.com/en/java/javase/21/docs/api/java.xml/javax/xml/stream/XMLInputFactory.html)
 for the security properties; the built-in provider is selected explicitly.
-JDK license/platform scope is recorded in THIRD_PARTY_NOTICES.md. Android/iOS
-parsers are not added or assumed compatible.
+JDK license/platform scope is recorded in THIRD_PARTY_NOTICES.md. Android uses
+the system XmlPull parser with namespace processing, document declarations disabled,
+`nextToken` and explicit DOCDECL/user-defined-entity rejection. Verified predefined
+XML/numeric character references become text. XML-token adapters share the same
+bounded mapping policy; no external parser dependency. iOS remains unimplemented.
 
 ## OAPEN alternate access and first acquisition source
 

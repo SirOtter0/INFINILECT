@@ -1,5 +1,175 @@
 # Verification
 
+## First Android application target — 2026-10-03
+
+Fetched origin, checked out main and pulled `--ff-only` before creating
+`feature/android-app`. Main was exactly PR #4 merge
+**c582654013d224939603c8aaf569e0a37bfe58b4**; a final fetch confirmed main unchanged.
+No main edits, rebase, squash, force push, history rewrite or merge.
+
+### Actual final build and offline tests
+
+The command checks every library/Desktop build and Android debug tests/lint/APK.
+Use explicit platform build tasks rather than root `build` to avoid generating
+Android release artifacts outside this slice:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 1m 39s**, 144 actionable tasks: 136 executed, 8 up-to-date.
+Android bytecode/DEX/resources/manifest/signing/APK actually produced; Desktop
+launcher/JAR compiled and shared libraries built. No compiler/deprecation/packaging
+warnings. Lint XML/text report: **0 errors, 0 warnings, 0 issues**. No baseline,
+blanket lint disabling or error suppression.
+
+| Suite | Tests | Failures / errors / skipped |
+| --- | --- | --- |
+| core:jvmTest | 23 | 0 / 0 / 0 |
+| app:desktopTest | 135 | 0 / 0 / 0 |
+| core:testAndroidHostTest | 23 | 0 / 0 / 0 |
+| app:testAndroidHostTest | 118 | 0 / 0 / 0 |
+| Total executions | **299** | **0 / 0 / 0** |
+
+These represent **173 unique cases**: 23 core + 135 Desktop app + 15 Android-only.
+There are **50 shared common cases** (SearchController 5, ReadingSession 10,
+OpenPublicationController 30, ApplicationSources 4, ResultKey 1), plus 53 engine-independent
+Archive/neutral-acquisition cases run on both Desktop and Android host.
+**21 new unique cases**: BOM-only 1, lifecycle/Back ownership 4, Android engine/
+factory 2, Android XML-token adapter 5, real pull-tokenization fixtures 7,
+source-scoped result-key identity 1 and Android key serialization 1.
+`androidApp:testDebugUnitTest` is NO-SOURCE: meaningful Android unit tests live in
+app/androidHostTest and core/androidHostTest. No emulator/instrumentation suite
+was executed or silently skipped; Gradle's resource-generation/configuration
+SKIPPED/NO-SOURCE tasks are not skipped test cases.
+
+All normal tests are offline. Existing Gutenberg parser/source, Archive metadata/
+URLs/acquisition and OAPEN diagnostics regression tests pass. ArchiveUrls and
+ArchiveMetadata are byte-identical after the source-set move. Both sources change
+only default engine injection; Gutenberg URL policy and project User-Agent are
+byte-identical. Core common source/model/contracts are unchanged and its runtime
+remains Kotlin stdlib + annotations only on JVM/Android. No security broadening:
+CC0/public-only, fresh acquisition metadata, item-scoped exact locations, HTTPS,
+redirect/loop/size bounds, revision=null, no lending/login/DRM.
+
+Android parser tests exercise its configuration/token seam and real XML with
+MIT test-only upstream kXML. The host shim permits only kXML's verified disabled
+DTD default because upstream kXML lacks Android's optional process-docdecl feature;
+production Android explicitly disables it and fails closed if unsupported.
+Tests include real metadata/multiple authors/languages/rights/resources, optional
+fields/empty feed/pagination, escaped/numeric UTF-8/CDATA, malformed XML, namespace
+confusion and internal/external DTD/entities. This does not run the actual Android
+OS decoder. Test kXML/JUnit, Desktop Java engine/Skiko and AGP are absent from APK
+runtime graphs; [full inventory/licensing](ANDROID_DEPENDENCIES.md).
+
+### APK actually generated and inspected
+
+Standard task: `./gradlew :androidApp:assembleDebug`.
+File: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+Size: **11,355,808 bytes** (about 10.83 MiB).
+SHA-256: **`1df99389318539bf6e3f15abed277ccc6dcb7767fd92bf1baafc239c7abc4f89`**.
+
+Official SDK inspection commands:
+
+```sh
+$ANDROID_HOME/build-tools/36.0.0/aapt2 dump badging \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk
+$ANDROID_HOME/build-tools/36.0.0/aapt2 dump permissions \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk
+$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk
+adb devices -l
+```
+
+Inspected compiled APK and merged manifest: package **org.infinilect.app**, label
+**INFINILECT**, versionCode 1/versionName 0.0.1-SNAPSHOT, compileSdk **37**,
+targetSdk **37**, minSdk **26**; MainActivity is the exported launcher; debug variant.
+INTERNET is the only requested Android capability. AndroidX Core additionally
+merges **org.infinilect.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION**, a
+**signature** permission scoped to this app, protecting non-exported receivers.
+This is expected upstream security behavior, not access to storage/location/
+contacts/microphone/identifiers. [Official Core manifest](https://android.googlesource.com/platform/frameworks/support/+/refs/heads/androidx-main/core/core/src/main/AndroidManifest.xml).
+No unexpected device permissions. Cleartext **false**, backup **false**, legacy
+fullBackupContent **false** plus explicit cloud/device-transfer exclusions.
+EmojiCompat downloadable-font initializer absent; retained process lifecycle and
+profile installer support are AndroidX runtime, no analytics/network tracking.
+
+APK signature verifies (standard **debug v2 signing**, one signer). No release
+signing key/configuration, release APK/AAB or distribution. ABIs: arm64-v8a,
+armeabi-v7a, x86, x86_64 from the upstream AndroidX graphics-path native artifact.
+Original provisional icon includes a monochrome layer. APK/build outputs are
+ignored and never committed.
+
+### Environment and intermediate findings
+
+SDK provisioned outside Git at `/tmp/infinilect-android-sdk`; official command-line
+tools 23.0 archive verified against the Google repository SHA-1, then stable
+platform 37.0 r2/build-tools 36.0.0/platform-tools installed. JDK 21.0.12.1+1,
+Gradle cache and proxy/TLS trust are environment-only, matching earlier verification.
+No Maven 429 occurred, no repo mirror/workaround/permanent repository change.
+
+Initial SDK 36 build failed AAR minCompileSdk checks for Compose 1.12.1; official
+API 37 fixed it without changing Kotlin/Compose/Gradle. Initial launcher missed its
+own Compose Foundation classpath, corrected with the same existing Compose version.
+Gradle delegated `by creating` syntax warned; use `create(name)` without suppression.
+Initial lint found manifest/classpath, backup, icon and target issues; fixed actual
+configuration, retained stable AndroidX Startup 1.2.0 at compile/runtime and target
+37. Initial debug native strip diagnostic removed by explicitly retaining the
+upstream prebuilt path library's symbols, without adding an NDK.
+Final compatibility review caught PublicationId as a LazyColumn key: Android
+requires Bundle-supported keys. Replaced only the UI projection with the
+serializable Pair<String, String>, keeping core and source/local identity intact.
+Offline tests check collision resistance and Java serialization round-trip.
+Initial upstream kXML tests rejected its unsupported Android-specific optional
+feature; test-only shim checks its disabled default, leaving production strict.
+The first component-inventory artifact query hit AGP secondary-artifact ambiguity;
+use resolutionResult component graphs instead, without changing dependency resolution.
+
+Official SDK 23's sdkmanager wrapper emitted a **tool deprecation** notice and
+bootstrapped Android CLI; subsequent provisioning used its `--no-metrics` option.
+This is an environment-tool diagnostic, not an app/compiler warning or app telemetry.
+No Android CLI init/skills, external device service or APK upload performed.
+
+### Checks and physical smoke limitation
+
+```sh
+git diff --check
+git diff origin/main...HEAD --check
+git status --short --branch
+git rev-list --left-right --count origin/main...HEAD
+```
+
+Whitespace, local Markdown targets/anchors, SPDX GPL-3.0-or-later, dependency/
+license inventory, core purity and regression checks pass. No credentials, APK,
+actual publication body or build output is committed. GPL/CONTRIBUTING copyright
+and dependency licenses are preserved. Final branch/tree status is reported with
+commits/PR after publication; no merge.
+
+No source live check was rerun: shared policies are unchanged and prior successful
+Archive/Gutenberg evidence below remains historical. No source requests/retries
+from this task's live checks. `adb devices -l` returned an **empty device list**;
+its local daemon needs execution outside the restrictive socket sandbox.
+DISPLAY/WAYLAND_DISPLAY absent. **APK built successfully; physical-device smoke
+test pending. UI compiled but graphical smoke test not performed.** No emulator,
+remote device reservation, strange graphical workaround or third-party upload.
+
+Manual acceptance on a real API 26+ device:
+
+1. `adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk` (or local sideload).
+2. Open INFINILECT and check layout/system/keyboard insets.
+3. Select Gutenberg, explicitly search, then switch to Internet Archive.
+4. Search `identifier:gmb-2015-93040`, Open text, check title/text and scroll.
+5. Android Back: source/query/results preserved; open again and use Back to results.
+6. Cancel Loading with Back; close/reopen the app. Check rotation/destruction safely
+   resets the session (no retained query/results/document/scroll position promised).
+
+No reader features/cache/persistence/new formats/distribution added. Review the
+actual OS XML/network/lifecycle and device UI before claiming physical validation.
+
+
 ## First end-to-end bounded TEXT reading slice — 2026-10-03
 
 Fetched origin, checked out main and pulled with `--ff-only`. Main matched the

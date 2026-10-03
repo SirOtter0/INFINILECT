@@ -36,7 +36,8 @@ Use stable Material rather than the Material3 alpha listed in that release.
 
 The Compose guide states that latest stable Compose is compatible with latest
 stable Kotlin. Its compiler plugin must match Kotlin, so both Kotlin plugins remain
-2.4.20. No Android Gradle plugin, SDK or Xcode dependency is introduced yet.
+2.4.20. At that foundation check no Android Gradle plugin, SDK or Xcode dependency
+was introduced; the later Android verification below supersedes that target scope.
 
 ## Gradle patch upgrade and compatibility precision
 
@@ -69,3 +70,47 @@ expected rather than an incomplete upgrade.
 
 Versions and documented compatibility guide selection; successful builds are
 reported separately, not assumed from these references.
+
+## First Android target — verified 2026-10-03
+
+Keep Kotlin/Compose compiler **2.4.20**, Compose Multiplatform **1.12.1**, Gradle
+**9.7.1** and JDK **21**. No existing version is changed. Add:
+
+| Component | Selected | Official evidence / reason |
+| --- | --- | --- |
+| Android Gradle Plugin, application + Android-KMP library plugins | 9.3.1 | [Google release notes](https://developer.android.com/build/releases/agp-9-3-0-release-notes); [JetBrains Kotlin 2.4.20 compatibility](https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html) lists AGP 8.5.2–9.3.1. AGP requires Gradle ≥9.5/JDK ≥17 and supports API 37. |
+| compileSdk | 37 | [Android 17 SDK setup](https://developer.android.com/about/versions/17/setup-sdk); Compose 1.12.1 Android AAR metadata requires minCompileSdk 37. SDK 36 failed this actual check; 37 passes. Official stable `platforms;android-37.0` r2 is installed. |
+| targetSdk | 37 | [Android 17 SDK setup](https://developer.android.com/about/versions/17/setup-sdk); first Android target uses the current stable API, no legacy target compatibility mode. Runtime/device validation remains pending; no Play Store distribution. |
+| minSdk | 26 | [java.util.Base64](https://developer.android.com/reference/java/util/Base64) added at API 26. Preserves shared validated opaque tokens without desugaring/reimplementation. Compose's documented platform minimum alone would permit 21. |
+| SDK Build Tools | 36.0.0 | AGP 9.3 default/minimum in Google release notes; no custom build-tools override. |
+| AndroidX Activity Compose | 1.13.0 | [Official stable release](https://developer.android.com/jetpack/androidx/releases/activity), not 1.14 alpha. Provides ComponentActivity/setContent/BackHandler/insets ownership. |
+| AndroidX Startup runtime | 1.2.0 | [Official stable release](https://developer.android.com/jetpack/androidx/releases/startup). The launcher manifest directly references its provider to disable automatic font initialization; compile/runtime versions match. |
+| Ktor Android engine | 3.6.0 | [Official engine docs](https://ktor.io/docs/client-engines.html#android); [tagged engine](https://github.com/ktorio/ktor/blob/3.6.0/ktor-client/ktor-client-android/jvm/src/io/ktor/client/engine/android/AndroidClientEngine.kt). Uses HttpURLConnection, disables connection-level redirects, supports HttpTimeout and cancellation/disconnect; no OkHttp dependency. |
+| Android host XML test support only | kxml2 2.3.0 | [Published source artifact](https://repo.maven.apache.org/maven2/net/sf/kxml/kxml2/2.3.0/kxml2-2.3.0-sources.jar), MIT header. Real tokenization tests without Android OS/emulator; not a runtime XML library or part of the APK. |
+
+Use [AGP's dedicated Android-KMP plugin](https://developer.android.com/kotlin/multiplatform/plugin)
+with the current `kotlin.android {}` DSL (the earlier `androidLibrary {}` spelling
+is deprecated). Apply the KMP plugin only to core/app and com.android.application
+only to androidApp, following [JetBrains migration guidance](https://kotlinlang.org/docs/multiplatform/multiplatform-project-agp-9-migration.html).
+AGP built-in Kotlin uses the root-resolved KGP/compiler **2.4.20**; no extra
+org.jetbrains.kotlin.android plugin or legacy/built-in-Kotlin opt-out is needed.
+[Google's built-in Kotlin guide](https://developer.android.com/build/migrate-to-built-in-kotlin).
+AGP 9.4 is not selected despite being newer: it is outside the current explicit
+Kotlin 2.4.20 compatibility table. The Gradle 9.7.1 vendor-range precision above
+still applies; actual multi-target builds establish this project's compatibility.
+
+Android libraries/app target JVM bytecode **17**, while JDK **21** runs Gradle and
+Desktop compilation. minSdk 26 supports every shared Java URI/NIO/Base64/atomic API
+used here. No Java desktop engine or javax.xml.stream classes enter the APK.
+The Android parser is platform XmlPull, obtained through android.util.Xml; DTD
+processing is explicitly disabled (Android's default may enable it). Official
+[XmlPull contract](https://developer.android.com/reference/org/xmlpull/v1/XmlPullParser),
+[AOSP Xml implementation](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/util/Xml.java),
+and [AOSP parser factory](https://android.googlesource.com/platform/libcore/+/refs/heads/main/luni/src/main/java/libcore/util/XmlObjectFactory.java)
+identify the OS implementation. Desktop retains hardened JDK StAX.
+
+SDK/toolchain files live outside Git. The debug APK uses standard Android debug
+signing only; no release key/signing configuration. AndroidX's prebuilt graphics
+path native library is packaged unchanged with symbols; no unnecessary NDK/native
+build is introduced. See [verification](VERIFICATION.md) for actual commands,
+APK metadata and environment provisioning details.
