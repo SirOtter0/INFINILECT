@@ -4,6 +4,8 @@ package org.infinilect.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.app.reader.TextReader
 import org.infinilect.app.search.SearchState
+import org.infinilect.app.collections.CollectionsController
+import org.infinilect.app.collections.LibraryActionState
 import org.infinilect.core.PublicationSource
 
 internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false)
@@ -71,18 +75,19 @@ fun App(
                         }
                     }
                     if(destination==Destination.SEARCH) key(session) {
-                        SearchScreen(session,applicationSources.options,selected,application::selectSource,application::openSearch)
+                        SearchScreen(session,applicationSources.options,selected,application::selectSource,
+                            application.collections,application::openSearch)
                     } else CollectionScreen(destination,application)
                 }
                 is OpenPublicationState.Ready -> Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Button(enabled=membership.inLibrary!=null && !membership.busy && !membership.failed,
-                            onClick=application.collections::toggleLibrary) {
-                            Text(if(membership.inLibrary==true) "Remove from Library" else "Add to Library")
-                        }
-                        if(membership.busy) Text("Saving…")
+                        LibraryAction(LibraryActionState(membership.inLibrary,membership.busy,membership.unavailable),
+                            application.collections::toggleLibrary)
                     }
-                    if(membership.failed) Text("Library storage is unavailable on this device.",modifier=Modifier.padding(horizontal=24.dp))
+                    if(membership.unavailable) {
+                        Text("Library storage is unavailable on this device.",modifier=Modifier.padding(horizontal=24.dp))
+                        Button(onClick=application.collections::refreshLibrary,modifier=Modifier.padding(horizontal=24.dp)) { Text("Retry Library") }
+                    }
                     collectionError?.let { Text(it,modifier=Modifier.padding(horizontal=24.dp),color=MaterialTheme.colors.error) }
                     if(historyFailed) Text("Reading history could not be saved on this device.",modifier=Modifier.padding(horizontal=24.dp))
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
@@ -115,29 +120,34 @@ internal fun CollectionScreen(destination: Destination, application: Application
     val confirmation by controller.confirmClear.collectAsState()
     val busy by controller.busy.collectAsState()
     val error by controller.error.collectAsState()
+    val membership by controller.membership.collectAsState()
     val isLibrary=destination==Destination.LIBRARY
     val entries=if(isLibrary) library.entries.map { it.publication } else history.entries.map { it.publication }
     val loading=if(isLibrary) library.loading else history.loading
     val failed=if(isLibrary) library.failed else history.failed
     Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text(if(isLibrary) "Library" else "History",style=MaterialTheme.typography.h4)
-        Text(if(isLibrary) "Saved publication metadata. Opening always checks the source." else "Successfully opened publications · 50 most recent.")
+        Text(if(isLibrary) "Publications you've saved. Open an entry to read it from its source." else "Recently read · newest first.")
         if(loading) CircularProgressIndicator()
         if(failed) {
             Text("Local storage is unavailable. Please try again.",color=MaterialTheme.colors.error)
             Button(onClick={ if(isLibrary) controller.refreshLibrary() else controller.refreshHistory() }) { Text("Try again") }
         }
         error?.let { Text(it,color=MaterialTheme.colors.error) }
-        if(entries.isEmpty() && !loading && !failed) Text(if(isLibrary) "Your library is empty. Add a publication from its reader." else "No reading history yet.")
+        if(entries.isEmpty() && !loading && !failed) Text(if(isLibrary) "Your Library is empty. Add publications directly from Search, or from the reader." else "No reading history yet. Open a text publication to start reading.")
         LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             items(entries,key={ it.id.resultKey() }) { publication ->
-                Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     Text(publication.title,style=MaterialTheme.typography.h6)
-                    if(publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
-                    Text("Source: ${publication.id.sourceId.value}",style=MaterialTheme.typography.caption)
+                    if(publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "),style=MaterialTheme.typography.body2)
+                    Text("Source: ${application.sourceName(publication.id.sourceId)}",style=MaterialTheme.typography.caption)
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         Button(onClick={ application.openSaved(publication) }) { Text("Open text") }
-                        Button(enabled=!busy,onClick={ if(isLibrary) controller.removeLibrary(publication.id) else controller.removeHistory(publication.id) }) { Text("Remove") }
+                        val action=membership.forPublication(publication.id)
+                        Button(enabled=if(isLibrary) action.enabled else !busy,
+                            onClick={ if(isLibrary) controller.removeLibrary(publication.id) else controller.removeHistory(publication.id) }) {
+                            Text(if(isLibrary && action.busy) "Removing…" else "Remove")
+                        }
                     }
                     Divider()
                 }
@@ -156,10 +166,14 @@ internal fun CollectionScreen(destination: Destination, application: Application
 }
 
 @Composable
-internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit, onOpen: (org.infinilect.core.Publication) -> Unit = session::open) {
+@OptIn(ExperimentalLayoutApi::class)
+internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
+    collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open) {
     val controller = session.search
     val state by controller.state.collectAsState()
     val query by session.query.collectAsState()
+    val membership by collections.membership.collectAsState()
+    val libraryError by collections.error.collectAsState()
     val loading = state is SearchState.Loading
     val displayed = when (val current = state) {
         is SearchState.Results -> current.result
@@ -207,6 +221,11 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
             is SearchState.Error -> Text(current.message, color = MaterialTheme.colors.error)
             else -> Unit
         }
+        if(membership.unavailable) {
+            Text("Library storage is unavailable on this device.",color=MaterialTheme.colors.error)
+            Button(onClick=collections::refreshLibrary) { Text("Retry Library") }
+        }
+        libraryError?.let { Text(it,color=MaterialTheme.colors.error) }
         if (displayed != null) {
             if (displayed.page.publications.isEmpty()) Text("No publications found for “${displayed.query}”.")
             else Text("Results for “${displayed.query}”")
@@ -217,8 +236,12 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
                         if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
                         if (publication.languages.isNotEmpty()) Text("Language: ${publication.languages.joinToString(", ")}")
                         publication.rights?.let { Text(it, style = MaterialTheme.typography.caption) }
-                        if (session.textReadingEnabled) {
-                            Button(enabled = !loading, onClick = { onOpen(publication) }) { Text("Open text") }
+                        FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            if (session.textReadingEnabled) {
+                                Button(enabled = !loading, onClick = { onOpen(publication) }) { Text("Open text") }
+                            }
+                            LibraryAction(membership.forPublication(publication.id),
+                                onToggle={ collections.toggleCatalogLibrary(publication) })
                         }
                         Divider()
                     }
@@ -230,5 +253,12 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
         }
         Text(if (session.textReadingEnabled) "Only public CC0 items with an eligible text file can be opened. Reading position is saved locally; reopening still checks the source."
             else "Gutenberg availability in the US does not establish rights in every country.", style = MaterialTheme.typography.caption)
+    }
+}
+
+@Composable
+private fun LibraryAction(state: LibraryActionState, onToggle: () -> Unit) {
+    Button(enabled=state.enabled,onClick=onToggle) {
+        Text(state.label)
     }
 }

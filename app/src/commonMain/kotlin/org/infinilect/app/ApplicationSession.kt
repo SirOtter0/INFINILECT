@@ -73,6 +73,7 @@ internal class ApplicationSession(
         searchSession.value.open(publication); mutableOpening.value=searchSession.value.opening.state.value
     }
     fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && it.textReadingEnabled }
+    fun sourceName(id: SourceId)=sources.options.firstOrNull { it.source.id==id }?.name ?: id.value
     fun retry(publication: Publication) {
         if(closed || !canRetry(publication)) return
         val active=savedReader ?: searchSession.value
