@@ -12,16 +12,16 @@ also records current Desktop, core and host-test configurations. [Direct declara
 | --- | --- |
 | coreRuntime | 2 |
 | coreAndroid | 2 |
-| desktopRuntime | 123 |
-| appTests | 125 |
-| androidRuntime | 159 |
-| androidTests | 163 |
-| build | 119 |
+| desktopRuntime | 128 |
+| appTests | 130 |
+| androidRuntime | 166 |
+| androidTests | 173 |
+| build | 131 |
 
 Core JVM/Android runtime resolves only Kotlin stdlib 2.4.20 and annotations 13.0.
 Android runtime contains no Java HTTP engine, Desktop/Skiko runtime, kXML test jar,
 JUnit/test classes or AGP/tooling dependencies. No analytics SDK, reader charset
-detector, persistence or navigation framework. AndroidX coroutines/lifecycle/startup
+detector or navigation framework. SQLDelight stores local metadata only. AndroidX coroutines/lifecycle/startup
 are transitive runtime support, not new product functionality.
 
 ## Android application runtime
@@ -105,12 +105,19 @@ are transitive runtime support, not new product functionality.
 | `androidx.savedstate:savedstate-compose:1.4.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.savedstate:savedstate-ktx:1.4.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.savedstate:savedstate:1.4.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `androidx.sqlite:sqlite-android:2.7.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `androidx.sqlite:sqlite-framework-android:2.7.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `androidx.sqlite:sqlite-framework:2.7.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `androidx.sqlite:sqlite:2.7.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.startup:startup-runtime:1.2.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.tracing:tracing:1.2.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.versionedparcelable:versionedparcelable:1.1.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.window:window-core-android:1.5.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.window:window-core:1.5.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.window:window:1.5.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:android-driver:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:runtime-jvm:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:runtime:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `com.google.guava:listenablefuture:1.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `io.ktor:ktor-client-android-jvm:3.6.0` | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `io.ktor:ktor-client-android:3.6.0` | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
@@ -220,12 +227,19 @@ AGP/plugins are separate build tools. JNA declares Apache-2.0/LGPL-2.1 options;
 JAXB/istack declare EDL-1.0; JDOM has its linked BSD-style notice; Bouncy Castle MIT.
 AGP transitive universalchardet declares MPL-1.1. It is tooling only, **not** a
 charset detector in INFINILECT. Do not redistribute build/test tool classes as
-application classes. Upstream POM declarations are preserved, not relicensed.
+application classes. SQLDelight adds build-only SQL compiler/migration dependencies, including
+JGraphT (EPL-2.0/LGPL alternatives), JHeaps (Apache/LGPL alternatives) and Apfloat
+(LGPL-2.1). They never enter runtime/APK. POM terms are preserved, not relicensed.
 
 | Component | License evidence |
 | --- | --- |
 | `androidx.databinding:databinding-common:9.3.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `androidx.databinding:databinding-compiler-common:9.3.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:app.cash.sqldelight.gradle.plugin:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:core:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:dialect-api:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:gradle-plugin:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `app.cash.sqldelight:migrations:2.4.0` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `com.android.application:com.android.application.gradle.plugin:9.3.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `com.android.databinding:baseLibrary:9.3.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `com.android.kotlin.multiplatform.library:com.android.kotlin.multiplatform.library.gradle.plugin:9.3.1` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
@@ -278,11 +292,15 @@ application classes. Upstream POM declarations are preserved, not relicensed.
 | `com.googlecode.juniversalchardet:juniversalchardet:1.0.3` | [Mozilla Public License 1.1 (MPL 1.1)](http://www.mozilla.org/MPL/MPL-1.1.html) |
 | `com.squareup:javapoet:1.13.0` | [Apache 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `com.squareup:javawriter:2.5.0` | [Apache 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `com.squareup:kotlinpoet-jvm:2.4.0` | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `com.squareup:kotlinpoet:2.4.0` | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `com.sun.istack:istack-commons-runtime:3.0.8` | [Eclipse Distribution License - v 1.0](http://www.eclipse.org/org/documents/edl-v10.php) |
 | `com.sun.xml.fastinfoset:FastInfoset:1.2.16` | [Apache License, Version 2.0](http://www.opensource.org/licenses/apache2.0.php), [Eclipse Distribution License - v 1.0](http://www.eclipse.org/org/documents/edl-v10.php) |
 | `commons-codec:commons-codec:1.17.1` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `commons-io:commons-io:2.16.1` | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `commons-logging:commons-logging:1.2` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `dev.lysine.sql-psi:core:0.8.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `dev.lysine.sql-psi:environment:0.8.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `jakarta.activation:jakarta.activation-api:1.2.1` | [EDL 1.0](http://www.eclipse.org/org/documents/edl-v10.php) |
 | `jakarta.xml.bind:jakarta.xml.bind-api:2.3.2` | [Eclipse Distribution License - v 1.0](http://www.eclipse.org/org/documents/edl-v10.php) |
 | `javax.inject:javax.inject:1` | [Apache-2.0, published source headers](https://repo.maven.apache.org/maven2/javax/inject/javax.inject/1/javax.inject-1-sources.jar) |
@@ -295,6 +313,7 @@ application classes. Upstream POM declarations are preserved, not relicensed.
 | `org.apache.httpcomponents:httpclient:4.5.14` | [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.apache.httpcomponents:httpcore:4.4.16` | [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.apache.httpcomponents:httpmime:4.5.6` | [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `org.apfloat:apfloat:1.14.0` | [MIT License](https://opensource.org/licenses/MIT) |
 | `org.bitbucket.b_c:jose4j:0.9.5` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.bouncycastle:bcpkix-jdk18on:1.79` | [MIT, tagged upstream license](https://github.com/bcgit/bc-java/blob/r1rv79/LICENSE.html) |
 | `org.bouncycastle:bcprov-jdk18on:1.79` | [MIT, tagged upstream license](https://github.com/bcgit/bc-java/blob/r1rv79/LICENSE.html) |
@@ -335,6 +354,8 @@ application classes. Upstream POM declarations are preserved, not relicensed.
 | `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0` | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0` | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains:annotations:13.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `org.jgrapht:jgrapht-core:1.5.3` | [GNU Lesser General Public License Version 2.1, February 1999](http://jgrapht.sourceforge.net/LGPL.html), [Eclipse Public License (EPL) 2.0](http://www.eclipse.org/legal/epl-v20.html) |
+| `org.jheaps:jheaps:0.14` | [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jvnet.staxex:stax-ex:1.8.1` | [Eclipse Distribution License - v 1.0](http://www.eclipse.org/org/documents/edl-v10.php) |
 | `org.ow2.asm:asm-analysis:9.9` | [BSD-3-Clause](https://asm.ow2.io/license.html) |
 | `org.ow2.asm:asm-commons:9.9` | [BSD-3-Clause](https://asm.ow2.io/license.html) |
@@ -343,3 +364,19 @@ application classes. Upstream POM declarations are preserved, not relicensed.
 | `org.ow2.asm:asm:9.9` | [BSD-3-Clause](https://asm.ow2.io/license.html) |
 | `org.slf4j:slf4j-api:1.7.30` | [MIT License](http://www.opensource.org/licenses/mit-license.php) |
 | `org.tensorflow:tensorflow-lite-metadata:0.2.0` | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+
+## Local metadata additions and native notices
+
+The 2026-10-03 inventory now includes the local library/history SQLDelight slice:
+Desktop runtime adds five components, Android seven, Desktop tests five, Android
+host tests ten and build tooling twelve. No pre-existing component/version was
+removed or changed; core graphs remain exactly Kotlin stdlib + annotations.
+
+SQLDelight 2.4.0 and AndroidX SQLite 2.7.1 are Apache-2.0. Xerial SQLite JDBC
+3.53.4.0 is Desktop/host-test only: its Apache POM declaration is supplemented by
+the bundled Zentus BSD-2-Clause notice and SQLite public-domain dedication, linked
+in [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md). The Android APK uses OS SQLite;
+it excludes Xerial/JDBC/native libraries as well as test/build dependencies.
+SQLDelight schema/compiler/migration transitives are tooling only and retain their
+POM/upstream licenses, including LGPL/EPL alternatives. No source transport,
+telemetry, permission or core dependency changes.

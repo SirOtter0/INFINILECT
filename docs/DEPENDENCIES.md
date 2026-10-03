@@ -1,5 +1,38 @@
 # Dependencies and licenses
 
+## Local library/history additions — 2026-10-03
+
+Only the new metadata database uses SQLDelight. ReadingProgress remains its existing
+file store; cache remains files, core remains Kotlin-only. No unrelated dependency
+version is changed. [Storage/schema policy](LIBRARY_HISTORY.md).
+
+| Explicit dependency/plugin | Version | License | Module / reason / official evidence |
+| --- | --- | --- | --- |
+| app.cash.sqldelight Gradle plugin | 2.4.0 | Apache-2.0 | root apply-false/app; SQL code generation and definition checks. [Stable release](https://github.com/sqldelight/sqldelight/releases/tag/2.4.0), [exact license](https://github.com/sqldelight/sqldelight/blob/2.4.0/LICENSE.txt). |
+| app.cash.sqldelight:runtime | 2.4.0 | Apache-2.0 | app/commonMain generated query/runtime API; never core. [POM](https://repo.maven.apache.org/maven2/app/cash/sqldelight/runtime/2.4.0/runtime-2.4.0.pom). |
+| app.cash.sqldelight:sqlite-driver | 2.4.0 | Apache-2.0 | app/desktopMain; also jvmSharedTest for real offline file-database tests, not Android runtime. [POM](https://repo.maven.apache.org/maven2/app/cash/sqldelight/sqlite-driver/2.4.0/sqlite-driver-2.4.0.pom). |
+| app.cash.sqldelight:android-driver | 2.4.0 | Apache-2.0 | app/androidMain, maintained OS SQLite driver/private Context database path. [POM](https://repo.maven.apache.org/maven2/app/cash/sqldelight/android-driver/2.4.0/android-driver-2.4.0.pom). |
+
+Runtime additions also include SQLDelight runtime-jvm/jdbc-driver 2.4.0
+(Apache-2.0), Desktop Xerial sqlite-jdbc **3.53.4.0** (Apache-2.0 plus retained
+BSD-2-Clause Zentus code and public-domain SQLite), and AndroidX sqlite /
+sqlite-framework **2.7.1** (Apache-2.0). Official [JDBC license](https://github.com/xerial/sqlite-jdbc/blob/3.53.4.0/LICENSE),
+[Zentus notice](https://github.com/xerial/sqlite-jdbc/blob/3.53.4.0/LICENSE.zentus),
+[SQLite public-domain dedication](https://www.sqlite.org/copyright.html),
+[AndroidX sqlite POM](https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite/2.7.1/sqlite-2.7.1.pom)
+and [framework POM](https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-framework/2.7.1/sqlite-framework-2.7.1.pom).
+The JDBC native bundle is Desktop/host-test only, absent from the APK. These runtime
+licenses are compatible with GPL-3.0-or-later; upstream terms remain unchanged.
+
+SQLDelight is used instead of a hand-maintained SQL layer for generated typed
+queries, normalized child metadata, atomic multi-row transactions and migration
+support. The official multiplatform setup supports these JVM/Android drivers.
+Stable 2.4.0's tagged wrapper uses this project's Gradle 9.7.1; this repository
+verifies actual Kotlin 2.4.20/AGP 9.3.1/Compose 1.12.1 compilation and tests rather
+than claiming an upstream certification matrix. See [TOOLCHAIN](TOOLCHAIN.md).
+Build-only SQL compiler/plugin dependencies are not included in applications.
+No navigation, telemetry, serialization format or additional source dependency.
+
 ## Current Android/Desktop declarations — 2026-10-03
 
 Core domain dependencies remain Kotlin-only. Android build plugins/targets do not
@@ -33,8 +66,9 @@ Android's optional process-docdecl feature, so the host shim accepts only its
 verified disabled default. Production Android requires explicit DTD disablement,
 without a fallback. Host tests are not a claim of Android OS/emulator execution.
 
-No permanent repository substitution, logging backend, storage/database,
-navigation/DI framework, PDF/EPUB engine or telemetry dependency is added.
+The Android foundation introduced no database. The later local library/history
+addition above introduces only its metadata database. No permanent repository
+substitution, logging backend, navigation/DI, reader engine or telemetry is added.
 
 ## Historical Desktop artifact inventory — 2026-10-02
 

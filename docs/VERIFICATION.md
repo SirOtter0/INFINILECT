@@ -1,5 +1,128 @@
 # Verification
 
+## PR #8 local library/history — 2026-10-03
+
+Starting/current fetched main: **8a89ef407b01fc9046b5c7c43cadaa1d0a5ecbb2**, merged
+PR #7. Fresh feature/local-library-history branch; prior branches/history unchanged.
+SQLDelight 2.4.0 (stable, Apache-2.0) is the only new direct dependency family.
+Kotlin 2.4.20 / Compose 1.12.1 / Gradle 9.7.1 / AGP 9.3.1 / JDK 21.0.12.1+1 /
+compile/target 37, min 26 are unchanged. No ReadingProgress migration.
+
+### Actual checks and corrections
+
+SQL code generation and Desktop/Android compilation were exercised first. The first
+compile rejected a member-extension reference in row mapping; explicit lambdas
+fixed it. New controller tests found a genuine history-list observer startup race
+(drop(1) could discard an already committed change); collecting the current counter
+fixed it. A queue barrier before history list/remove/clear prevents an earlier
+queued successful open from reappearing after Clear. Targeted tests then passed.
+
+The first clean full build stopped at SQLDelight migration verification: this
+initial v1 has no historical database baseline. SQL definition checking remains
+enabled; migration replay is disabled only for the initial schema, with historical
+baseline/replay required at the first schema change. Fresh/reopen/future-version/
+foreign-key real database tests pass. No generated SQLite baseline/runtime file
+is committed. The complete clean command was rerun after that configuration fix.
+
+```sh
+./gradlew :app:generateSqlDelightInterface --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew :app:compileKotlinDesktop :app:compileAndroidMain --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew :core:jvmTest :app:desktopTest :app:testAndroidHostTest --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+Final **BUILD SUCCESSFUL in 2m 52s**, **146 actionable tasks: 137 executed,
+9 up-to-date**. Includes SQLDelight interface generation and definition verification,
+core/app builds, Desktop launcher, Android libraries/host tests/lint/debug APK.
+No compiler/deprecation/packaging warnings. Lint: **No issues found, 0 errors /
+0 warnings**. androidApp:testDebugUnitTest is **NO-SOURCE** (launcher has no unit
+cases); this is not a skipped test. Resource-generation NO-SOURCE/SKIPPED tasks
+are expected, not skipped test cases.
+
+| Final test task | Executions | Failures / errors / skipped |
+| --- | --- | --- |
+| core:jvmTest | 38 | 0 / 0 / 0 |
+| app:desktopTest | 296 | 0 / 0 / 0 |
+| core:testAndroidHostTest | 38 | 0 / 0 / 0 |
+| app:testAndroidHostTest | 271 | 0 / 0 / 0 |
+| Total | **643** | **0 / 0 / 0** |
+
+**355 unique cases**, after normalizing JVM/Desktop target suffixes. **62 new**:
+core metadata/identity 7; real file SQLite repository/schema/rollback/restart tests
+23; shared collection state/history ordering/confirmation tests 12; shared saved-open/
+navigation/source-resolution/progress tests 13; Desktop actual driver/path tests 5;
+Android persistent-database path tests 2. Android host SQL tests use the JDBC driver,
+not an Android OS emulator. All existing source/cache/UTF-8/BOM/size/progress and
+cancellation tests remain, and pass on their existing targets.
+
+Durable restart tests discard driver/repository state, reopen entirely new objects,
+and read committed SQLite data. Failed/cancelled writes retain the previous commit;
+failed first writes leave no optimistic durable item. Tests cover normalized comma/
+newline/Unicode authors/languages, source-scoped identity, deterministic ordering,
+history deduplication/retention, quotas, unsupported schema/corrupt database,
+concurrent transactions, independent cache/progress, fixed errors, source detail
+and acquisition failures, cancelled/duplicate opens, Library/History Back origin
+and retained Gutenberg/Archive Search. No acquisition resources persist in metadata.
+
+### Dependency and artifact inspection
+
+An external init script inspected actual Gradle resolutionResult graphs:
+
+```sh
+./gradlew -I /tmp/infinilect-android-inventory.init.gradle androidDependencyInventory \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Passed in 10s, one actionable task. It only observes graphs and does not replace
+repositories. [Inventory](ANDROID_DEPENDENCIES.md) has 367 licensed external
+components across runtime/test/tooling, including metadata/BOM components. Core
+remains stdlib/annotations only. No previously resolved dependency/version changed;
+new SQLDelight/Xerial/AndroidX SQLite components and tooling are separately listed.
+JDBC native/test/tooling components are excluded from Android product runtime.
+No Maven HTTP 429, repository workaround or new build-environment workaround.
+Existing /tmp JDK/SDK/Gradle cache and proxy/trust configuration were reused.
+
+```sh
+aapt2 dump badging androidApp/build/outputs/apk/debug/androidApp-debug.apk
+aapt2 dump permissions androidApp/build/outputs/apk/debug/androidApp-debug.apk
+aapt2 dump xmltree androidApp/build/outputs/apk/debug/androidApp-debug.apk --file AndroidManifest.xml
+apksigner verify --verbose androidApp/build/outputs/apk/debug/androidApp-debug.apk
+sha256sum androidApp/build/outputs/apk/debug/androidApp-debug.apk
+adb devices -l
+```
+
+APK: **androidApp/build/outputs/apk/debug/androidApp-debug.apk**, **11,569,262 bytes**.
+SHA-256: **af74ec49b5c848957d0471b92a9062d6ac1ea2e5770155b9e234bcc2e7468d1f**.
+Package org.infinilect.app, label INFINILECT, minSdk 26, target/compileSdk 37.
+Debug signature verifies (APK Signature Scheme v2). Manifest still denies cleartext
+and backup; only INTERNET plus the existing app-scoped AndroidX signature permission
+is requested. No storage/device-data permission. The AndroidX debug receiver's
+DUMP attribute is a required caller permission, not a requested app capability.
+Generated APK/DB/cache/progress/build files are untracked/ignored, never committed.
+New code/schema headers use GPL-3.0-or-later; no GPL-3.0-only declaration, no changed
+third-party licensing or secret/token artifact. Local Markdown links pass.
+
+### Limits / required human verification
+
+No live Gutenberg/Internet Archive/OAPEN check was run. Normal tests are entirely
+offline; network access was only for official dependency/license evidence and build
+resolution. Source/security/cache/progress implementations are unchanged. IA
+revision=null still requires fresh acquisition; saved metadata/progress is no bypass.
+
+**No graphical Desktop, Android device or emulator test was performed.** adb listed
+no devices. Android host tests do not prove OS SQLite, Activity teardown or new UI
+layout. APK compilation/manifest inspection are verified; physical A–J tests remain
+pending in [LIBRARY_HISTORY](LIBRARY_HISTORY.md#required-physical-android-smoke-test-not-yet-performed).
+In particular terminate/relaunch and cache-only deletion must preserve user metadata.
+Pending history work may be interrupted by abrupt process termination; committed
+transactions are the persistence guarantee. Corrupt database recovery/export and
+historical migrations are future work, not silently destructive fallbacks.
+
 ## Blocking Android progress-persistence correction — 2026-10-03
 
 Continued existing feature/persistent-reading-progress / PR #7 from

@@ -25,7 +25,7 @@ OAPEN diagnostics and live CLI checks remain Desktop-only.
 `desktopApp` owns Window/application/OS runtime. `androidApp` owns MainActivity,
 manifest/insets/Android Back and APK packaging. Neither owns source policies.
 Platform factories create ApplicationSources without initiating requests. It
-attaches the active ReadingSession and cancels it before closing both clients,
+attaches the active ApplicationSession (owning ReadingSessions) and cancels it before closing both clients,
 idempotently. Composition disposal detaches/cancels sessions; Activity destruction
 and Desktop disposal close sources. No Activity/Context is retained by adapters.
 
@@ -128,7 +128,8 @@ any seek/range capability only with a concrete consumer and implementation.
 See [ADR 0006](adr/0006-bounded-resource-access.md).
 
 Ktor belongs in a concrete trusted source/transport implementation outside core.
-SQLDelight is deferred until persistent data needs a schema. Readium is deferred
+SQLDelight now implements app-only local library/history metadata; core and the
+existing progress/cache stores remain independent. Readium is deferred
 and must remain behind an Android-specific reader implementation; no Readium
 objects or dependencies may cross into core or shared reader contracts.
 
@@ -193,14 +194,15 @@ percentage and vertical scroll.
 
 ReadingSession owns one SearchController, opener, query and search job. UI-thread
 actions are serialized by the UI dispatcher; decoder work returns to that scope
-before state publication. Open state doubles as the two-screen navigation state:
-Idle = Search, Loading/Error = opening screen, Ready = Reader. Back resets only
-opening state and keeps source/query/results; it does not refetch. Switching
+before state publication. ApplicationSession now owns the small Search/Library/History destinations;
+Idle shows the selected destination, Loading/Error the opening screen, Ready the
+reader. Back resets opening state and returns to its origin, keeping Search
+source/query/results; it does not refetch. Switching
 source closes/discards the old session, creates a fresh one and resets Compose
 collectors using a session key, so old-source results cannot flash or replace new
 results. No request is started by changing source. Disposal cancels session jobs
-and closes platform sources. Query/results are session-local; progress persists independently, without history
-or reusable current Archive bytes (its revisions are null). Automatic disk-cache
+and closes platform sources. Query/results are session-local; progress and library/history metadata persist
+independently of current Archive bytes (its revisions are null). Automatic disk-cache
 infrastructure is separate from session state. See [ADR 0012](adr/0012-bounded-text-reading.md).
 
 ## Acquisition verification and lifecycle
@@ -229,7 +231,7 @@ Android-KMP library plugin; only androidApp applies com.android.application with
 AGP built-in Kotlin. There is no application/KMP plugin combination in one module.
 
 App receives a composable platform Back callback, with no Android imports in
-shared UI. Enabled only in Loading/Ready/Error, Android Back calls session.back:
+shared UI. Enabled in Loading/Ready/Error and Library/History, Android Back calls application.back:
 cancel the opener, invalidate late responses, retain source/query/results. At
 root Search, system Back follows Activity behavior. Insets/keyboard padding belong
 to the Android launcher; source-choice buttons share available width on phones.
@@ -268,3 +270,20 @@ requests are involved. Details/limits in [PROGRESS.md](PROGRESS.md) and
 Android permissions use the no-follow POSIX path attribute view, avoiding the
 unsupported FileStore query. Durable restart tests instantiate new stores/writers;
 same-process restoration through RAM is explicitly insufficient evidence of a save.
+
+## Persistent local library/history
+
+Core defines bounded metadata snapshots and repository contracts, without resources
+or SQL APIs. App generates SQLDelight 2.4.0 schema v1 for library/history and ordered
+author/language child rows. IO-only platform drivers use private persistent database
+storage, separate from resource-cache-v1 and reading-progress-v1. Library mutations
+reflect committed storage; history is captured only after a successful reader open.
+ApplicationCollections owns repositories/finite history queue, ApplicationSession
+owns small navigation, and both reuse the existing ReadingSession/opener.
+
+Saved entry → PublicationId → owning PublicationSource.getPublication → normal
+ResourceLoader/strict TEXT decoding → Reader + unchanged progress restoration.
+Stored metadata/rights/URLs never replace current source permission checks.
+Clearing history/removing library affects only its own table. Details, bounds,
+migration and failure policy in [LIBRARY_HISTORY](LIBRARY_HISTORY.md) and
+[ADR 0016](adr/0016-local-library-history.md).

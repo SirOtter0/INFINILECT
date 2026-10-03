@@ -632,6 +632,30 @@
         "http://www.apache.org/licenses/LICENSE-2.0.txt"
       ]
     ],
+    "androidx.sqlite:sqlite:2.7.1": [
+      [
+        "The Apache Software License, Version 2.0",
+        "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "androidx.sqlite:sqlite-android:2.7.1": [
+      [
+        "The Apache Software License, Version 2.0",
+        "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "androidx.sqlite:sqlite-framework:2.7.1": [
+      [
+        "The Apache Software License, Version 2.0",
+        "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "androidx.sqlite:sqlite-framework-android:2.7.1": [
+      [
+        "The Apache Software License, Version 2.0",
+        "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
     "androidx.startup:startup-runtime:1.1.1": [
       [
         "The Apache Software License, Version 2.0",
@@ -672,6 +696,66 @@
       [
         "The Apache Software License, Version 2.0",
         "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:android-driver:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:app.cash.sqldelight.gradle.plugin:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:core:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:dialect-api:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:gradle-plugin:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:jdbc-driver:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:migrations:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:runtime:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:runtime-jvm:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "app.cash.sqldelight:sqlite-driver:2.4.0": [
+      [
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
       ]
     ],
     "com.android:signflinger:9.3.1": [
@@ -992,6 +1076,18 @@
         "http://www.apache.org/licenses/LICENSE-2.0.txt"
       ]
     ],
+    "com.squareup:kotlinpoet:2.4.0": [
+      [
+        "The Apache Software License, Version 2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "com.squareup:kotlinpoet-jvm:2.4.0": [
+      [
+        "The Apache Software License, Version 2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
     "com.sun.istack:istack-commons-runtime:3.0.8": [
       [
         "Eclipse Distribution License - v 1.0",
@@ -1021,6 +1117,18 @@
       ]
     ],
     "commons-logging:commons-logging:1.2": [
+      [
+        "The Apache Software License, Version 2.0",
+        "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "dev.lysine.sql-psi:core:0.8.0": [
+      [
+        "The Apache Software License, Version 2.0",
+        "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "dev.lysine.sql-psi:environment:0.8.0": [
       [
         "The Apache Software License, Version 2.0",
         "http://www.apache.org/licenses/LICENSE-2.0.txt"
@@ -1278,6 +1386,12 @@
       [
         "Apache License, Version 2.0",
         "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
+    "org.apfloat:apfloat:1.14.0": [
+      [
+        "MIT License",
+        "https://opensource.org/licenses/MIT"
       ]
     ],
     "org.bitbucket.b_c:jose4j:0.9.5": [
@@ -2024,6 +2138,22 @@
         "http://www.apache.org/licenses/LICENSE-2.0.txt"
       ]
     ],
+    "org.jgrapht:jgrapht-core:1.5.3": [
+      [
+        "GNU Lesser General Public License Version 2.1, February 1999",
+        "http://jgrapht.sourceforge.net/LGPL.html"
+      ],
+      [
+        "Eclipse Public License (EPL) 2.0",
+        "http://www.eclipse.org/legal/epl-v20.html"
+      ]
+    ],
+    "org.jheaps:jheaps:0.14": [
+      [
+        "Apache License, Version 2.0",
+        "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
+    ],
     "org.jspecify:jspecify:1.0.0": [
       [
         "The Apache License, Version 2.0",
@@ -2083,6 +2213,12 @@
         "The Apache Software License, Version 2.0",
         "http://www.apache.org/licenses/LICENSE-2.0.txt"
       ]
+    ],
+    "org.xerial:sqlite-jdbc:3.53.4.0": [
+      [
+        "The Apache Software License, Version 2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0.txt"
+      ]
     ]
   },
   "configurations": {
@@ -2128,6 +2264,10 @@
       "androidx.savedstate:savedstate-compose:1.4.0",
       "androidx.savedstate:savedstate-desktop:1.4.0",
       "androidx.savedstate:savedstate:1.4.0",
+      "app.cash.sqldelight:jdbc-driver:2.4.0",
+      "app.cash.sqldelight:runtime-jvm:2.4.0",
+      "app.cash.sqldelight:runtime:2.4.0",
+      "app.cash.sqldelight:sqlite-driver:2.4.0",
       "io.ktor:ktor-client-core-jvm:3.6.0",
       "io.ktor:ktor-client-core:3.6.0",
       "io.ktor:ktor-client-java-jvm:3.6.0",
@@ -2217,7 +2357,8 @@
       "org.jetbrains.skiko:skiko:0.150.1",
       "org.jetbrains:annotations:23.0.0",
       "org.jspecify:jspecify:1.0.0",
-      "org.slf4j:slf4j-api:2.0.19"
+      "org.slf4j:slf4j-api:2.0.19",
+      "org.xerial:sqlite-jdbc:3.53.4.0"
     ],
     "appTests": [
       "androidx.annotation:annotation-jvm:1.9.1",
@@ -2253,6 +2394,10 @@
       "androidx.savedstate:savedstate-compose:1.4.0",
       "androidx.savedstate:savedstate-desktop:1.4.0",
       "androidx.savedstate:savedstate:1.4.0",
+      "app.cash.sqldelight:jdbc-driver:2.4.0",
+      "app.cash.sqldelight:runtime-jvm:2.4.0",
+      "app.cash.sqldelight:runtime:2.4.0",
+      "app.cash.sqldelight:sqlite-driver:2.4.0",
       "io.ktor:ktor-client-core-jvm:3.6.0",
       "io.ktor:ktor-client-core:3.6.0",
       "io.ktor:ktor-client-java-jvm:3.6.0",
@@ -2344,7 +2489,8 @@
       "org.jetbrains.skiko:skiko:0.150.1",
       "org.jetbrains:annotations:23.0.0",
       "org.jspecify:jspecify:1.0.0",
-      "org.slf4j:slf4j-api:2.0.19"
+      "org.slf4j:slf4j-api:2.0.19",
+      "org.xerial:sqlite-jdbc:3.53.4.0"
     ],
     "androidRuntime": [
       "androidx.activity:activity-compose:1.13.0",
@@ -2424,12 +2570,19 @@
       "androidx.savedstate:savedstate-compose:1.4.0",
       "androidx.savedstate:savedstate-ktx:1.4.0",
       "androidx.savedstate:savedstate:1.4.0",
+      "androidx.sqlite:sqlite-android:2.7.1",
+      "androidx.sqlite:sqlite-framework-android:2.7.1",
+      "androidx.sqlite:sqlite-framework:2.7.1",
+      "androidx.sqlite:sqlite:2.7.1",
       "androidx.startup:startup-runtime:1.2.0",
       "androidx.tracing:tracing:1.2.0",
       "androidx.versionedparcelable:versionedparcelable:1.1.1",
       "androidx.window:window-core-android:1.5.0",
       "androidx.window:window-core:1.5.0",
       "androidx.window:window:1.5.0",
+      "app.cash.sqldelight:android-driver:2.4.0",
+      "app.cash.sqldelight:runtime-jvm:2.4.0",
+      "app.cash.sqldelight:runtime:2.4.0",
       "com.google.guava:listenablefuture:1.0",
       "io.ktor:ktor-client-android-jvm:3.6.0",
       "io.ktor:ktor-client-android:3.6.0",
@@ -2580,12 +2733,21 @@
       "androidx.savedstate:savedstate-compose:1.4.0",
       "androidx.savedstate:savedstate-ktx:1.4.0",
       "androidx.savedstate:savedstate:1.4.0",
+      "androidx.sqlite:sqlite-android:2.7.1",
+      "androidx.sqlite:sqlite-framework-android:2.7.1",
+      "androidx.sqlite:sqlite-framework:2.7.1",
+      "androidx.sqlite:sqlite:2.7.1",
       "androidx.startup:startup-runtime:1.1.1",
       "androidx.tracing:tracing:1.2.0",
       "androidx.versionedparcelable:versionedparcelable:1.1.1",
       "androidx.window:window-core-android:1.5.0",
       "androidx.window:window-core:1.5.0",
       "androidx.window:window:1.5.0",
+      "app.cash.sqldelight:android-driver:2.4.0",
+      "app.cash.sqldelight:jdbc-driver:2.4.0",
+      "app.cash.sqldelight:runtime-jvm:2.4.0",
+      "app.cash.sqldelight:runtime:2.4.0",
+      "app.cash.sqldelight:sqlite-driver:2.4.0",
       "com.google.guava:listenablefuture:1.0",
       "io.ktor:ktor-client-android-jvm:3.6.0",
       "io.ktor:ktor-client-android:3.6.0",
@@ -2670,11 +2832,17 @@
       "org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0",
       "org.jetbrains:annotations:23.0.0",
       "org.jspecify:jspecify:1.0.0",
-      "org.slf4j:slf4j-api:2.0.19"
+      "org.slf4j:slf4j-api:2.0.19",
+      "org.xerial:sqlite-jdbc:3.53.4.0"
     ],
     "build": [
       "androidx.databinding:databinding-common:9.3.1",
       "androidx.databinding:databinding-compiler-common:9.3.1",
+      "app.cash.sqldelight:app.cash.sqldelight.gradle.plugin:2.4.0",
+      "app.cash.sqldelight:core:2.4.0",
+      "app.cash.sqldelight:dialect-api:2.4.0",
+      "app.cash.sqldelight:gradle-plugin:2.4.0",
+      "app.cash.sqldelight:migrations:2.4.0",
       "com.android.application:com.android.application.gradle.plugin:9.3.1",
       "com.android.databinding:baseLibrary:9.3.1",
       "com.android.kotlin.multiplatform.library:com.android.kotlin.multiplatform.library.gradle.plugin:9.3.1",
@@ -2727,11 +2895,15 @@
       "com.googlecode.juniversalchardet:juniversalchardet:1.0.3",
       "com.squareup:javapoet:1.13.0",
       "com.squareup:javawriter:2.5.0",
+      "com.squareup:kotlinpoet-jvm:2.4.0",
+      "com.squareup:kotlinpoet:2.4.0",
       "com.sun.istack:istack-commons-runtime:3.0.8",
       "com.sun.xml.fastinfoset:FastInfoset:1.2.16",
       "commons-codec:commons-codec:1.17.1",
       "commons-io:commons-io:2.16.1",
       "commons-logging:commons-logging:1.2",
+      "dev.lysine.sql-psi:core:0.8.0",
+      "dev.lysine.sql-psi:environment:0.8.0",
       "jakarta.activation:jakarta.activation-api:1.2.1",
       "jakarta.xml.bind:jakarta.xml.bind-api:2.3.2",
       "javax.inject:javax.inject:1",
@@ -2744,6 +2916,7 @@
       "org.apache.httpcomponents:httpclient:4.5.14",
       "org.apache.httpcomponents:httpcore:4.4.16",
       "org.apache.httpcomponents:httpmime:4.5.6",
+      "org.apfloat:apfloat:1.14.0",
       "org.bitbucket.b_c:jose4j:0.9.5",
       "org.bouncycastle:bcpkix-jdk18on:1.79",
       "org.bouncycastle:bcprov-jdk18on:1.79",
@@ -2784,6 +2957,8 @@
       "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0",
       "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0",
       "org.jetbrains:annotations:13.0",
+      "org.jgrapht:jgrapht-core:1.5.3",
+      "org.jheaps:jheaps:0.14",
       "org.jvnet.staxex:stax-ex:1.8.1",
       "org.ow2.asm:asm-analysis:9.9",
       "org.ow2.asm:asm-commons:9.9",
