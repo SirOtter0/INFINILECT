@@ -142,7 +142,7 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
             if (displayed.page.publications.isEmpty()) Text("No publications found for “${displayed.query}”.")
             else Text("Results for “${displayed.query}”")
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(displayed.page.publications, key = { it.id }) { publication ->
+                items(displayed.page.publications, key = { it.id.resultKey() }) { publication ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(publication.title, style = MaterialTheme.typography.h6)
                         if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))

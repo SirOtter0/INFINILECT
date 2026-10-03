@@ -39,6 +39,12 @@ source/query/results; root Search leaves Back to Android. Shared reader is uncha
 Android launcher handles safe system/keyboard insets. Recreation/process death loses
 query/results/document/scroll position, accepted for this slice.
 
+LazyColumn keys use a Pair<String, String> projection of PublicationId, preserving
+source/local identity without ambiguous concatenation. The pair is serializable
+on Android/JVM, as required for Android Bundle-compatible list keys; PublicationId
+itself remains Kotlin-pure. This does not add state persistence. See the official
+[Compose item-key guidance](https://developer.android.com/develop/ui/compose/lists#item-keys).
+
 Use AGP 9.3.1 (official Kotlin 2.4.20 range), compileSdk 37 (required by Compose
 1.12.1 AARs), targetSdk 37, minSdk 26 (shared java.util.Base64 without desugaring),
 JDK 21 build toolchain with Android bytecode 17. See [toolchain](../TOOLCHAIN.md).

@@ -3,10 +3,27 @@
 package org.infinilect.app.network
 
 import io.ktor.client.engine.android.AndroidEngineConfig
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.ObjectInputStream
+import java.io.ObjectOutputStream
+import java.io.Serializable
 import kotlin.test.*
 import org.infinilect.app.createApplicationSources
+import org.infinilect.app.resultKey
+import org.infinilect.core.PublicationId
+import org.infinilect.core.SourceId
 
 class AndroidSourcesTest {
+    @Test fun resultKeysCanBeSerializedForAndroidBundleSaveability() {
+        val key = PublicationId(SourceId("internet-archive"), "gmb-2015-93040").resultKey()
+        assertIs<Serializable>(key)
+        val bytes = ByteArrayOutputStream().use { buffer ->
+            ObjectOutputStream(buffer).use { it.writeObject(key) }
+            buffer.toByteArray()
+        }
+        ObjectInputStream(ByteArrayInputStream(bytes)).use { assertEquals(key, it.readObject()) }
+    }
     @Test fun usesAndroidEngineWithBoundedTransportTimeouts() {
         val engine = platformHttpEngine()
         try {

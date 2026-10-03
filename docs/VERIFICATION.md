@@ -20,7 +20,7 @@ Android release artifacts outside this slice:
   --no-daemon --console=plain --max-workers=2 --warning-mode=all
 ```
 
-**BUILD SUCCESSFUL in 1m 29s**, 144 actionable tasks: 136 executed, 8 up-to-date.
+**BUILD SUCCESSFUL in 1m 39s**, 144 actionable tasks: 136 executed, 8 up-to-date.
 Android bytecode/DEX/resources/manifest/signing/APK actually produced; Desktop
 launcher/JAR compiled and shared libraries built. No compiler/deprecation/packaging
 warnings. Lint XML/text report: **0 errors, 0 warnings, 0 issues**. No baseline,
@@ -29,17 +29,18 @@ blanket lint disabling or error suppression.
 | Suite | Tests | Failures / errors / skipped |
 | --- | --- | --- |
 | core:jvmTest | 23 | 0 / 0 / 0 |
-| app:desktopTest | 134 | 0 / 0 / 0 |
+| app:desktopTest | 135 | 0 / 0 / 0 |
 | core:testAndroidHostTest | 23 | 0 / 0 / 0 |
-| app:testAndroidHostTest | 116 | 0 / 0 / 0 |
-| Total executions | **296** | **0 / 0 / 0** |
+| app:testAndroidHostTest | 118 | 0 / 0 / 0 |
+| Total executions | **299** | **0 / 0 / 0** |
 
-These represent **171 unique cases**: 23 core + 134 Desktop app + 14 Android-only.
-There are **49 shared common cases** (SearchController 5, ReadingSession 10,
-OpenPublicationController 30, ApplicationSources 4), plus 53 engine-independent
+These represent **173 unique cases**: 23 core + 135 Desktop app + 15 Android-only.
+There are **50 shared common cases** (SearchController 5, ReadingSession 10,
+OpenPublicationController 30, ApplicationSources 4, ResultKey 1), plus 53 engine-independent
 Archive/neutral-acquisition cases run on both Desktop and Android host.
-**19 new unique cases**: BOM-only 1, lifecycle/Back ownership 4, Android engine/
-factory 2, Android XML-token adapter 5, real pull-tokenization fixtures 7.
+**21 new unique cases**: BOM-only 1, lifecycle/Back ownership 4, Android engine/
+factory 2, Android XML-token adapter 5, real pull-tokenization fixtures 7,
+source-scoped result-key identity 1 and Android key serialization 1.
 `androidApp:testDebugUnitTest` is NO-SOURCE: meaningful Android unit tests live in
 app/androidHostTest and core/androidHostTest. No emulator/instrumentation suite
 was executed or silently skipped; Gradle's resource-generation/configuration
@@ -69,7 +70,7 @@ runtime graphs; [full inventory/licensing](ANDROID_DEPENDENCIES.md).
 Standard task: `./gradlew :androidApp:assembleDebug`.
 File: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
 Size: **11,355,808 bytes** (about 10.83 MiB).
-SHA-256: **`1cce06317943fae7b6772742a2360d9738defc03ee084ccd467abb05e8286140`**.
+SHA-256: **`1df99389318539bf6e3f15abed277ccc6dcb7767fd92bf1baafc239c7abc4f89`**.
 
 Official SDK inspection commands:
 
@@ -118,6 +119,10 @@ Initial lint found manifest/classpath, backup, icon and target issues; fixed act
 configuration, retained stable AndroidX Startup 1.2.0 at compile/runtime and target
 37. Initial debug native strip diagnostic removed by explicitly retaining the
 upstream prebuilt path library's symbols, without adding an NDK.
+Final compatibility review caught PublicationId as a LazyColumn key: Android
+requires Bundle-supported keys. Replaced only the UI projection with the
+serializable Pair<String, String>, keeping core and source/local identity intact.
+Offline tests check collision resistance and Java serialization round-trip.
 Initial upstream kXML tests rejected its unsupported Android-specific optional
 feature; test-only shim checks its disabled default, leaving production strict.
 The first component-inventory artifact query hit AGP secondary-artifact ambiguity;
@@ -146,6 +151,7 @@ commits/PR after publication; no merge.
 No source live check was rerun: shared policies are unchanged and prior successful
 Archive/Gutenberg evidence below remains historical. No source requests/retries
 from this task's live checks. `adb devices -l` returned an **empty device list**;
+its local daemon needs execution outside the restrictive socket sandbox.
 DISPLAY/WAYLAND_DISPLAY absent. **APK built successfully; physical-device smoke
 test pending. UI compiled but graphical smoke test not performed.** No emulator,
 remote device reservation, strange graphical workaround or third-party upload.

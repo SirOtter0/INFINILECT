@@ -35,6 +35,11 @@ registry. DirectResourceLoader/neutral format selection remain unchanged; no
 cache/download store. Core contracts and Archive access/redirect/revision limits
 are unchanged. See [ADR 0013](adr/0013-first-android-application.md).
 
+Result-list UI keys project PublicationId to Pair<String, String>: source and
+local ID remain distinct, while the JVM/Android pair is serializable for Android
+Bundle saveability. Core identities stay platform-free; this UI key is not a
+persisted cache key and does not introduce session persistence.
+
 ## Domain
 
 `SourceId` is a stable namespace. `PublicationId` is the structured pair of source
