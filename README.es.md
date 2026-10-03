@@ -21,13 +21,20 @@ autores e idiomas cuando la fuente los proporciona. La búsqueda se envía media
 una acción explícita; la siguiente página solo se solicita al pulsar **Next page**.
 No hay búsqueda automática ni precarga.
 
-Los detalles de publicaciones, la adquisición de recursos, la caché y la lectura
-**todavía no están implementados**. Este slice de búsqueda no completa v0.0.1.
-Se mantienen los contratos de dominio puros, acceso limitado a recursos, identidad
-con revisión de contenido y documentación arquitectónica.
+Un adaptador independiente de Internet Archive demuestra adquisición real de un
+texto público CC0 mediante PublicationSource/ResourceContent, con check CLI opt-in
+y lectura UTF-8 acotada. Es un subconjunto conservador, no una segunda fuente en la
+UI actual. No hay caché, downloads persistentes ni lector;
+**v0.0.1 no está terminada**. [Alcance](docs/INTERNET_ARCHIVE.md).
+
+La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona
+enlaces de descarga. REST rechaza este entorno con HTTP 403 y la transferencia PDF
+sigue bloqueada/no verificada. Consulta [OAPEN](docs/OAPEN.md) y la
+[comparación](docs/ACQUISITION_COMPARISON.md). Gutenberg espera orientación oficial
+para adquisición. No se anuncia fuente/UI OAPEN ni lector PDF.
 
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
-→ obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS será la primera fuente.
+→ obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS es la primera fuente de búsqueda funcional.
 Escritorio es el primer destino ejecutable; Android e iOS son destinos futuros,
 no compilaciones actualmente soportadas.
 
@@ -60,12 +67,29 @@ de una página real, independiente de tests/build y sin interfaz gráfica, es:
 ./gradlew :app:gutenbergSearchCheck --args="shakespeare"
 ```
 
+El diagnóstico OAPEN independiente `./gradlew :app:oapenApiAccessCheck --args=water`
+hace una sola petición, sin mapear publicaciones ni descargarlas. Es opt-in y falla
+si el acceso se rechaza; un HTTP 200 tampoco demostraría la adquisición.
+
+Dos checks adicionales opt-in nunca se ejecutan durante tests/build:
+
+```sh
+./gradlew :app:oapenAlternateAccessCheck
+./gradlew :app:internetArchiveAcquisitionCheck
+```
+
+El primero solicita un registro OAI-PMH y hace solo HEAD; el segundo busca un
+documento gubernamental CC0 y consume hasta 512 bytes mediante ResourceLoader.
+No registra ni guarda texto. Consulta límites y política conservadora de hosts/
+acceso en los documentos de cada fuente. El parser JSON kotlinx.serialization-json
+1.11.0 (Apache-2.0) es solo de escritorio; core sigue puro.
+
 Los resultados reales de verificación y límites del entorno están en [VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Estructura inicial pequeña
 
 - `core`: modelos y contratos en Kotlin puro en `commonMain`; destino JVM para verificar.
-- `app`: interfaz/estado de búsqueda Compose compartidos y adaptador/entrada Gutenberg de escritorio; depende de `core`.
+- `app`: UI/estado Compose compartidos, demo de adquisición neutral, adaptadores y entrada de escritorio; depende de `core`.
   La [migración documentada](docs/adr/0008-platform-entrypoints.md) separará interfaz
   compartida y aplicaciones de escritorio/Android cuando se incorpore Android.
 - `docs`: arquitectura, política de fuentes, caché, hoja de ruta y decisiones.

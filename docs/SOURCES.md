@@ -111,6 +111,24 @@ for the security properties; the built-in provider is selected explicitly.
 JDK license/platform scope is recorded in THIRD_PARTY_NOTICES.md. Android/iOS
 parsers are not added or assumed compatible.
 
+## OAPEN alternate access and first acquisition source
+
+Historical REST requests returned HTTP403. Official OAI-PMH GetRecord instead
+returned metadata with a direct PDF link; its HEAD was blocked, and the opt-in
+alternate Ktor diagnostic timed out once. REST blocked does not mean OAPEN
+unusable. No OapenSource or challenge bypass. See [OAPEN](OAPEN.md).
+
+InternetArchiveSource is the second concrete PublicationSource and first actual
+resource-acquisition experiment. It uses official advanced search/item JSON APIs
+and documented individual download permalinks, supporting only public CC0 text
+items with validated TEXT/PDF files. The unchanged UI still searches Gutenberg;
+Archive's opt-in CLI demo reads at most 512 text bytes through ResourceContent.
+No arbitrary metadata URL is acquired. Fresh item-scoped delivery locations, permission
+refresh, bounded parsing/streaming and deterministic offline tests enforce limits.
+See [Archive endpoints/rights/hosts](INTERNET_ARCHIVE.md),
+[comparison](ACQUISITION_COMPARISON.md), and
+[ADR 0011](adr/0011-verified-source-acquisition.md).
+
 ## Future declarative definitions
 
 An external definition may describe a source ID, catalog URLs, approved engine

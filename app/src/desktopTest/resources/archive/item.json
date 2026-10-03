@@ -1,0 +1,20 @@
+{
+  "server": "ia903102.us.archive.org",
+  "workable_servers": ["ia903102.us.archive.org", "ia803102.us.archive.org"],
+  "dir": "/35/items/gmb-2015-93040",
+  "alternate_locations": {"workable": [{"server": "dn760105.eu.archive.org", "dir": "/0/items/gmb-2015-93040"}]},
+  "metadata": {
+    "identifier": "gmb-2015-93040",
+    "title": "VERLENING OMGEVINGSVERGUNNING, OUDEWEG 2 GERSLOOT",
+    "creator": ["Nederlandse overheid", "Dutch government", "Heerenveen"],
+    "language": ["dut", "eng"],
+    "mediatype": "texts",
+    "licenseurl": "http://creativecommons.org/publicdomain/zero/1.0/",
+    "collection": ["dutchgovernmentdocuments", "government-documents"]
+  },
+  "files": [
+    {"name": "gmb-2015-93040_djvu.txt", "format": "DjVuTXT", "size": "2566", "md5": "9b3a9ad6f53116f0442f19b930886212", "sha1": "3cfa3a8c0483927844cf78dc1097459dc27b6ccb"},
+    {"name": "gmb-2015-93040.pdf", "format": "Text PDF", "size": "443517"},
+    {"name": "gmb-2015-93040.html", "format": "HTML", "size": "19265"}
+  ]
+}

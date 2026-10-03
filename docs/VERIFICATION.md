@@ -1,5 +1,286 @@
 # Verification
 
+## Final PR #3 delivery/lifecycle review — 2026-10-03
+
+Started at `3d8cc453a3a53812850ccc10485e7229592c9a26` on the existing
+`feature/oapen-acquisition` branch. `git fetch origin`, status, branch/log,
+merge-base and left/right counts confirmed integrated main
+`86d70c1bc4f281e7f866207ff8bfcfed647e058d` unchanged, an ancestor, **0 behind /
+4 ahead** before the additive review commit. All four previous commits preserved;
+no new branch, merge, rebase, squash, force push or history rewrite.
+
+GitHub reported PR #3 **open, ready, unmerged, mergeable=true / clean** at review
+start. Main was unprotected, repository rulesets empty, and the head had no
+check runs/statuses or required checks. There was no local conflict or main
+advance to explain the earlier `mergeable:false`. Its historical cause could
+not be established; a temporary computation remains a possibility, not a
+confirmed diagnosis. No main merge/rebase was attempted.
+
+### Corrections and official evidence
+
+The [current item-scoped boundary](INTERNET_ARCHIVE.md) replaces a production
+single-node constant with fresh documented `server`/`workable_servers`/`dir`
+coordinates and observed official-API `alternate_locations.workable` pairs.
+Always start at the official download permalink; only exact announced
+host/directory/item/file redirects pass additional HTTPS, structured DNS-zone
+and canonical-path checks. No blanket subdomain authorization. Official pages
+do not provide an exhaustive host family/list or redirect-count guarantee;
+unsupported locations/hops fail closed. [ADR 0011 follow-up](adr/0011-verified-source-acquisition.md)
+preserves the initial decision and explains the change.
+
+Also corrected: missing `nodownload`/`is_collection` gates and ambiguous access
+flags; permission refresh occurring before waiting for the acquisition mutex;
+non-atomic close races; abandoned handle lifetime retaining the mutex;
+overlong reads consuming more than one known-size overflow byte; and the demo
+accepting truncated UTF-8 at actual EOF. Preserve `rights`, `licenseurl` and
+`possible-copyright-status` separately, keep **revision=null / CC0-only**.
+The existing two-redirect bound was correct; new tests verify both its accepted
+boundary and rejection of a third hop. All sources/probes now share the normal
+project User-Agent, without development-tool/model identification.
+
+### Final clean build and offline tests
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest build \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+**BUILD SUCCESSFUL in 28s**, 28 actionable tasks, all executed. XML reports:
+**core 23 + app 90 = 113 tests**, **0 failures / 0 errors / 0 skipped**.
+An earlier incremental `:app:desktopTest` also passed in 29s. No compiler or
+deprecation warnings; expected Gradle generated-resource/configuration tasks
+marked SKIPPED/NO-SOURCE are not skipped test cases.
+
+App counts: Archive metadata **12**, URLs **11**, source/lifecycle **26**, neutral
+demo **4**, OAPEN alternate **6**, OAPEN REST **7**, Gutenberg parser **11**,
+Gutenberg source **8**, search controller **5**. Seventeen tests added in this
+review; existing tests extended for the new trust boundary and standard UA.
+Normal tasks remain completely offline/deterministic with MockEngine/fixtures.
+Coverage adds multiple item-scoped nodes, unannounced and confusing domains,
+Unicode/punycode, userinfo/ports/query/fragment, wrong identifiers/files,
+traversal/double encodings, canonical URL loops, exactly two/excessive redirects,
+fresh serialized permission checks, declared-size overflow, concurrent close,
+virtual-time handle expiry, ambiguous access flags and truncated UTF-8 EOF.
+
+Both diff checks and local Markdown file targets passed. Core is identical to
+main and remains dependency-free in production (Kotlin only). Its source has
+no HTTP/Compose/JSON/source/platform imports. Gutenberg's only implementation
+change is referencing the centralized **identical** User-Agent value; its policy,
+unsupported acquisition, tests, UI/controller and launcher remain unchanged.
+No versions/dependencies/license changes or tracked publication bodies,
+credentials/build artifacts. Runtime dependency licenses retain their terms.
+
+Existing JDK 21/proxy/CA environment configuration was used with TLS verification
+enabled and unchanged repositories. No Maven HTTP429 or mirror workaround.
+Kotlin 2.4.20, Compose Multiplatform 1.12.1, Gradle 9.7.1, Temurin JDK
+21.0.12.1+1, Ktor 3.6.0 and coroutines 1.11.0 unchanged. No visual UI/native
+installer/reader verification. Existing SLF4J no-provider/NOP messages appeared
+only in the live diagnostic; no logging dependency was added.
+
+### Exactly one new live check
+
+Only the Internet Archive check was rerun, because delivery policy changed.
+No OAPEN or Gutenberg live request; no live retry.
+
+```sh
+./gradlew :app:internetArchiveAcquisitionCheck \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**2026-10-03T07:20:59.244405773Z**, task/build success in 10s:
+
+| Request | HTTP | Application-consumed bytes | Outcome |
+| --- | --- | --- | --- |
+| Advanced search for identifier:gmb-2015-93040 | 200 | 594 | One explicit page |
+| metadata/gmb-2015-93040 | 200 | 5,359 | Item/public CC0 resources |
+| Same metadata, immediately before opening | 200 | 5,359 | Fresh access/location gate |
+| download/gmb-2015-93040/gmb-2015-93040_djvu.txt | 302 | 0 | Validated redirect to ia803102.us.archive.org |
+| ia803102.us.archive.org/35/items/gmb-2015-93040/gmb-2015-93040_djvu.txt | 200 | 512 | UTF-8 prefix through ResourceContent, handle closed |
+
+**5 requests, 1 redirect, 11,824 consumed bytes total, 512 resource bytes**;
+known file size **2,566**. No 403/429 or retry. This different primary node was
+announced by fresh metadata and accepted without a hardcoded node constant.
+Transport can buffer more than the application consumes. No whole-file
+checksum validation or persistent download, and no text was logged.
+
+### Remaining review limits
+
+The source remains a narrow public-CC0 TEXT/PDF adapter with only TEXT-prefix
+integration evidence. Unknown location shapes/hosts, more than two redirects,
+unsupported license/access states and ambiguous data fail closed. Review the
+observed alternate-location schema and 60s handle ownership deadline before
+broader item support or a reader. Rights metadata is supplied by IA, not a new
+legal adjudication. No cache, reader, lending/login/DRM or mobile features added.
+
+## Alternate access and first acquisition — 2026-10-02
+
+Stayed on `feature/oapen-acquisition`, preserving `8334415` and `bb464b9`.
+Remote refs refreshed; integrated main `86d70c1bc4f281e7f866207ff8bfcfed647e058d`
+has not advanced and is an ancestor. No new branch/rebase/squash/history rewrite.
+The original REST finding below is historical: OAPEN's official alternate
+metadata access works, but file transfer remains blocked/unverified.
+[OAPEN](OAPEN.md), [Archive](INTERNET_ARCHIVE.md), [comparison](ACQUISITION_COMPARISON.md).
+
+### Final checks
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest build \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main...HEAD --check
+```
+
+- **BUILD SUCCESSFUL in 29s**, 28 actionable tasks, all executed.
+- Both final diff checks/local Markdown links passed; working tree clean after commits.
+
+Tests: core 23, app 73, **96 total**, zero failures/errors/skipped. App retains
+Gutenberg parser 11/source 8 and search controller 5, original OAPEN probe 7;
+adds Archive metadata 9/URL 5/source 19, neutral consumer 3 and OAPEN alternate 6
+(**42 new tests**). Offline MockEngine/curated metadata fixtures; no normal
+build/test/check task requests catalog/publication APIs. Coverage includes
+mapping/optional metadata/IDs/languages/rights and file-license overrides,
+unknown/private/restricted/lending cases, explicit opaque pagination/query encoding,
+invalid tokens, ownership, schemes/hosts/ports/userinfo/traversal/redirect loops,
+HTTP errors/type/encoding/length, bounded malformed/deep/oversized JSON/XML,
+actual overlong/truncated streams, partial reads/EOF, cancellation during
+open/read/parse, source shutdown, early close, fresh handles and UTF-8 prefix
+boundaries. PDF streaming/content and live server outage tests are not claimed.
+
+An initial clean run found an assertion expecting MockEngine's upstream channel
+cancellation to be immediately visible. It was corrected to wait for the next
+serialized request (producer cleanup), without sleeps; close remains non-blocking.
+A first incremental compilation also found a missing timeout extension import
+and an unnecessary `!!`; both were corrected before final checks.
+
+Core, Gutenberg implementation/tests, SearchController/SearchScreen and desktop
+launcher are identical to main. No Compose/Ktor/JSON/source/platform import or
+new dependency in core. LICENSE/contribution terms remain GPL-3.0-or-later;
+third-party licenses are unchanged. All new original Kotlin uses that SPDX header.
+Both diff checks and local documentation links passed. No publication body,
+credentials, build artifact or downloaded dump is tracked.
+
+Resolved inventory (temporary inspection task, no repository override): core
+runtime 2/test 6; app runtime **64**/test **70**; build plugins 22. Only new runtime
+artifact is desktop serialization-json 1.11.0 (Apache-2.0, exact upstream tag),
+sharing existing serialization-core 1.11.0; no compiler plugin/engine/version
+change. See [DEPENDENCIES.md](DEPENDENCIES.md). Inventory used
+`./gradlew -I /tmp/infinilect-search-inventory.init.gradle ... searchDependencyInventory`;
+that first clean invocation's test timing failure is described above; the final
+mandatory command used **no init script**.
+
+Existing environment-local JDK 21/proxy/CA configuration was used, TLS verification
+on, original repositories. No Maven 429 or mirror workaround. Final build has
+no compiler/deprecation warning. Live tasks emit existing SLF4J no-provider/NOP
+warnings; no logging backend added. No graphical UI/native installer was run.
+Kotlin/Compose compiler 2.4.20, Compose Multiplatform 1.12.1, Gradle 9.7.1,
+Temurin JDK 21.0.12.1+1, Ktor 3.6.0 and coroutines 1.11.0 unchanged.
+
+### New live checks — exactly one invocation each
+
+First command requested both tasks; Gradle stopped after OAPEN's timeout, so
+Archive did not run in that invocation. Archive was then invoked separately
+for its **first and only** run. Neither existing REST nor Gutenberg check rerun.
+
+```sh
+./gradlew :app:oapenAlternateAccessCheck :app:internetArchiveAcquisitionCheck \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew :app:internetArchiveAcquisitionCheck \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+| Check/time UTC | Request | HTTP / application-consumed bytes | Outcome |
+| --- | --- | --- | --- |
+| OAPEN 23:11:53 | One documented OAI GetRecord GET attempt | No status; 0 bytes | Request timeout after 15s; no HEAD/redirect/retry; task exit 1 |
+| Archive 23:13:46 | advancedsearch.php for identifier:gmb-2015-93040 | 200 / 594 bytes | One result page, no next page |
+| Archive | metadata/gmb-2015-93040 | 200 / 5,359 bytes | Publication and file list |
+| Archive | same metadata (permission refresh) | 200 / 5,359 bytes | Explicit acquisition rights/ownership gate |
+| Archive | download/gmb-2015-93040/gmb-2015-93040_djvu.txt | 302 / 0 bytes | One validated redirect to dn760105.eu.archive.org |
+| Archive | /0/items/gmb-2015-93040/gmb-2015-93040_djvu.txt | 200 / 512 bytes | UTF-8 prefix through ResourceContent; early close; task success |
+
+Archive: **5 requests, 11,824 bytes total**; size known **2,566 bytes**. No IA403/429,
+no retry. One OAPEN GET attempt with no response plus five successful-response IA
+requests in these live checks. Transport may buffer more bytes than consumed by
+application; no complete book was explicitly consumed/saved/logged. Demo uses
+DirectResourceLoader and neutral format selection; no advanced stream is passed
+to a later reader. The final added file-specific-rights gate and diagnostic failure
+counters were covered offline; no extra live invocation was made.
+
+### Earlier development observations (separate from task runs)
+
+OAPEN: three minimal requests — documented OAI GetRecord 200/10,525 bytes, MARC
+books dump HEAD200/0 bytes (no size supplied), announced PDF HEAD403/0 bytes
+(Anubis headers, no redirect). No dump or PDF downloaded; no challenge bypass.
+These curl observations remain valid alongside the later Ktor timeout; they do
+not imply reliable acquisition. Historical REST403 was not rechecked.
+
+Archive: seven API/file development requests. One compound search returned HTTP
+200 with a backend-error JSON object; a separate simpler documented query found
+CC0 candidates. One candidate's metadata showed restrictions/private files and
+was rejected without acquisition. A narrower public-text query found the chosen
+Dutch government notice; metadata confirmed CC0/no restrictions/public files.
+File HEAD302 established the observed storage host; one Range0–31 GET returned
+206/32 bytes, Content-Range bytes0-31/2566, text/plain;charset=utf-8. No IA403/429
+and no complete file consumed. No HTML catalog scraping or unofficial library.
+
+### Review before expansion
+
+Review exact delivery-host allowlist (unknown hosts fail closed), the narrow
+CC0/access/file-rights policy, DOCUMENT semantic fallback and rights/license
+field fallback before supporting more items or general UI acquisition. Only
+TEXT prefix consumption verified live; PDF content/transfer, EPUB, full-file
+hash revisions, complete charset validation and reading are deferred. OAPEN
+needs permitted transfer/client discovery clarification. No cache/download
+store/progress/reader/login/lending/DRM/mobile work; v0.0.1 remains incomplete.
+
+## Initial OAPEN REST investigation — 2026-10-02 (historical)
+
+Started from integrated main `86d70c1bc4f281e7f866207ff8bfcfed647e058d` on
+`feature/oapen-acquisition`. Existing contracts, core, UI, Gutenberg sources/tests,
+dependency versions and historical ADRs are unchanged. See [OAPEN.md](OAPEN.md)
+for current official documentation, the two development-request failures and the
+unverified acquisition mechanism. This is not a completed acquisition slice.
+
+The independent Ktor/Java `:app:oapenApiAccessCheck --args=water` was run manually
+**once**. It requested one bounded page from the documented REST search endpoint,
+returned HTTP 403, consumed zero metadata bytes, and failed the opt-in task with
+exit code 1 in 9 seconds. No publication metadata was mapped, pagination followed,
+resource requested or graphical UI executed. The endpoint's development response
+was `You address is not allowed to access this API.` No workaround was attempted.
+
+Normal tests use MockEngine only. Seven new diagnostic tests cover query encoding,
+fixed host/path/parameters and identifying headers, invalid queries without I/O,
+HTTP access errors/redirects without retry, media/encoding and declared-size
+validation, actual body bounds, cancellation/close and transport timeout. They
+do not stand in for unimplemented OAPEN parsing, publication mapping, source
+ownership, PDF streaming, resource selection or acquisition UI tests. Malformed
+XML is not parsed by the transport diagnostic; HTTP success proves only access.
+
+Final checks used the existing environment-local JDK/proxy/CA settings, with TLS
+verification enabled and the original project repositories:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest build \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+git diff --check
+git diff origin/main --check
+```
+
+- BUILD SUCCESSFUL in 25 seconds; 28 actionable tasks, all executed.
+- Core: 23 tests. App: 31 tests (the existing 24 plus 7 diagnostic tests).
+  Total: 54 tests; zero failures, errors or skipped tests. Gutenberg's 19
+  parser/source tests and the existing 5 controller tests still pass.
+- Both diff checks and local Markdown links passed; core and Gutenberg code/tests
+  remain identical to main. No runtime/test dependency or toolchain change.
+- No compiler/deprecation warnings or Maven HTTP 429 occurred. No repository
+  mirror override or workaround was used. The live diagnostic emitted SLF4J's
+  existing no-provider/NOP warning; no logging backend was added to silence it.
+- The live diagnostic does not run during build; its HTTP 403/exit 1 is separate
+  from the successful deterministic suite and build.
+- No graphical UI, native installer, OAPEN catalog mapping or book acquisition
+  was verified. Review the gates in OAPEN.md before implementing those features.
+
 ## Gutenberg search slice — 2026-10-02
 
 Started from integrated main `28619ed`, on `feature/gutenberg-search`. Core models,

@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.infinilect.app.search.SearchException
+import org.infinilect.app.network.PROJECT_USER_AGENT
 import org.infinilect.core.Publication
 import org.infinilect.core.PublicationId
 import org.infinilect.core.PublicationResource
@@ -29,7 +30,6 @@ import org.infinilect.core.ResourceContent
 import org.infinilect.core.SearchPage
 import org.infinilect.core.SourceId
 
-private const val USER_AGENT = "INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)"
 
 /** Search-only trusted desktop adapter. Owns its client/engine; close at application shutdown. */
 class GutenbergSource(private val engine: HttpClientEngine = Java.create()) : PublicationSource, AutoCloseable {
@@ -52,7 +52,7 @@ class GutenbergSource(private val engine: HttpClientEngine = Java.create()) : Pu
         val url = if (pageToken == null) firstUrl else GutenbergUrls.pageUrl(pageToken, normalizedQuery)
         try {
             val bytes = client.prepareGet(url) {
-                header(HttpHeaders.UserAgent, USER_AGENT)
+                header(HttpHeaders.UserAgent, PROJECT_USER_AGENT)
                 header(HttpHeaders.Accept, "application/atom+xml;profile=opds-catalog")
                 header(HttpHeaders.AcceptEncoding, "identity")
             }.execute { response ->

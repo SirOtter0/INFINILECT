@@ -33,6 +33,21 @@ Open INFINILECT → search for a book → get real results → open one → read
 Completion means actual source-backed reading, not a simulated catalog or a
 welcome window. No completed release is implied by `0.0.1-SNAPSHOT`.
 
+## First acquisition experiment — verified TEXT prefix, no reader
+
+OAPEN has accessible official alternate metadata with download links; REST403
+and PDF transfer/access remain separate gates. See [OAPEN](OAPEN.md).
+Internet Archive was selected after documented search/metadata/rights/file
+experiments: one public CC0 government TXT was acquired through the existing
+contracts, consumed up to 512 bytes and closed. A neutral CLI demo proves the
+flow; no multiple-source UI, cache, persistent download, lending or reader.
+[Comparison](ACQUISITION_COMPARISON.md), [scope](INTERNET_ARCHIVE.md).
+
+Next: review the deliberately narrow rights/host/resource rules before expanding
+acquisition or connecting a minimal TEXT reader. Full-file charset/checksum and
+reader behavior still need verification. Gutenberg acquisition remains deferred
+pending official guidance; this experiment does not complete v0.0.1.
+
 ## After the first working slice
 
 Add Android and iOS targets with build verification, using the platform-entrypoint

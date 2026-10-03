@@ -1,10 +1,19 @@
 # Resolved dependency inventory
 
+The acquisition experiment adds one desktop-only JSON runtime module:
+`kotlinx-serialization-json:1.11.0`, reusing Ktor's already resolved
+serialization-core 1.11.0. Dynamic JsonElement parsing needs no serialization
+compiler plugin. This avoids a handwritten JSON parser; Ktor has no built-in JSON
+parser. Core remains unchanged. The [exact-tag Apache-2.0 license](https://github.com/Kotlin/kotlinx.serialization/blob/v1.11.0/LICENSE.txt)
+is GPLv3-compatible; the [tagged version catalog](https://github.com/Kotlin/kotlinx.serialization/blob/v1.11.0/gradle/libs.versions.toml)
+builds with Kotlin 2.3.20, supported by this project's Kotlin 2.4.20 compiler.
+No version, repository, XML library, engine or logging dependency changed.
+
 Resolved on Linux x86-64 with JDK 21 and Gradle 9.7.1 on 2026-10-02 for the Gutenberg search slice. Generated from the runtime, test and build-plugin graphs and cached Maven POMs (including inherited parent licenses). Native artifacts vary by OS. POM declarations supplement upstream license/notice files; see [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 New direct application declarations: Ktor client core/Java engine 3.6.0 and coroutines core 1.11.0. Test-only declarations: Ktor MockEngine 3.6.0, coroutines test 1.11.0 and kotlin-test 2.4.20. Their exact stable upstream licenses were reviewed before inclusion. No new XML parser library or logging backend is added; StAX belongs to the external JDK 21 prerequisite.
 
-The desktop runtime graph now contains 63 artifacts including local core (foundation: 46). Ktor adds 17 resolved runtime artifacts and selects coroutines 1.11.0 / serialization-core 1.11.0 over the earlier transitive versions. Ktor supporting HTTP/CIO, SSE and WebSocket artifacts below are transitive dependencies of its client; no corresponding product functionality or additional engine was added. Core remains at 2 runtime artifacts; its 6 test artifacts and the 22 build-plugin artifacts are unchanged. App tests resolve 69 artifacts including the application runtime.
+The desktop runtime graph now contains 64 artifacts including local core (foundation: 46). Ktor adds 17 resolved runtime artifacts and selects coroutines 1.11.0 / serialization-core 1.11.0 over the earlier transitive versions. Ktor supporting HTTP/CIO, SSE and WebSocket artifacts below are transitive dependencies of its client; no corresponding product functionality or additional engine was added. Core remains at 2 runtime artifacts; its 6 test artifacts and the 22 build-plugin artifacts are unchanged. App tests resolve 70 artifacts including the application runtime.
 
 SLF4J API has no license element in its module POM; MIT is verified from its [tagged upstream license](https://github.com/qos-ch/slf4j/blob/v_2.0.19/LICENSE.txt), copied under third-party. Test-only JUnit/Hamcrest are not bundled into the app.
 
@@ -76,6 +85,7 @@ SLF4J API has no license element in its module POM; MIT is verified from its [ta
 | `org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm` | 0.9.1 | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.kotlinx:kotlinx-io-core-jvm` | 0.9.1 | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm` | 1.11.0 | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `org.jetbrains.kotlinx:kotlinx-serialization-json-jvm` | 1.11.0 | [Apache-2.0, tagged license](https://github.com/Kotlin/kotlinx.serialization/blob/v1.11.0/LICENSE.txt) |
 | `org.jetbrains.runtime:jbr-api` | 1.9.0 | [The Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | `org.jetbrains.skiko:skiko-awt` | 0.150.1 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.skiko:skiko-awt-runtime-linux-x64` | 0.150.1 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
@@ -161,6 +171,7 @@ SLF4J API has no license element in its module POM; MIT is verified from its [ta
 | `org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm` | 0.9.1 | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.kotlinx:kotlinx-io-core-jvm` | 0.9.1 | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm` | 1.11.0 | [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+| `org.jetbrains.kotlinx:kotlinx-serialization-json-jvm` | 1.11.0 | [Apache-2.0, tagged license](https://github.com/Kotlin/kotlinx.serialization/blob/v1.11.0/LICENSE.txt) |
 | `org.jetbrains.runtime:jbr-api` | 1.9.0 | [The Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | `org.jetbrains.skiko:skiko-awt` | 0.150.1 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.skiko:skiko-awt-runtime-linux-x64` | 0.150.1 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |

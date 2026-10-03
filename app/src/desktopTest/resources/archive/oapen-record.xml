@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">
+  <GetRecord><record>
+    <header><identifier>oai:library.oapen.org:20.500.12657/25287</identifier></header>
+    <metadata><metadata xmlns="http://www.lyncode.com/xoai"><element name="bundles"><element name="bundle"><element name="bitstreams"><element name="bitstream">
+      <field name="name">9789085551201_OA_version.pdf</field>
+      <field name="format">application/pdf</field><field name="size">9593943</field>
+      <field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/1/9789085551201_OA_version.pdf</field>
+      <field name="rights">CC-BY-NC</field><field name="rightsuri">http://creativecommons.org/licenses/by-nc/3.0/</field>
+    </element></element></element></element></metadata></metadata>
+  </record></GetRecord>
+</OAI-PMH>
