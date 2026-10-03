@@ -134,7 +134,9 @@ refresh, bounded parsing/streaming and deterministic offline tests enforce limit
 See [Archive endpoints/rights/hosts](INTERNET_ARCHIVE.md),
 [comparison](ACQUISITION_COMPARISON.md), and
 [ADR 0011](adr/0011-verified-source-acquisition.md), and
-[ADR 0012](adr/0012-bounded-text-reading.md). No cache or persistence.
+[ADR 0012](adr/0012-bounded-text-reading.md). The later disk-cache loader bypasses
+these null-revision resources; fresh Archive acquisition is unchanged. No downloads
+or progress persistence. See [cache policy](CACHE.md).
 
 ## Future declarative definitions
 

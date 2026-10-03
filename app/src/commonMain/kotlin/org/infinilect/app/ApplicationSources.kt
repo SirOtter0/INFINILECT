@@ -2,16 +2,26 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app
 
+import org.infinilect.app.acquisition.DirectResourceLoader
+import org.infinilect.core.PublicationSource
+import org.infinilect.core.ResourceLoader
+
 /** One platform application owns these clients and the currently attached session.
  * UI-thread lifecycle: cancel the session before closing transport, exactly once.
  * Contains no Activity/Context, registry, persistence or automatic requests.
  */
 class ApplicationSources internal constructor(
     internal val options: List<SourceOption>,
+    private val createLoader: (PublicationSource) -> ResourceLoader = { DirectResourceLoader(it) },
     private val releaseSources: () -> Unit,
 ) {
     private var session: ReadingSession? = null
     private var closed = false
+
+    internal fun loaderFor(source: PublicationSource): ResourceLoader {
+        check(!closed && options.any { it.source === source })
+        return createLoader(source)
+    }
 
     internal fun attach(value: ReadingSession) {
         check(!closed) { "Application sources are closed." }
@@ -33,5 +43,4 @@ class ApplicationSources internal constructor(
     }
 }
 
-/** Opens clients, not network connections. Platform application owns closing. */
-expect fun createApplicationSources(): ApplicationSources
+// Platform factories choose private storage; no Context/filesystem type enters common UI.

@@ -1,67 +1,130 @@
 # Cache, downloads and reading progress
 
-This document records the agreed design; storage is not implemented yet.
+## Implemented slice
 
-## Resource lookup
+The long-term lookup pipeline remains:
 
 `Reader → ResourceLoader → MemoryCache → DiskCache → Source`
 
-The reader knows only ResourceLoader. On a memory miss, the loader checks disk;
-on a disk miss, it calls the owning source. A successful source read populates
-disk and memory as permitted by policy, committing only after complete verified
-consumption. Early close, cancellation or a read failure must discard incomplete
-cache writes. A handle does not imply that a full resource fits in memory; future
-memory entries must obey a byte budget and disk fills can consume chunks.
+This PR implements only the **first persistent DiskCache**, not an L1 RAM cache.
+Both applications inject its ResourceLoader decorator into the existing session:
+`TextReader consumer → ResourceLoader → DiskCache → DirectResourceLoader → Source`.
+Sources and reader UI do not know a cache exists. Core models/contracts are unchanged.
+Policy/container storage are shared in app/jvmSharedMain; platform factories choose
+private paths. No database, metadata/search cache or new dependency.
+Containers contain only resource identity/integrity and payload: no search results,
+Publication metadata, authentication credentials/tokens or reading progress.
 
-`PublicationResource.cacheKey` is a nullable `ResourceCacheKey` comprising the full
-PublicationId (SourceId + local ID), resource key, format, media type and a known,
-nonblank revision. The source owns the opaque revision: it must change whenever
-bytes change, for example a strong validator, immutable version or verified content
-digest. A weak ETag or catalog metadata timestamp is not sufficient unless the
-trusted engine can guarantee byte identity. Changing representation or revision
-creates a different key; never write new bytes under the previous key.
+This is automatic, best-effort, OS-evictable storage, **never authoritative**.
+No offline publication availability is promised: publication metadata/details still
+come from the owning source. A miss or failed cache lookup acquires again; source
+failure is never replaced with stale bytes from an unversioned entry.
 
-A null revision produces no key for unconditional reuse. An unversioned reference
-must be resolved/revalidated with its source before any retained bytes are reused;
-source unavailability cannot silently make an unknown-revision cache entry current.
-If the source cannot establish freshness, fetch again. A digest after acquisition
-can identify those bytes but does not establish that the source has not changed
-on a later session. Explicit verified downloads have their own persistent policy.
-These rules prevent unknown revisions from becoming an unlimited stale-cache fallback.
+## Revision and identity
 
-Persistence must store separate fields (including both PublicationId components),
-or use a versioned length-prefixed encoding before hashing; never concatenate with
-an unescaped delimiter, serialize `toString()` or persist runtime `hashCode()`.
-No cache serializer or cache implementation is introduced yet. See
-[ADR 0007](adr/0007-metadata-and-resource-identity.md).
+Only `PublicationResource.cacheKey != null` can look up or populate reusable bytes.
+The source owns a trustworthy revision identifying the actual bytes; weak ETags or
+catalog timestamps do not automatically qualify. The identity comprises separate
+source ID, publication-local ID, resource key, format, mediaType and revision.
+An encoding version and UTF-8 byte-length prefix for every field precede SHA-256.
+Names are exactly `e-<64 lowercase hex>.entry`; no opaque source key becomes a path.
+Identity encoding is capped at 32 KiB; larger identities safely bypass storage.
 
-Memory cache is bounded and session-local. Disk cache persists between sessions
-and is automatically evicted primarily by byte budget and least-recent use.
-Persist access metadata, count actual bytes, and use atomic writes so interrupted
-fetches are never served as complete resources. Disk errors or corrupt entries
-must allow a source retry; eviction must not touch downloads or progress.
-Staleness validation and content revision handling belong to the loader/source
-boundary. Exact budgets and validators will follow real payload measurements.
+**revision=null bypasses disk lookup and writes entirely**, including after restart.
+Current Internet Archive resources still have null revisions. Every open therefore
+gets fresh metadata and uses the existing validated acquisition/redirect path;
+no reusable IA entry is populated. No hash is promoted to a source revision and no
+fabricated validator is introduced. The actual TEXT UI uses this loader on Desktop
+and Android, but successful persistent-hit evidence uses offline stable-revision
+fixtures, not a claim about current IA resources. Gutenberg remains search-only.
 
-## Explicit downloads
+## Streaming and atomic publication
 
-A user-requested download is persistent storage, separate from the opportunistic
-disk cache. Cache eviction cannot delete it. Downloads are removed by explicit
-user action. The loader should be able to use a verified downloaded copy as a
-local resource through an implementation policy; it is not another evictable cache
-tier. No download manager is needed for the foundational commit.
+A miss returns a tracked single-consumer ResourceContent. Eligible bytes are teed
+to a temporary file as the consumer reads; the cache never materializes the full
+payload in RAM. The consumer buffer is reused for writes and hashing. Zero-length
+reads do not advance; invalid counts, changed known size, truncated/overlong streams
+and overflow fail rather than publish. Unknown-size stable resources can cache
+their actual bounded byte count after successful EOF.
 
-## ReadingProgress
+A single versioned container stores bounded identity, actual byte count, SHA-256
+payload digest and bytes. Publication requires EOF, exact known length where supplied,
+an active consumer job and successful normal source close. Early close, cancellation,
+timeout/read failure, source-close failure or owner shutdown discards the temp file.
+Header and payload are flushed, then moved together within the same directory.
+ATOMIC_MOVE is preferred; a non-replacing same-directory move is the fallback.
+Partial/crash remnants can never pass the length/header/digest checks.
 
-ReadingProgress will live in an independent persistent store keyed by the complete
-PublicationId, with a format-aware locator and revision information where needed.
-It must survive cache eviction, source unavailability and removal of a download.
-Deleting cached bytes must never delete or reset reading progress. A later reopen
-can reacquire content and apply the saved locator; changed content may require
-locator validation. Do not store progress inside cache metadata or use cascading
-cache deletion. SQLDelight can be introduced when this store is implemented.
+Hits open independent cursors with NOFOLLOW_LINKS, compare the complete encoded
+identity and container length, and verify SHA-256 on that **same descriptor** before
+returning bytes. Verification uses a 64 KiB buffer and checks cancellation. Cached
+files are immutable while owned. Corruption/missing metadata/payload disagreement
+is a miss and invalid files are deleted best-effort. A mid-handle I/O failure is
+reported rather than silently mixing cached and newly acquired bytes.
+The reader's separate 512 KiB TEXT/UTF-8/BOM/EOF policy remains unchanged.
 
-Verification of the implementation must cover restart persistence, recency/size
-eviction, interrupted writes, namespace isolation, and preservation of downloads
-and progress when clearing cache. These behaviors are requirements, not tests
-claimed to exist today.
+## Budget and approximate LRU
+
+Default budget: **64 MiB** per application cache, configurable down to zero in tests.
+The budget counts complete containers (including headers) and live temporary headers/
+payloads. Approximate LRU uses last-access file timestamps, restored on restart;
+timestamps are advanced monotonically within one owner. Ties use deterministic
+digest filenames. Maximum indexed complete entries/live writers: **1024**.
+Oldest unpinned entries go first. Age alone does not expire an entry.
+
+Active hit descriptors are pinned and never evicted by the cache. If pinned entries
+or other fills leave no room, the new fill is abandoned while valid upstream bytes
+continue. Known oversized resources skip writes; unknown-size fills stop caching
+when the budget is reached. OS removal remains possible for cache storage.
+
+Only reserved entry/temp names are managed, never unrelated files or directories
+outside the namespace. Root/file symlinks fail closed; target bytes outside the
+cache are never read/deleted. Abandoned owned temp files are removed only after
+exclusive directory ownership is obtained. If cleanup fails, writes are disabled
+to avoid accumulating orphan files. Unrelated files are not part of the cache budget.
+Unavailable directory/permissions/lock/rename/storage disables or abandons caching;
+it does not turn a valid network acquisition into a failure.
+
+## Paths and ownership
+
+- Android: `applicationContext.cacheDir/resource-cache-v1`, app-private internal
+  storage, surviving normal Activity recreation/restart but evictable by Android.
+  Only the Path is retained; no Activity/Context, external storage or storage permission.
+- Linux: absolute `$XDG_CACHE_HOME/org.infinilect.app/resource-cache-v1`, otherwise
+  `$HOME/.cache/org.infinilect.app/resource-cache-v1`.
+- macOS: `$HOME/Library/Caches/org.infinilect.app/resource-cache-v1`.
+- Windows: absolute `%LOCALAPPDATA%/org.infinilect.app/resource-cache-v1`, otherwise
+  the per-user `AppData/Local` location. Inherit per-user ACLs.
+
+Relative environment/home paths never become repository-relative storage. Invalid
+paths disable caching. POSIX cache directory/files use owner-only permissions.
+Storage initialization is lazy, on an eligible resource load, on the I/O dispatcher.
+
+One application owner has an exclusive OS lock per directory. A competing owner
+passes through without cleanup/writes; it does not steal the first owner's temp
+files. Network calls/full-file verification never hold the store monitor; only
+bounded filesystem operations and index changes do. Disk reads/writes run on I/O;
+non-suspending close performs short finalization/cleanup, never waits for a transfer.
+Same-key concurrent misses have one writer; others independently acquire without
+competing publication. Separate handles have separate cursors.
+
+ApplicationSources cancels its active session first, closes tracked cache/source
+handles, then releases cache locks and both source clients/engines, idempotently.
+Cancelled handoffs and late upstream handles are closed. Session disposal cancels
+consumption; application disposal additionally closes all outstanding loader handles.
+
+## Explicit downloads (future)
+
+Downloads will be explicit, persistent user storage, architecturally distinct from
+this automatic cache. Cache eviction must never delete downloads. No download API,
+manager, persistent library or UI is introduced here.
+
+## ReadingProgress (future)
+
+Progress must live in its own store keyed by PublicationId, with format/revision
+locators as needed. It must survive cache eviction, missing resources and removal
+of downloads. No progress/history is stored in a cache container or implemented
+by this slice. SQLDelight remains deferred.
+
+See [ADR 0014](adr/0014-persistent-resource-cache.md) and actual offline verification
+in [VERIFICATION.md](VERIFICATION.md).

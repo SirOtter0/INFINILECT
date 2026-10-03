@@ -31,8 +31,9 @@ and Desktop disposal close sources. No Activity/Context is retained by adapters.
 
 The same UI offers Gutenberg search-only and public-CC0 Internet Archive TEXT
 reading, one explicitly selected source at a time. No simultaneous search or
-registry. DirectResourceLoader/neutral format selection remain unchanged; no
-cache/download store. Core contracts and Archive access/redirect/revision limits
+registry. The application injects a disk-caching ResourceLoader before
+DirectResourceLoader; neutral format selection remains unchanged. No download store.
+Core contracts and Archive access/redirect/revision limits
 are unchanged. See [ADR 0013](adr/0013-first-android-application.md).
 
 Result-list UI keys project PublicationId to Pair<String, String>: source and
@@ -71,7 +72,7 @@ parser or complete language registry. Cover and summary are deferred: title and
 authors suffice for the initial result list, without image acquisition or rich
 text handling. See [ADR 0007](adr/0007-metadata-and-resource-identity.md).
 
-## Future cache/progress flow (not implemented)
+## Cache pipeline and independent future progress
 
 ```mermaid
 flowchart LR
@@ -86,6 +87,12 @@ platform. A reader consumes publication metadata and `ResourceLoader`, never a
 source adapter, OPDS parser, authentication client or catalog search interface.
 The loader routes by SourceId and applies caching before its source fallback.
 Sources return metadata; readers render it. Neither owns the other.
+
+The first disk tier is implemented in app/jvmSharedMain; MemoryCache and progress
+remain deferred. Only stable-revision resources may reuse bytes. Current Archive
+null revisions bypass disk lookup/fills and retain fresh metadata/acquisition.
+Platform factories choose app-private storage, inject loaders and own closing after
+session cancellation. See [CACHE.md](CACHE.md) and [ADR 0014](adr/0014-persistent-resource-cache.md).
 
 ## Resource access
 
@@ -129,8 +136,8 @@ External source definitions will be declarative data interpreted by trusted
 engines, not downloaded code. See [Sources](SOURCES.md). Cache, explicit downloads
 and progress have separate lifetimes; see [Cache](CACHE.md).
 
-No complete reader framework, engine registry, persistence or cache implementation is
-claimed by the current foundation. See the [ADRs](adr/README.md).
+No complete reader framework, engine registry, downloads or progress persistence is
+claimed. The bounded disk tier is documented separately. See the [ADRs](adr/README.md).
 
 ## Search slice
 
@@ -154,7 +161,7 @@ and [ADR 0009](adr/0009-gutenberg-search.md) for the deliberately limited capabi
 ```text
 SearchScreen → SearchController → PublicationSource.search
 explicit Open text → OpenPublicationController → PublicationSource.getPublication
-→ selectResource(TEXT) → DirectResourceLoader → PublicationSource.loadResource
+→ selectResource(TEXT) → disk-caching ResourceLoader → DirectResourceLoader → PublicationSource.loadResource
 → ResourceContent → bounded strict UTF-8 loading → TextDocument → TextReader
 ```
 
@@ -191,7 +198,8 @@ source closes/discards the old session, creates a fresh one and resets Compose
 collectors using a session key, so old-source results cannot flash or replace new
 results. No request is started by changing source. Disposal cancels session jobs
 and closes platform sources. Query/results are session-local; no position/history
-or content cache. See [ADR 0012](adr/0012-bounded-text-reading.md).
+or reusable current Archive bytes (its revisions are null). Automatic disk-cache
+infrastructure is separate from session state. See [ADR 0012](adr/0012-bounded-text-reading.md).
 
 ## Acquisition verification and lifecycle
 
@@ -205,8 +213,8 @@ The neutral consumer uses ResourceLoader, selects a caller-supported format and
 closes its prefix-test handle. Archive validates ownership/fresh permissions and
 opens a sequential HTTP stream. Its producer keeps Ktor's public scoped streaming
 response alive until close/cancellation; close aborts without waiting for transfer
-or materializing the file. A later consumer must open a fresh handle. No cache,
-registry or simultaneous-source search is introduced. The later bounded
+or materializing the file. A later consumer must open a fresh handle. That acquisition
+slice introduced no cache, registry or simultaneous-source search. The later bounded
 TextReader uses a fresh handle and consumes the entire eligible small resource;
 the historical prefix check remains independent.
 

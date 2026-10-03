@@ -70,6 +70,25 @@ class ApplicationSourcesTest {
         assertEquals(1, releases)
     }
 
+    @Test fun sessionReceivesOwnedLoaderAndOwnerCancelsBeforeReleasingCacheAndSources() = runTest {
+        val source = Source()
+        var loads = 0
+        val loader = object : ResourceLoader {
+            override suspend fun load(resource: PublicationResource): ResourceContent {
+                loads++; return source.loadResource(resource)
+            }
+        }
+        lateinit var session: ReadingSession
+        val owner = ApplicationSources(listOf(SourceOption("Fixture", source, true)), createLoader = { loader }) {
+            assertIs<OpenPublicationState.Idle>(session.opening.state.value)
+        }
+        session = ReadingSession(source, this, true, owner.loaderFor(source), StandardTestDispatcher(testScheduler))
+        owner.attach(session); session.open(source.publication); source.reading.await()
+        assertEquals(1, loads); owner.close(); advanceUntilIdle()
+        assertEquals(1, source.handlesClosed)
+        assertFailsWith<IllegalStateException> { owner.loaderFor(source) }
+    }
+
     @Test fun platformBackHandlesLoadingReaderAndErrorButNotRootSearch() {
         val source = Source()
         assertFalse(OpenPublicationState.Idle.handlesBack())

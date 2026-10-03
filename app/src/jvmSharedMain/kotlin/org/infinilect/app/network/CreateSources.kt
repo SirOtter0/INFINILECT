@@ -6,13 +6,17 @@ import org.infinilect.app.ApplicationSources
 import org.infinilect.app.SourceOption
 import org.infinilect.app.archive.InternetArchiveSource
 import org.infinilect.app.gutenberg.GutenbergSource
+import org.infinilect.app.acquisition.DirectResourceLoader
+import org.infinilect.app.cache.DiskResourceCache
 
-internal fun createSources(): ApplicationSources {
-    val gutenberg = GutenbergSource()
+internal fun createSources(cache: DiskResourceCache): ApplicationSources {
+    val gutenberg = try { GutenbergSource() } catch (error: Throwable) { cache.close(); throw error }
     val archive = try { InternetArchiveSource() }
-    catch (error: Throwable) { gutenberg.close(); throw error }
+    catch (error: Throwable) { try { gutenberg.close() } finally { cache.close() }; throw error }
     return ApplicationSources(listOf(
         SourceOption("Project Gutenberg", gutenberg),
         SourceOption("Internet Archive", archive, textReadingEnabled = true),
-    )) { try { gutenberg.close() } finally { archive.close() } }
+    ), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }) {
+        try { cache.close() } finally { try { gutenberg.close() } finally { archive.close() } }
+    }
 }

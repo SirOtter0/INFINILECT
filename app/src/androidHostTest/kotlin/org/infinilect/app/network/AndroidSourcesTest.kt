@@ -34,11 +34,12 @@ class AndroidSourcesTest {
         } finally { engine.close() }
     }
     @Test fun createsSessionSourcesWithoutNetworkAndCanDisposeTwice() {
-        val sources = createApplicationSources()
+        val directory = java.nio.file.Files.createTempDirectory("infinilect-android-sources")
+        val sources = createApplicationSources(directory.toFile())
         try {
             assertEquals(listOf("gutenberg","internet-archive"),sources.options.map { it.source.id.value })
             assertEquals(listOf(false,true),sources.options.map { it.textReadingEnabled })
             assertEquals("INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)",PROJECT_USER_AGENT)
-        } finally { sources.close(); sources.close() }
+        } finally { sources.close(); sources.close(); directory.toFile().deleteRecursively() }
     }
 }
