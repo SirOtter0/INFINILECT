@@ -1,0 +1,97 @@
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- Copyright © 2026 SirOtter0 and INFINILECT contributors.
+CREATE TABLE library_entries (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ title TEXT NOT NULL,
+ semantic_type TEXT NOT NULL,
+ source_url TEXT,
+ rights TEXT,
+ added_at INTEGER NOT NULL CHECK (added_at >= 0),
+ last_opened_at INTEGER CHECK (last_opened_at >= 0),
+ PRIMARY KEY (source_id, local_id)
+);
+CREATE TABLE reading_history (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ title TEXT NOT NULL,
+ semantic_type TEXT NOT NULL,
+ source_url TEXT,
+ rights TEXT,
+ last_opened_at INTEGER NOT NULL CHECK (last_opened_at >= 0),
+ PRIMARY KEY (source_id, local_id)
+);
+CREATE TABLE library_authors (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+ value TEXT NOT NULL,
+ PRIMARY KEY (source_id, local_id, ordinal),
+ FOREIGN KEY (source_id, local_id) REFERENCES library_entries(source_id, local_id) ON DELETE CASCADE
+);
+CREATE TABLE library_languages (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+ value TEXT NOT NULL,
+ PRIMARY KEY (source_id, local_id, ordinal),
+ FOREIGN KEY (source_id, local_id) REFERENCES library_entries(source_id, local_id) ON DELETE CASCADE
+);
+CREATE TABLE history_authors (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+ value TEXT NOT NULL,
+ PRIMARY KEY (source_id, local_id, ordinal),
+ FOREIGN KEY (source_id, local_id) REFERENCES reading_history(source_id, local_id) ON DELETE CASCADE
+);
+CREATE TABLE history_languages (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+ value TEXT NOT NULL,
+ PRIMARY KEY (source_id, local_id, ordinal),
+ FOREIGN KEY (source_id, local_id) REFERENCES reading_history(source_id, local_id) ON DELETE CASCADE
+);
+libraryGet:
+SELECT * FROM library_entries WHERE source_id = ? AND local_id = ?;
+libraryList:
+SELECT * FROM library_entries ORDER BY added_at DESC, source_id ASC, local_id ASC LIMIT ?;
+libraryCount:
+SELECT count(*) FROM library_entries;
+libraryPut:
+INSERT OR REPLACE INTO library_entries VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+libraryRemove:
+DELETE FROM library_entries WHERE source_id = ? AND local_id = ?;
+libraryOpened:
+UPDATE library_entries SET last_opened_at = ? WHERE source_id = ? AND local_id = ?;
+historyGet:
+SELECT * FROM reading_history WHERE source_id = ? AND local_id = ?;
+historyList:
+SELECT * FROM reading_history ORDER BY last_opened_at DESC, source_id ASC, local_id ASC LIMIT ?;
+historyPut:
+INSERT OR REPLACE INTO reading_history VALUES (?, ?, ?, ?, ?, ?, ?);
+historyRemove:
+DELETE FROM reading_history WHERE source_id = ? AND local_id = ?;
+historyClear:
+DELETE FROM reading_history;
+historyPrune:
+DELETE FROM reading_history WHERE (source_id, local_id) IN (
+ SELECT source_id, local_id FROM reading_history ORDER BY last_opened_at DESC, source_id ASC, local_id ASC LIMIT -1 OFFSET ?
+);
+libraryAuthors:
+SELECT value FROM library_authors WHERE source_id = ? AND local_id = ? ORDER BY ordinal ASC LIMIT 65;
+libraryAuthorsPut:
+INSERT INTO library_authors VALUES (?, ?, ?, ?);
+libraryLanguages:
+SELECT value FROM library_languages WHERE source_id = ? AND local_id = ? ORDER BY ordinal ASC LIMIT 33;
+libraryLanguagesPut:
+INSERT INTO library_languages VALUES (?, ?, ?, ?);
+historyAuthors:
+SELECT value FROM history_authors WHERE source_id = ? AND local_id = ? ORDER BY ordinal ASC LIMIT 65;
+historyAuthorsPut:
+INSERT INTO history_authors VALUES (?, ?, ?, ?);
+historyLanguages:
+SELECT value FROM history_languages WHERE source_id = ? AND local_id = ? ORDER BY ordinal ASC LIMIT 33;
+historyLanguagesPut:
+INSERT INTO history_languages VALUES (?, ?, ?, ?);
