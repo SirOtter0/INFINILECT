@@ -1,5 +1,18 @@
 # Toolchain verification
 
+## Desktop app-image runtime — PR #12, 2026-10-04
+
+The existing `:desktopApp:createDistributable` task uses JDK 21 jlink/jpackage.
+Its reduced runtime explicitly includes
+[`java.net.http`](https://docs.oracle.com/en/java/javase/21/docs/api/java.net.http/module-summary.html)
+for the existing Ktor Java engine and
+[`java.sql`](https://docs.oracle.com/en/java/javase/21/docs/api/java.sql/module-summary.html)
+for SQLite JDBC. The default image omitted both and failed the module-restricted
+owner/JDBC probes; the corrected image passes. No toolchain/dependency version or
+new installer task/target is introduced. The full JDK used by Gradle-run/host tests
+already contained these modules and therefore did not expose the packaging defect.
+See [verification and remaining graphical test](VERIFICATION.md).
+
 ## Current PR #11 correction — 2026-10-04
 
 Gutenberg now uses shared OPDS2 JSON via already-declared

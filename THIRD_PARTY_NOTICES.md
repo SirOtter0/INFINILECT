@@ -1,5 +1,15 @@
 # Third-party notices
 
+## Desktop runtime verification — PR #12, 2026-10-04
+
+The existing Compose `createDistributable` task builds a local Desktop app image
+with a reduced JDK 21 runtime. It now explicitly includes `java.net.http` (Ktor
+Java engine) and `java.sql` (SQLite JDBC); these are existing JDK components, not
+new Maven dependencies. OpenJDK's GPLv2/Classpath Exception and bundled `legal/`
+notices still apply. No dependency version or upstream license changes.
+This verification artifact is not a release or native installer; perform the
+artifact-specific notice audit below before distributing a release.
+
 ## Current PR #11 correction — 2026-10-04
 
 Gutenberg now uses shared OPDS2 JSON via already-declared
@@ -13,7 +23,8 @@ unchanged. No kXML test jar or parser is newly bundled.
 
 Copyright © 2026 SirOtter0 and INFINILECT contributors.
 Original INFINILECT code is GPL-3.0-or-later; upstream components retain their licenses.
-No publication files are bundled. This foundation is not a packaged distribution.
+No publication files are bundled. Debug APKs and local Desktop app images can be
+built; no packaged release or native installer is provided.
 
 ## Direct dependencies and build tools
 
@@ -63,12 +74,13 @@ in [the resolved dependency inventory](docs/DEPENDENCIES.md).
   for a combined distributed program; do not bundle JUnit or test binaries into the
   application. License copies are retained under `third-party/`. Running a separate test harness does not relicense project code.
 
-The desktop XML parser is JDK 21's built-in StAX (`java.xml`), not a new Maven
-library. OpenJDK uses [GPLv2](https://github.com/openjdk/jdk21u/blob/master/LICENSE)
+The historical desktop XML slice used JDK 21's built-in StAX (`java.xml`), not a
+Maven library; current Gutenberg parsing uses JSON. OpenJDK uses [GPLv2](https://github.com/openjdk/jdk21u/blob/master/LICENSE)
 with the [Classpath Exception](https://github.com/openjdk/jdk21u/blob/master/ADDITIONAL_LICENSE_INFO)
 for its library code; this exception permits use by differently licensed applications.
-JDK 21 is an external runtime/toolchain prerequisite, not bundled here. Preserve
-its complete upstream legal directory if a runtime is redistributed later.
+JDK 21 is the external build/Gradle-run prerequisite. The existing Desktop app-image
+task bundles a reduced runtime and its module-specific `legal/` directory, which
+must be preserved if that runtime is redistributed.
 
 Readium is **not included**. SQLDelight is now used only by the local library/history
 metadata store; its licenses and driver notices are recorded below.

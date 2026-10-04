@@ -10,4 +10,12 @@ dependencies {
     implementation(project(":app"))
     implementation(compose.desktop.currentOs)
 }
-compose.desktop { application { mainClass = "org.infinilect.app.MainKt" } }
+compose.desktop {
+    application {
+        mainClass = "org.infinilect.app.MainKt"
+        nativeDistributions {
+            // The bundled runtime must support Ktor's Java engine and SQLite JDBC.
+            modules("java.net.http", "java.sql")
+        }
+    }
+}

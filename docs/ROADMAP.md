@@ -46,7 +46,14 @@ Open INFINILECT → search for a book → get real results → open one → read
    windows and existing logical progress compatibility. Human-reported physical Android verification confirms >512 KiB opens, forward/
    backward scrolling, Back/reopen and process-restart progress; brief extreme-scroll
    loading resolves quickly. This was not a Codex device test; [TEXT policy](TEXT_READER.md).
-9. Verify the full path on Desktop and Android with real results and document its limits.
+9. **Human Android verification passed through merged PR #11:** existing persistent
+   state, IA reading/progress, experimental Gutenberg OPDS2 search, explicit
+   pagination, metadata-only Library, safely unsupported Gutenberg opening and the
+   final Next correction starting at the top/first result. Library/History/catalog
+   actions and cache deletion preserving user state also passed. This evidence was
+   supplied by the reviewer, not a Codex physical-device test. **Graphical Desktop
+   verification remains pending**; automated checks and the reviewer plan are in
+   [VERIFICATION.md](VERIFICATION.md).
 
 Completion means actual source-backed reading, not a simulated catalog or a
 welcome window. No completed release is implied by `0.0.1-SNAPSHOT`.
@@ -82,8 +89,10 @@ TEXT progress is now implemented in a separate persistent user-state store.
 ## After the first working slice
 
 Android is now implemented as a separate launcher consuming the shared app library;
-human-reported physical verification of PRs #8–#10 covers persistence and large TEXT;
-PR #11 corrected catalog/IA-regression device testing is pending. Add iOS with its own adapters/build
+human-reported physical verification through merged PR #11 covers persistence,
+large TEXT and the corrected experimental Gutenberg catalog, including Next at
+the first result. Graphical Desktop verification is the remaining platform smoke
+gap for this slice. Add iOS with its own adapters/build
 verification, accessible reader controls,
 additional formats based on real needs, and explicit persistent downloads. If
 Readium is selected, isolate it in an Android-specific reader. Expand the module
@@ -115,4 +124,6 @@ Search/details/catalog Library saves now use the email-supplied development JSON
 service. The inspected item advertises EPUB only; reading is deliberately disabled.
 Previous RDF/direct-file transfers are technical history, not an acquisition
 recommendation. IA remains the verified reader path; user stores are unaffected.
-[Evidence/limits/new manual plan](GUTENBERG.md). v0.0.1 is not declared complete.
+[Evidence/limits/manual plan](GUTENBERG.md). Human Android verification now passed
+including the final pagination correction; Desktop graphical verification is still
+pending. v0.0.1 is not declared complete.
