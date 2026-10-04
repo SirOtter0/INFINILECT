@@ -46,8 +46,11 @@ blocked/unverified. See [OAPEN](docs/OAPEN.md) and the
 The deliberately small v0.0.1 goal is: open INFINILECT → search for a book → get
 real results → open one → read it. Project Gutenberg/OPDS is the first functional search source.
 Desktop and Android are executable targets. Android requires API 26+; iOS remains
-future work. APK compilation is verified. The reviewer reports PRs #8–#10 Android persistence
-and large-TEXT smoke success; PR #11 corrected experimental-catalog device verification is pending.
+future work. APK compilation is verified. The reviewer reports physical Android
+verification through merged PR #11, including persistent state, IA reading/progress,
+experimental Gutenberg search/explicit pagination and Next starting at the first
+result. Codex has not performed that device test. Graphical Desktop verification
+remains pending; automated host checks are recorded in [VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Build and run
 

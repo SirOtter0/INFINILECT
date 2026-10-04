@@ -49,8 +49,11 @@ No se anuncia fuente/UI OAPEN ni lector PDF.
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
 → obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS es la primera fuente de búsqueda funcional.
 Desktop y Android son destinos ejecutables. Android requiere API 26+; iOS queda
-para el futuro. El usuario reporta pruebas físicas Android satisfactorias de
-persistencia y TEXT grande en PRs #8–#10; la prueba del catálogo experimental corregido de PR #11 está pendiente.
+para el futuro. El usuario reporta verificación física Android satisfactoria hasta
+PR #11 fusionado, incluyendo persistencia, lectura/progreso IA, búsqueda/paginación
+Gutenberg experimental y Next empezando en el primer resultado. Codex no realizó
+esa prueba física. La verificación gráfica Desktop sigue pendiente; los checks
+automatizados están en [VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Compilar y ejecutar
 

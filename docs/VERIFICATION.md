@@ -1,3 +1,213 @@
+# PR #12 Desktop first-slice verification — 2026-10-04 UTC
+
+Starting/fetched main is exactly `dde04ffcced213d020197e8dfc686136118885c0`,
+the PR #11 merge. New branch: `feature/desktop-first-slice-verification`.
+PR #12 must remain **Draft pending human graphical Desktop verification**.
+No merge, history rewrite or force push. v0.0.1 is not declared complete.
+
+## Separate evidence and remaining gap
+
+**Human Android evidence supplied by the reviewer:** merged PR #11 passed the
+existing persistent-state, IA TEXT/indexed reading/forward-backward scroll/progress/
+Back/reopen/process-restart, Library/History/catalog actions/cache-only deletion,
+experimental Gutenberg OPDS2 search/explicit Next/metadata-only Library/unsupported
+opening tests. The final pagination correction starts Next at the top/first result.
+This is not a Codex device test. It supersedes the pending-device statements in
+older sections below; those historical results are retained.
+
+**This environment:** DISPLAY and WAYLAND_DISPLAY are unset; no X11 socket or
+usable graphical session/Xvfb is available. A JDK probe returned
+`GraphicsEnvironment.isHeadless=true` without forcing that property. No app window,
+visual text/scroll/Next, native window-close/relaunch or real-source Desktop UI test
+was performed. ADB's local socket required the existing sandbox escalation;
+`adb devices -l` then returned an empty device list. No Android device/emulator
+was used. No GUI infrastructure was installed.
+
+**Zero live source requests:** no IA/Gutenberg/OAPEN opt-in check was run and no
+publication was acquired from a real server. Tests use offline MockEngine/fixtures.
+Gradle dependency/build traffic and GitHub operations are separate from source
+requests. PR #11's successful live Gutenberg evidence was not repeated.
+
+## Demonstrated Desktop runtime defect and narrow fix
+
+The existing `:desktopApp:createDistributable` task succeeded, but its default
+jlink runtime included only java.base/java.datatransfer/java.xml/java.prefs/
+java.desktop/java.logging/jdk.crypto.ec. It omitted both required modules:
+
+- Production `createApplicationSources()` failed with
+  `NoClassDefFoundError: java/net/http/HttpClient$Version` in Ktor's Java engine.
+- Loading the existing SQLite JDBC driver failed with
+  `NoClassDefFoundError: java/sql/Driver`.
+
+These failures were reproduced without a graphical window or network request:
+temporary Java probes outside the repository used the image's actual packaged
+JARs and full JDK `java --limit-modules` with exactly the module list read from
+`lib/runtime/release`. This demonstrates a runtime packaging defect; it does not
+claim execution of the bundled launcher or GUI. Full-JDK Gradle-run/host tests
+already have these modules, which concealed the defect.
+
+**Only production change:** desktopApp's existing nativeDistributions configuration
+adds `modules("java.net.http", "java.sql")`. No include-all-modules workaround,
+new dependency, installer task, native target, shared/source/reader code or Android
+change. The rebuilt runtime includes both and the transitive java.transaction.xa.
+Both module-restricted probes now exit0: actual source owners construct/close
+without requests; SQLite JDBC connects to an in-memory database and executes a
+query. The final post-clean image was checked again. OpenJDK module notices remain
+in the image's legal directory; runtime/license declarations are corrected.
+
+## Desktop lifecycle/filesystem review and offline integration
+
+Reviewed Desktop Main/ApplicationSources/ApplicationSession/ReadingSession/opening,
+progress writer/history queue/SQL driver, cache handles and prepared TEXT cleanup.
+Normal window close cancels the session first, queues latest logical progress,
+closes producers/transports and waits up to **3 seconds** for independent progress,
+history/driver and preparation cleanup. Disposal/repeated close is idempotent.
+Abrupt termination or unusually slow storage can lose pending writes after that
+bounded wait; this PR does not promise crash-proof final lifecycle callbacks.
+
+Desktop namespaces remain separate under platform per-user locations:
+
+| Platform | Persistent base | Cache/preparation base |
+| --- | --- | --- |
+| Linux | absolute XDG_DATA_HOME or ~/.local/share | absolute XDG_CACHE_HOME or ~/.cache |
+| macOS | ~/Library/Application Support | ~/Library/Caches |
+| Windows | absolute LOCALAPPDATA or ~/AppData/Local | absolute LOCALAPPDATA or ~/AppData/Local |
+
+Each uses org.infinilect.app. Persistent siblings are
+infinilect-collections.sqlite and reading-progress-v1; cache namespaces are
+resource-cache-v1 and reader-text-v1. Relative/invalid environment paths fall back
+safely or become unavailable; no cwd/repository fallback. Existing identity digests,
+private POSIX permissions where supported, inherited Windows user ACL, no-follow
+owned-file checks and generated prepared filenames remain intact. OS path policy
+is tested on this Linux host; native macOS/Windows filesystem execution is untested.
+
+One new Desktop-only integration case,
+`DesktopReadingLifecycleTest.desktopOwnerCloseRestartAndCacheDeletionPreserveIndependentUserStores`,
+uses production IA mapping/acquisition/redirect policy with offline MockEngine,
+real Desktop JDBC/SQLDelight, FileReadingProgressStore, DiskResourceCache,
+FileTextPreparer and application/session ownership. It checks:
+
+- explicit search and metadata-only catalog Library save; no successful-open History yet;
+- actual TEXT preparation/window read and pending logical position;
+- direct idempotent owner close while Ready, finite drain, closed document/source,
+  one driver release, a committed progress file and no prepared payload;
+- cache-only deletion in the test's own temporary tree, never real user state;
+- entirely new writers/stores/clients/sessions, durable Library/History/progress
+  restored without old RAM, saved-item source re-resolution and progress restoration;
+- two fresh metadata requests and one transfer per open, revision=null, no reusable
+  resource-cache entry, and Back returning to Library.
+
+Real-time IO is used instead of a virtual test clock for this combined boundary.
+Existing coverage still handles source switching/stale results, retained Search/
+Reader Back, catalog mutation without scroll reset, explicit-only pagination and
+successful-page viewport replacement. No additional lifecycle defect was demonstrated.
+
+## Exact final commands and results
+
+Focused offline test:
+
+```sh
+./gradlew :app:desktopTest --tests '*DesktopReadingLifecycleTest*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**1 case, 0 failures/errors/skips; BUILD SUCCESSFUL in 19s, 15 actionable tasks:
+6 executed / 9 up-to-date.**
+
+Full clean verification:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m 12s; 146 actionable tasks: 138 executed / 8 up-to-date.**
+
+| Task | Executions | Failures/errors/skips |
+| --- | ---: | --- |
+| core:jvmTest | 38 | 0/0/0 |
+| app:desktopTest | 419 | 0/0/0 |
+| core:testAndroidHostTest | 38 | 0/0/0 |
+| app:testAndroidHostTest | 405 | 0/0/0 |
+| Total | **900** | **0/0/0** |
+
+**471 unique cases**, one new Desktop case. The focused run is separate from these
+full-suite totals. Android app and Desktop launcher unit tasks are NO-SOURCE;
+Android host tests are JVM tests, not device tests. Android lint **0 issues**.
+No compiler/Gradle/dependency warnings. Existing SLF4J no-provider/NOP messages occur
+in the temporary runtime probes/test stderr; no logging backend was introduced.
+Configuration-cache advice is not a verification warning. Existing JDK21/proxy/CA,
+SDK and Gradle cache setup were used; no repository changes or new Maven429 workaround.
+
+After the clean build:
+
+```sh
+./gradlew :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 15s; 18 actionable tasks: 7 executed / 11 up-to-date.**
+
+## Artifacts and checks
+
+- Desktop launcher JAR: desktopApp/build/libs/desktopApp-0.0.1-SNAPSHOT.jar,
+  **10,751 bytes**, SHA256
+  `209f3eb0d0be0be766850f4264fdd2c42c3712bb5c22257d04f7fcec79c7c716`.
+  This is not a standalone dependency/runtime bundle.
+- Linux x64 app image: desktopApp/build/compose/binaries/main/app/desktopApp,
+  **182 regular/readable files, 161,550,308 logical bytes** (sum of file contents,
+  including followed internal legal symlinks). No installer/release was created.
+  The sorted relative-path/SHA256 file manifest is outside the repository at
+  `/workspace/artifacts/INFINILECT-PR12-desktop-app-image.sha256`; its own SHA256 is
+  `82b4a950fdf80a82484bf85ba24cf59d246d12c9e014bf24f8170546084b8a0a`.
+  This manifest digest is not a hash of a directory/archive. JDK legal notices
+  remain present; no JUnit/Hamcrest/MockEngine/kotlin-test/coroutines-test JARs are bundled.
+- Standard debug APK: androidApp/build/outputs/apk/debug/androidApp-debug.apk,
+  **11,618,414 bytes**, SHA256
+  `d1aed899195c49a6039f0c07859b8f4a11e809bf2e8da52402eaa0d0c650566f`.
+  It is byte-identical to the retained final PR #11 pagination-fix APK.
+  AAPT2: org.infinilect.app, versionCode1/0.0.1-SNAPSHOT, min26/target37/compile37,
+  INTERNET and existing internal signature receiver permission only. Apksigner
+  verifies the same debug certificate SHA256
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+  No new Android update test is claimed or needed to establish byte identity.
+
+Both diff checks, full base diff inspection, local Markdown file links, Kotlin SPDX,
+license/dependency inventory and tracked artifact/secret checks pass. Core, shared
+application/source/security, cache/progress/collections algorithms, SQL schema,
+Android manifest/permissions and dependency versions are unchanged. No binaries,
+probes, runtime/cache/progress/database files or source contents are committed.
+
+## Human Desktop smoke plan — pending
+
+1. On a graphical desktop, run `./gradlew :desktopApp:run` (or the Linux image's
+   `bin/desktopApp`). Search IA `identifier:stcrt-2015-37219`; open a compatible
+   public CC0 TEXT, scroll forward/backward, wait at least 3s, Back/reopen and
+   verify approximate progress plus retained Search/results/scroll.
+2. Add/remove from catalog and reader; confirm Library mutation alone creates no
+   History. Successful reading creates History. Save Library/progress, close the
+   app completely, relaunch and reopen: all three stores remain and progress restores
+   after normal fresh IA acquisition.
+3. With the app closed, remove **only** this app's resource-cache-v1 and reader-text-v1
+   in the platform cache base above, preserving the persistent directory. Relaunch:
+   Library/History/progress remain; TEXT reacquires/prepares. Never delete app data.
+4. Select experimental Gutenberg, search Shakespeare, scroll down and press Next
+   explicitly: first new result appears at the top. Save metadata-only Library;
+   close/relaunch; opening remains safely unsupported, with no new History/progress/
+   cached bytes. Remove it without affecting unrelated state.
+5. Switch sources during search; old results must not overwrite the active source.
+   Catalog Add/Remove must not reset result scrolling. Reader/Library/History Back
+   and window close/relaunch must work without storage errors. Report OS, JDK/image,
+   approximate restored location and any visual/lifecycle failure. Stop after this
+   slice; no EPUB/Downloads/settings or additional live checks are requested.
+
+---
+
+The following sections preserve earlier verification history; their pending
+PR #11 device gate is superseded by the reviewer's Android evidence above.
+
 # PR #11 link-length correction — 2026-10-04 UTC
 
 Previous HEAD: `097140d5ff28a4d85544d04e7f5a590bf1166a3b`.
