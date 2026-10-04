@@ -13,7 +13,8 @@ import org.infinilect.core.SearchPage
 /** Safe, user-facing explanation supplied by an application source adapter. */
 open class SearchException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-data class SearchResult(val query: String, val page: SearchPage)
+/** Session-local identity advances only when a requested page succeeds. */
+data class SearchResult(val query: String, val page: SearchPage, val generation: Long)
 
 sealed interface SearchState {
     data object Idle : SearchState
@@ -28,6 +29,7 @@ class SearchController(private val source: PublicationSource) {
     private val mutableState = MutableStateFlow<SearchState>(SearchState.Idle)
     val state: StateFlow<SearchState> = mutableState.asStateFlow()
     private val requestLock = Mutex()
+    private var generation = 0L
 
     suspend fun search(query: String) {
         request(query.trim(), pageToken = null, previous = null)
@@ -60,7 +62,7 @@ class SearchController(private val source: PublicationSource) {
             try {
                 val page = source.search(query, pageToken)
                 check(page.publications.all { it.id.sourceId == source.id })
-                mutableState.value = SearchResult(query, page).toState()
+                mutableState.value = SearchResult(query, page, ++generation).toState()
             } catch (cancelled: CancellationException) {
                 mutableState.value = previous?.toState() ?: SearchState.Idle
                 throw cancelled

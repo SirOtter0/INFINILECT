@@ -105,4 +105,44 @@ class SearchControllerTest {
         assertFailsWith<CancellationException> { controller.search("books") }
         assertIs<SearchState.Idle>(controller.state.value)
     }
+
+    @Test fun onlySuccessfulPagesAdvanceGenerationEvenWithIdenticalResults() = runTest {
+        val controller = SearchController(FixtureSource { _, _ -> SearchPage(listOf(book), "opaque") })
+        controller.search("books")
+        val initial = assertIs<SearchState.Results>(controller.state.value).result
+        controller.nextPage()
+        val next = assertIs<SearchState.Results>(controller.state.value).result
+        assertEquals(initial.page, next.page)
+        assertEquals(initial.generation + 1, next.generation)
+        controller.search("new query")
+        assertEquals(next.generation + 1, assertIs<SearchState.Results>(controller.state.value).result.generation)
+    }
+
+    @Test fun failedNextRetainsGenerationAndSuccessfulRetryAdvancesItOnce() = runTest {
+        var fail = true
+        val source = FixtureSource { _, token ->
+            if (token != null && fail) throw SearchException("Please try again.")
+            SearchPage(listOf(book), "opaque")
+        }
+        val controller = SearchController(source)
+        controller.search("books")
+        val initial = assertIs<SearchState.Results>(controller.state.value).result
+        controller.nextPage()
+        assertEquals(initial, assertIs<SearchState.Error>(controller.state.value).previous)
+        fail = false
+        controller.nextPage()
+        assertEquals(initial.generation + 1, assertIs<SearchState.Results>(controller.state.value).result.generation)
+        assertEquals(listOf("books" to null, "books" to "opaque", "books" to "opaque"), source.calls)
+    }
+
+    @Test fun cancelledNextRetainsGeneration() = runTest {
+        val controller = SearchController(FixtureSource { _, token ->
+            if (token != null) throw CancellationException("cancel")
+            SearchPage(listOf(book), "opaque")
+        })
+        controller.search("books")
+        val initial = controller.state.value
+        assertFailsWith<CancellationException> { controller.nextPage() }
+        assertEquals(initial, controller.state.value)
+    }
 }
