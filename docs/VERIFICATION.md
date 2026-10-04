@@ -1,3 +1,166 @@
+# PR #11 link-length correction — 2026-10-04 UTC
+
+Previous HEAD: `097140d5ff28a4d85544d04e7f5a590bf1166a3b`.
+Fetched main remains `a5caaadfb859160f742740d23d1869bd78db0f38`; same
+`feature/gutenberg-full-integration`, existing PR11 open Draft. This section
+supersedes the **current-blocker** claim in the historical 08:01 root503 report
+below, preserving that observation. No branch/history rewrite, force push or merge.
+
+## Actual cause and standards
+
+Read-only availability check **2026-10-04T08:31:21.415060219Z**:
+root200 / 173,269 bytes; search200 / 12,391 bytes; **2 requests/185,660 bytes**. Root discovery
+succeeded, search parsing failed at `link.number("length")`; exit1. No redirect,
+retry, 429/503, detail or acquisition. Thus service503 was no longer the blocker.
+
+Exactly one bounded diagnostic search at **2026-10-04T08:37:02.379563Z**:
+`https://opds-test.pglaf.org/opds/search?query=Frankenstein`, HTTP200,
+application/json, Content-Length 12,391, consumed 12,391; **8 publications**.
+Seven EPUB links have integer `length`; ebook10414 instead has open-access
+relation, text/html, href `https://www.gutenberg.org/ebooks/10414`, **length absent**.
+It is not null or a string. No details/pages/acquisition/retry were requested.
+The exact metadata subset is an authored regression fixture; the full response
+remains only in /tmp. No book content was requested/logged.
+
+Official sources inspected on the same date:
+[OPDS2 §1.1 and §5](https://specs.opds.io/opds-2.0#5-publications),
+[OPDS publication schema](https://specs.opds.io/schema/publication.schema.json),
+[Readium §2.4 Link Object](https://readium.org/webpub-manifest/#24-the-link-object),
+[official Link schema](https://readium.org/webpub-manifest/schema/link.schema.json).
+These define optional **size**, integer original bytes, strictly positive in the
+schema; they do **not** define length. There is no normative length type/unit/
+zero/null rule to impose. Unknown extension keys are permitted, so Gutenberg's
+numeric extension and the observed absence are not demonstrated non-conformance.
+**INFINILECT's required positive length assumption was incorrect.**
+[Exact distinctions and values](GUTENBERG.md).
+
+Narrow catalog policy: all Gutenberg `Publication.resources` are empty. No delivery
+URL, size or length is exposed as byte metadata, revision, permission or resource.
+Required ID/self/title/author/language and acquisition relation/type/href string
+structure stay validated. Optional extensions remain globally bounded strict JSON,
+not coerced into numbers. The previous descriptive EPUB mapping is removed because
+acquisition is unsupported. Library snapshots already omit resources: no migration.
+Changed/hostile delivery locations stay inert; catalog network routes remain exact.
+`loadResource` is unchanged: ownership validation + fixed unsupported error,
+**zero requests**, including forged/stored EPUB/TEXT refs.
+
+## Frozen corrected live check — one execution
+
+```sh
+./gradlew :app:gutenbergSearchCheck --args=Frankenstein \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+UTC **2026-10-04T08:47:29.718739554Z**:
+
+| Request | HTTP | Application-consumed bytes |
+| --- | --- | ---: |
+| https://opds-test.pglaf.org/opds/ | 200 | 173,269 |
+| https://opds-test.pglaf.org/opds/search?query=Frankenstein | 200 | 12,391 |
+
+**Root discovery and parser succeeded; 8 publications, no next token, resources 0.**
+First IDs/titles:84—Frankenstein: or, the modern prometheus;
+41445/42324—Frankenstein: Or, The Modern Prometheus.
+The diagnostic identified one missing HTML length and seven numeric extensions;
+all delivery metadata is excluded by the corrected parser, with no resource
+exposed. The opt-in check now uses only root+search; no extra detail is necessary.
+**2 requests / 185,660 bytes, 0 redirects/retries/429/503/acquisition/downloads/pages.**
+BUILD SUCCESSFUL in 12s; 15 actionable tasks: 5 executed / 10 up-to-date. Exit0.
+Correction's diagnostic+final source traffic: **3 requests / 198,051 bytes**, all200.
+The earlier read-only availability check is separately recorded, not rerun.
+No IA/OAPEN/old-OPDS/RDF/mirror request. This is one development-catalog validation,
+not a claim of production stability, acquisition or EPUB/TEXT reading support.
+
+## Offline verification after the live check
+
+Targeted command first passed both targets in 1m 3s, 27 actionable tasks
+(13 executed / 14 up-to-date), **57 Gutenberg cases per target**:
+
+```sh
+./gradlew :app:desktopTest --tests 'org.infinilect.app.gutenberg.*' \
+  :app:testAndroidHostTest --tests 'org.infinilect.app.gutenberg.*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Final required full clean command:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m 14s; 146 actionable tasks: 138 executed / 8 up-to-date.**
+
+| Task | Executions | Failures/errors/skips |
+| --- | ---: | --- |
+| core:jvmTest | 38 | 0/0/0 |
+| app:desktopTest | 407 | 0/0/0 |
+| core:testAndroidHostTest | 38 | 0/0/0 |
+| app:testAndroidHostTest | 394 | 0/0/0 |
+| Total | **877** | **0/0/0** |
+
+**459 unique cases** after removing Gradle platform suffixes; **20 new unique**
+length/delivery boundary cases in this correction, each run on both app targets.
+Android app unit task NO-SOURCE; host tests are JVM simulations, not device tests.
+Android lint **0 issues/errors/warnings**. No compiler/Gradle/dependency warnings;
+existing SLF4J no-provider/NOP warning only in the opt-in Java check. Original
+repositories/proxy/CA/JDK configuration retained; no new Maven 429 workaround.
+
+Coverage includes actual absent HTML length, numeric/absent/null/negative/zero/
+fraction/overflow/string/boolean/object/array extensions, optional normative size,
+global bounds, malformed required fields, safe identity and inert delivery URLs.
+The real SQL Library reopen test now saves metadata from a null-length publication
+and discards RAM before reopening; unavailable opens preserve Library/progress,
+produce no History/cache, and make no acquisition requests. Existing IA, cache,
+large TEXT/UTF-8/BOM/progress, SQLite PRAGMA/diagnostics, source switch/Back tests
+remain green. No unrelated implementation or security policy changed.
+
+## APK inspection and human gate
+
+`androidApp/build/outputs/apk/debug/androidApp-debug.apk`, produced by standard
+`:androidApp:assembleDebug`; delivery copy
+`/workspace/artifacts/INFINILECT-PR11-opds2-length-fix-debug.apk`.
+**11,618,414 bytes**, SHA-256:
+`cc157b9c1402e2f5ebfe774ec8c6219d272b3c17fb5bfe627b89a8f57b3369d1`.
+AAPT2: org.infinilect.app/versionCode1/0.0.1-SNAPSHOT, visible INFINILECT,
+compileSdk 37 / targetSdk 37 / minSdk 26. INTERNET + pre-existing app-internal signature
+receiver permission only; no storage permission/manifest change. Apksigner verifies
+v2; certificate SHA256
+`547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`,
+compared directly with the retained PR10 APK: **same certificate/package**.
+No claim of actual install/update or graphical execution. No physical Android or
+Desktop UI testing by Codex; [human catalog A–N plan](GUTENBERG.md#human-android-catalog-smoke-plan-not-performed-by-codex).
+Keep PR11 Draft pending human Android review. No merge.
+
+## Final adversarial checks
+
+1. Standards mismatch corrected: no required length exists in the cited Link model;
+   tests cover all JSON kinds rather than accepting only the live fixture.
+2. Malformed length cannot authorize acquisition: all resources/delivery metadata
+   are excluded; no numeric coercion or inferred revision.
+3. Gutenberg loadResource still makes **zero requests**, proven with MockEngine.
+4. Hostile delivery strings remain inert; unsafe identity/self/network routes and
+   malformed required structure/global bounds still fail closed.
+5. Optional delivery defects do not invalidate otherwise safe catalog metadata.
+6. No executable `/ebooks/search.opds/`, RDF/files/harvest/mirror fallback remains.
+7. Delivery URL changes alone leave catalog usable; future acquisition needs a
+   separately verified fresh authorization/transport contract.
+
+Both diff checks, complete current-main diff inspection, local Markdown links,
+Kotlin-source SPDX/license/secret/artifact checks pass. The lone `GPL-3.0-only`
+text match is an existing historical statement saying no such declaration exists;
+it does not license project code as only. Build-script header policy predates this
+correction; original GPL and upstream license texts are unchanged. Core/IA/cache/progress/reader/collections/
+SQL/manifests unchanged; zero new dependency/version/schema/permission changes.
+No full response, publication content, APK or runtime data committed.
+
+---
+
+The following earlier correction sections preserve historical results; their
+08:01 service503 is superseded as the current blocker by the verified fix above.
+
 # PR #11 correction — experimental OPDS2 catalog (2026-10-04 UTC)
 
 Previous reviewed HEAD: `2f98e9a5a528e51196fcc0e8332e613c5f81add5`.

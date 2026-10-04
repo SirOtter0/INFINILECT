@@ -22,7 +22,7 @@ HTML scraping, retries, images or aggregator fallback. No requests at constructi
 | `/opds/search{?query,title,author}` | Only encoded query; one result page≤25 |
 | `next`, `/opds/search?limit=25&query=...&page=...` | Opaque validated token; explicit next action, page≤1000 |
 | `self`, `/opds/publications?id=<ebook number>` | Fresh detail metadata; matching ID/self required |
-| `http://opds-spec.org/acquisition/open-access`, EPUB MIME | Descriptive logical EPUB resource only, revision=null; never fetched |
+| `http://opds-spec.org/acquisition/open-access`, delivery MIME/href | Inert bounded metadata; no PublicationResource or byte acquisition |
 
 HTTP root/search currently use application/json while link types advertise
 application/opds+json; details use application/opds-publication+json. Strict JSON
@@ -33,7 +33,9 @@ serialization/cancellation off UI. Connect5s/request15s; UA/contact unchanged.
 Identity remains `PublicationId(SourceId("gutenberg"), positive canonical ebook
 number)`; canonical www/ebooks URL is informational. Title/authors/languages map
 safely; absent dedicated rights remain absent. USA-rights prose/metadata CC0 never
-becomes a worldwide book license. Known EPUB descriptions do not enable reading.
+becomes a worldwide book license. Gutenberg resources are empty; optional delivery
+extensions are never byte authority. Readium defines optional `size`, not required
+`length`; the observed HTML link without length is catalog-usable. [Standards/finding](GUTENBERG.md).
 
 Internet Archive is selected initially. **Project Gutenberg (experimental)** is
 catalog-only with metadata Library actions. `getPublication` resolves the observed

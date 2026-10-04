@@ -32,8 +32,19 @@ No obsolete XML search, RDF/file acquisition or hidden fallback remains executab
 Retain existing pure core, PublicationSource, source-scoped numeric IDs, canonical
 informational URL, ResourceLoader/reader/cache/progress/collections contracts.
 The shared JSON parser reuses existing serialization-json; legacy platform XML
-adapters/test kXML are removed, no new dependency. Descriptive EPUB resources use
-logical key `epub`, revision=null and never authorize byte transfers.
+adapters/test kXML are removed, no new dependency.
+
+**2026-10-04 pre-merge refinement:** the 08:31 root/search200 check failed because
+the parser incorrectly required `length` on ebook10414's HTML acquisition link.
+Readium's Link Object defines optional integer `size`; `length` is an undefined
+extension, not mandatory bytes. Use empty resources for all Gutenberg catalog
+publications, replacing the previous descriptive EPUB refs. Delivery hrefs and
+size/length extensions remain inert bounded metadata, never trusted sizes,
+resources or authority. Required identity/self/string structure still fails
+closed. This keeps catalog metadata useful if delivery URLs change, and avoids
+misleading future consumers while acquisition is unsupported. Library snapshots
+already exclude resources, so no schema/user-state migration is needed.
+[Official standards and exact field evidence](../GUTENBERG.md).
 
 First user Search resolves/validates the root search template, then one result
 page; continuation is explicit and query-bound. All fetched metadata is bounded,

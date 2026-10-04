@@ -37,7 +37,8 @@ no reusable IA entry is populated. No hash is promoted to a source revision and 
 fabricated validator is introduced. The actual TEXT UI uses this loader on Desktop
 and Android, but successful persistent-hit evidence uses offline stable-revision
 fixtures, not a claim about current IA resources. Gutenberg is now experimental catalog-only and populates no byte-cache entries;
-its descriptive EPUB resources still have revision=null.
+its publications have no acquisition resources; optional delivery metadata never
+becomes a cache key or byte authority.
 
 ## Streaming and atomic publication
 

@@ -94,7 +94,7 @@ references and [third-party notices](THIRD_PARTY_NOTICES.md) for license informa
 Gutenberg transport uses Ktor 3.6.0 and existing serialization-json outside core.
 Desktop/Android share one hardened JSON parser. [Endpoints/limits](docs/SOURCES.md).
 Offline tests use small authored OPDS2 JSON fixtures and Ktor MockEngine. An opt-in
-development-service check fetches root, one page and one detail (no acquisition):
+development-service check fetches root and one result page (no acquisition):
 
 ```sh
 ./gradlew :app:gutenbergSearchCheck --args="shakespeare"

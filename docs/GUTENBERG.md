@@ -78,8 +78,8 @@ publication self link; no guessed service host, endpoint enumeration or dumps.
   description**, `Rights: Public domain in the USA.`, not a standalone license.
   We do not extract that prose into a structured rights field or infer worldwide
   status. No book license/hash/revision was separately supplied in that response.
-- Root/search/detail advertised `http://opds-spec.org/acquisition/open-access`
-  and `application/epub+zip`, with integer `length`. Item84 points to
+- Inspected item84 advertises `http://opds-spec.org/acquisition/open-access`
+  and `application/epub+zip`, with integer `length`. It points to
   `https://www.gutenberg.org/cache/epub/84/pg84-images-3.epub`.
   The inspected result and detail **do not advertise UTF-8 TEXT**. This is evidence
   about the inspected records, not a claim that no service record can ever have TEXT.
@@ -89,6 +89,45 @@ publication self link; no guessed service host, endpoint enumeration or dumps.
 - The email calls it development; the root only titles itself Project Gutenberg.
   No linked production-preview endpoint or announcement was found in the inspected
   responses/pages. We do not probe invented production URLs.
+
+### Length finding: availability is no longer the parser blocker
+
+The historical frozen check at 08:01 UTC received root HTTP503. A separate
+read-only check at **2026-10-04T08:31:21.415060219Z** received root200/search200,
+2 requests/185,660 consumed bytes, then failed on an acquisition link's `length`.
+The 503 was temporary; it is not the current parsing defect.
+
+Exactly one diagnostic search at **2026-10-04T08:37:02.379563Z** returned200,
+12,391 bytes/8 publications. Seven EPUB links have JSON integer `length` values:
+474733, 367792, 2349907, 340095, 325327, 329136 and 302751. The eighth, ebook10414,
+has open-access relation, `text/html`, informational href
+`https://www.gutenberg.org/ebooks/10414`, and **no `length` property** (not null,
+string or fractional). The old parser required a positive Long on every acquisition
+link before checking its format; this optional-field assumption invalidated the
+entire otherwise usable search. The authored regression fixture retains only the
+minimal metadata/self/HTML links; the complete live response is not committed.
+
+### Official specification, distinct from service observation
+
+- [OPDS2 §1.1](https://specs.opds.io/opds-2.0#11-introduction),
+  [§5.1–5.3](https://specs.opds.io/opds-2.0#5-publications) and
+  [publication schema](https://specs.opds.io/schema/publication.schema.json)
+  base OPDS publication links on Readium's Link Object.
+- [Readium Web Publication Manifest §2.4](https://readium.org/webpub-manifest/#24-the-link-object)
+  defines **optional `size`**, integer, original bytes prior to archive
+  compression/encryption. Its [official Link schema](https://readium.org/webpub-manifest/schema/link.schema.json)
+  requires only `href`; `size` is integer with exclusiveMinimum0. Absent size
+  is permitted; zero, negatives, null, strings and fractions are not valid `size`.
+- Neither this Link definition/schema nor OPDS2 defines **`length`**. It is not
+  required and has no normative byte unit/type/range here. Its absence is not an
+  OPDS violation. The schema permits extension keys, so the observed numeric
+  extension alone does not establish Gutenberg non-conformance. Null/string/etc.
+  extensions have no standardized byte-size semantics and must not be coerced.
+
+**INFINILECT was wrong to require `length`.** We are a bounded catalog-subset
+parser, not a universal OPDS validator. An inert, undefined delivery extension
+does not justify rejecting safe catalog identity/display. This does not exempt
+the response from JSON/UTF-8/bounds, source-ID/self or pagination validation.
 
 ## D. INFINILECT decisions
 
@@ -120,10 +159,21 @@ positive Int-range numbers, no leading zeros. Informational canonical URL remain
 for a validated ID, rejects mismatched identifier/self, returns null on404. This
 is a development-service observation, not a permanent API guarantee.
 
-Known descriptive EPUB resources use key `epub`, EPUB, `application/epub+zip`,
-revision=null. Only exact fresh advertised open-access relation/type/item path
-is mapped; URLs are not keys and are not stored in Library. TEXT/unknown formats
-are not made readable resources. An EPUB metadata entry does not enable a reader.
+**All Gutenberg Publications now have empty `resources`.** The earlier corrected
+HEAD exposed descriptive EPUB refs despite unsupported acquisition; that is less
+clear than a metadata-only model. All delivery hrefs and `size`/`length` extensions
+are excluded, never retained as trusted bytes, URLs, revisions or resources.
+Acquisition relation/type/href string structure and global JSON bounds remain
+validated; numeric/string/null/object/array extensions are inert, never coerced.
+Hostile or changed delivery URLs cannot escape the parser or cause requests;
+only the independently validated ebook identifier/self determines publication
+identity. Delivery-URL changes alone no longer invalidate catalog metadata.
+Malformed required identity/self/type/string structure still fails closed.
+
+This changes no Library schema: snapshots already exclude resources. UI was
+already catalog-only, and future acquisition must introduce its own fresh verified
+link/size/rights/delivery policy. No migration or capability is inferred from an
+old descriptive EPUB ref, even if a consumer retained one in memory.
 `loadResource` is explicitly unsupported for every own-source resource (including
 stored/forged TEXT), validates ownership and issues **zero requests**.
 
@@ -154,8 +204,9 @@ resource transfer/cache population. IA revision=null behavior is unchanged.
   operations, connect5s/request15s/configured socket15s (engine capability applies).
   Source close cancels active and waiting work, then client/engine; idempotent.
 - No source byte acquisition means hostile download URLs cannot trigger SSRF.
-  Descriptive EPUB URLs nevertheless require exact fresh item-specific www path.
-  Unknown official hosts fail closed. No mirror allowlist was invented.
+  Delivery hrefs are inert bounded strings, absent from the returned model, never
+  rendered/followed/persisted. Fetched catalog hosts/routes remain exact and
+  fail closed. No mirror/delivery allowlist or acquisition permission is inferred.
 
 ### Library, History, progress and reader
 
@@ -172,33 +223,36 @@ No external acquisition is inserted into core, UI reader or persistence.
 ## Final opt-in development check
 
 `./gradlew :app:gutenbergSearchCheck --args=Frankenstein` is separate from
-build/test/check. It attempts root → one search → one current detail and reports
-only status/counts/IDs/formats. Final run returned root HTTP503 and stopped after
-one request, no retries. It did not validate the corrected live catalog chain.
-Earlier research200 observations do not remove this external availability gate.
+build/test/check. It now attempts only root → one search and reports bounded
+status/counts/IDs/titles. No extra detail is needed for this length regression.
+The historical 08:01 root503 and later 08:31 root/search200 parser failure are
+retained as evidence; the current corrected run is recorded in VERIFICATION.
+At **2026-10-04T08:47:29.718739554Z**, the frozen corrected check succeeded:
+root200 (173,269 bytes), search200 (12,391), **8 publications /2 requests /
+185,660 bytes**, resources0. No redirect/retry/429/503, details or acquisition.
+This validates the current development catalog once, not production stability.
 It never requests EPUB/TEXT, images or next pages.
 [Exact final timestamp/requests/bytes/build/APK](VERIFICATION.md).
 
 Previous successful 84/1342 RDF transfers are retained as historical observations
 in VERIFICATION, explicitly superseded as justification for shipping acquisition.
 
-## Human Android correction smoke plan (not performed by Codex)
+## Human Android catalog smoke plan (not performed by Codex)
 
-A. Install corrected APK over merged PR10/previous PR11 without clearing app data.
-B. Existing Library/History/ReadingProgress remain; Internet Archive is initially selected.
-C. IA `identifier:gmb-2015-93040` → Open text → real text → scroll → Back.
-D. Wait≥3s before leaving; reopen and full-process restart restore IA progress.
-E. Select **Project Gutenberg (experimental)**; catalog-only notice, no Open text on results.
-F. Search **Frankenstein**; real metadata/author/language, no automatic downloads.
-G. Add item84 from results; no reader/History/progress is created.
-H. Terminate/relaunch; Gutenberg Library entry persists.
-I. Open that Library entry: fixed unsupported-source error; Back to Library keeps entry.
-J. Remove Gutenberg Library entry: previous History/progress and other Library entries remain.
-K. Search **shakespeare** → explicit Next page; no automatic pagination.
-L. Change source during search; no late old-source results or crash.
-M. IA reopen/History/Library still work; Android Back retains IA query/results.
-N. Clear **cache only**: Library/History/progress remain; IA prepares again normally.
-O. No normal-operation storage/save errors. No claim of Gutenberg reading or >512KiB acquisition.
+A. Install over PR10/current build without clearing app data.
+B. Existing IA Library/History/ReadingProgress remain.
+C. IA `identifier:gmb-2015-93040` → Open text → read/scroll/Back; wait≥3s and verify progress restores.
+D. Select **Project Gutenberg (experimental)**; catalog-only notice, no Open text.
+E. Search **Frankenstein**.
+F. Verify catalog results render normally.
+G. Add item84 from results without opening; metadata only.
+H. Restart process; Gutenberg Library metadata persists.
+I. Attempt saved Gutenberg opening: fixed unsupported behavior, no crash/new History/progress.
+J. Remove that Gutenberg Library entry; other user stores remain.
+K. Search **Shakespeare** and explicitly test Next page.
+L. Switch source during search; no stale overwrite/crash.
+M. Clear **CACHE ONLY**; permanent Library/History/progress remain.
+N. No normal-operation storage/progress/network-policy errors.
 
 ## External gates / adversarial review
 

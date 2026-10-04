@@ -309,8 +309,10 @@ migration and failure policy in [LIBRARY_HISTORY](LIBRARY_HISTORY.md) and
 ## Experimental Gutenberg catalog boundary
 
 `GutenbergCatalog` owns observed OPDS2 discovery/search/details. The shared JSON
-parser validates bounded current metadata, stable numeric IDs and descriptive EPUB
-links; `loadResource` is explicitly unsupported. First Search discovers root once
+parser validates bounded current metadata and stable numeric ID/self links.
+All Gutenberg Publications have empty resources: delivery URLs and optional
+size/length extensions are inert, excluded from catalog authority; `loadResource`
+is explicitly unsupported. First Search discovers root once
 per source lifetime, then requests one page; subsequent pages are user-triggered.
 The development service is labelled experimental and IA is the initial source.
 No legacy XML, RDF, file-download or mirror fallback remains. Core/reader/progress/

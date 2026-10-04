@@ -97,7 +97,7 @@ y los [avisos de terceros](THIRD_PARTY_NOTICES.md).
 Gutenberg utiliza Ktor 3.6.0 y serialization-json existentes fuera de core.
 Desktop/Android comparten el mismo parser JSON seguro. [Endpoints/límites](docs/SOURCES.md).
 Los tests offline usan fixtures OPDS2 pequeñas propias y MockEngine. El check opt-in
-de desarrollo consulta raíz, una página y una ficha, sin adquirir contenido:
+de desarrollo consulta raíz y una página de resultados, sin adquirir contenido:
 
 ```sh
 ./gradlew :app:gutenbergSearchCheck --args="shakespeare"
