@@ -70,6 +70,22 @@ class ApplicationSourcesTest {
         assertEquals(1, releases)
     }
 
+    @Test fun ownerClosesAndDrainsOptionalEpubPreparationWithoutChangingTextSession() = runTest {
+        var closes = 0
+        var drains = 0
+        val preparer = object : org.infinilect.app.reader.EpubPreparer {
+            override suspend fun prepare(publication: Publication, resource: PublicationResource, loader: ResourceLoader): EpubDocument =
+                error("No EPUB action is enabled in the UI")
+            override fun close() { closes++ }
+            override suspend fun awaitClosed() { drains++ }
+        }
+        val owner = ApplicationSources(emptyList(), epubPreparer = preparer) {
+            assertEquals(1, closes)
+        }
+        owner.close(); owner.close(); owner.awaitProgressClosed()
+        assertEquals(1, closes); assertEquals(1, drains)
+    }
+
     @Test fun sessionReceivesOwnedLoaderAndOwnerCancelsBeforeReleasingCacheAndSources() = runTest {
         val source = Source()
         var loads = 0
