@@ -18,6 +18,7 @@ class ApplicationSources internal constructor(
     internal val progress: ProgressPersistence? = null,
     internal val collections: ApplicationCollections? = null,
     internal val textPreparer: org.infinilect.app.reader.TextPreparer = org.infinilect.app.reader.defaultTextPreparer(),
+    internal val epubPreparer: org.infinilect.app.reader.EpubPreparer? = null,
     private val releaseSources: () -> Unit,
 ) {
     private var session: ApplicationSessionLifetime? = null
@@ -41,7 +42,7 @@ class ApplicationSources internal constructor(
 
     fun flushProgress() { session?.flushProgress() }
 
-    suspend fun awaitProgressClosed() { progress?.awaitClosed(); collections?.awaitClosed(); textPreparer.awaitClosed() }
+    suspend fun awaitProgressClosed() { progress?.awaitClosed(); collections?.awaitClosed(); textPreparer.awaitClosed(); epubPreparer?.awaitClosed() }
 
     fun close() {
         if (closed) return
@@ -51,6 +52,7 @@ class ApplicationSources internal constructor(
         progress?.close()
         collections?.close()
         textPreparer.close()
+        epubPreparer?.close()
         releaseSources()
     }
 }

@@ -1,5 +1,16 @@
 # Roadmap
 
+## Bounded EPUB foundation — Draft PR #13
+
+Pure reader-facing EPUB contracts and bounded ZIP/container/package/manifest/
+spine/XHTML structural preparation are implemented for Desktop and Android.
+No EPUB renderer or UI reading action is enabled. Limits/subset and platform
+verification gaps are in [EPUB.md](EPUB.md) and [ADR 0019](adr/0019-bounded-epub-foundation.md).
+Future work requires a separately sandboxed platform rendering engine and an EPUB
+logical locator; TEXT progress cannot be reused as EPUB progress. Gutenberg stays
+experimental catalog-only and IA rights/acquisition/cache policy stays unchanged.
+No release/v0.0.1 completion or new manual Desktop observation is claimed.
+
 ## Foundation and second technical pass
 
 - Bilingual README, GPLv3, contribution and third-party guidance.
