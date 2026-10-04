@@ -82,7 +82,7 @@ sqldelight {
 // Opt-in live check: never a dependency of test/check/build.
 tasks.register<JavaExec>("gutenbergSearchCheck") {
     group = "verification"
-    description = "Inspect Gutenberg's experimental OPDS2 root, one search page and one metadata record (no acquisition)."
+    description = "Inspect Gutenberg's experimental OPDS2 root and one search page (no details/acquisition)."
     dependsOn("desktopTestClasses")
     val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
     classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)

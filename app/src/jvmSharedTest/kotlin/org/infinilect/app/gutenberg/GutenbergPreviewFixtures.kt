@@ -17,3 +17,7 @@ internal fun previewPage(query: String="books", page: Int=1, publications: Strin
     return """{"metadata":{"numberOfItems":${if(next)100 else if(publications.isEmpty())0 else page*25},"itemsPerPage":25,"currentPage":$page},"links":[{"rel":"self","href":$first,"type":"application/opds+json"}${if(next) ",{\"rel\":\"next\",\"href\":$following,\"type\":\"application/opds+json\"}" else ""}],"publications":[$publications]}"""
 }
 internal fun previewBytes(value: String)=value.toByteArray(Charsets.UTF_8)
+
+// Sanitized metadata subset of the single 2026-10-04 diagnostic response.
+// Ebook10414 has an HTML acquisition link with NO length, unlike the seven EPUBs.
+internal const val previewHtmlWithoutLength = """{"metadata":{"@type":"http://schema.org/Book","identifier":"https://www.gutenberg.org/ebooks/10414","title":"I Love You, California\r\nMarch Song","language":"en"},"links":[{"rel":"self","href":"https://opds-test.pglaf.org/opds/publications?id=10414","type":"application/opds-publication+json"},{"rel":"http://opds-spec.org/acquisition/open-access","href":"https://www.gutenberg.org/ebooks/10414","type":"text/html"}]}"""

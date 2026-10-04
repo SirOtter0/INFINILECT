@@ -67,6 +67,4 @@ internal object GutenbergUrls {
         require(page(value, query) >= 2)
         return value
     }
-    /** Descriptive EPUB link only. This validation never grants download permission. */
-    fun epub(value: String, id: String): Boolean = value == "https://www.gutenberg.org/cache/epub/${identifier(id)}/pg$id-images-3.epub"
 }

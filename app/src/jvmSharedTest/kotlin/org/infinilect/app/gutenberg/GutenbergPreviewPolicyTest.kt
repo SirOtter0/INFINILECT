@@ -16,11 +16,10 @@ class GutenbergPreviewPolicyTest {
         for(value in listOf("{}",previewRoot.replace("{?query,title,author}","{?q}"),previewRoot.replace("opds-test.pglaf.org","evil.example"),previewRoot.replace("true","\"true\"")))
             assertFailsWith<InvalidOpdsException>{GutenbergOpds2Parser.root(previewBytes(value))}
     }
-    @Test fun mapsStableIdentityCanonicalMetadataAndDescriptiveEpub() {
+    @Test fun mapsStableIdentityCanonicalMetadataWithoutAcquisitionResources() {
         val publication=book();assertEquals(id,publication.id);assertEquals("https://www.gutenberg.org/ebooks/84",publication.sourceUrl)
         assertEquals(listOf("Author, One","Autor 二"),publication.authors);assertEquals(listOf("en","es"),publication.languages)
-        assertEquals(PublicationType.BOOK,publication.type);assertEquals(PublicationFormat.EPUB,publication.resources.single().format)
-        assertEquals("epub",publication.resources.single().key);assertNull(publication.resources.single().revision);assertNull(publication.resources.single().cacheKey)
+        assertEquals(PublicationType.BOOK,publication.type);assertTrue(publication.resources.isEmpty())
     }
     @Test fun singletonAuthorLanguageAndMissingOptionalMetadata() {
         val value=previewPublication().replace("[\"en\",\"es\"]","\"en\"").replace("[{\"name\":\"Author, One\"},{\"name\":\"Autor 二\"}]","{\"name\":\"Single\"}")
@@ -54,10 +53,13 @@ class GutenbergPreviewPolicyTest {
         for(value in listOf(previewPublication().replace("publications?id=84","publications?id=11"),previewPublication().replace("https://opds-test.pglaf.org/opds/publications", "https://evil.example/opds/publications")))
             assertFailsWith<InvalidOpdsException>{book(value)}
     }
-    @Test fun descriptiveEpubRejectsWrongItemAndHostileUrls() {
+    @Test fun deliveryUrlsNeverEscapeCatalogOrBecomeAuthority() {
         val original="https://www.gutenberg.org/cache/epub/84/pg84-images-3.epub"
         for(url in listOf("http://www.gutenberg.org/cache/epub/84/pg84-images-3.epub","https://evilgutenberg.org/a","https://www.gutenberg.org.evil/a","https://foo.www.gutenberg.org/a","https://user@www.gutenberg.org/cache/epub/84/pg84-images-3.epub",original+"?x=1",original+"#x",original.replace(".org/",".org:443/"),original.replace("84/pg84","11/pg11"),original.replace("/84/","/84/../84/"),original.replace("/84/","/84/%2e%2e/84/"),original.replace("/84/","/84/%252e%252e/84/"),original.replace("/84/","/84\\")))
-            assertFailsWith<InvalidOpdsException>{book(previewPublication().replace(original,url))}
+            book(previewPublication().replace(original,url.replace("\\", "\\\\"))).also {
+                assertTrue(it.resources.isEmpty());assertEquals(id,it.id)
+                assertEquals("https://www.gutenberg.org/ebooks/84",it.sourceUrl)
+            }
     }
     @Test fun malformedAcquisitionRelationsCannotGrantPermission() {
         for(rel in listOf("http://opds-spec.org/acquisition","http://opds-spec.org/acquisition/borrow","http://opds-spec.org/acquisition/open-access evil"))
@@ -78,7 +80,7 @@ class GutenbergPreviewPolicyTest {
             assertFailsWith<IllegalArgumentException>{GutenbergUrls.nextToken(value,"books",1)}
     }
     @Test fun malformedJsonInvalidUtf8WrongTypesAndXmlRejected() {
-        for(value in listOf("<feed/>","{", "[]",previewPublication().replace("\"title\":\"A Book 🦦\"","\"title\":5"),previewPublication().replace("12345","-1"),previewPublication().replace("\"language\":[\"en\",\"es\"]","\"language\":{}")))
+        for(value in listOf("<feed/>","{", "[]",previewPublication().replace("\"title\":\"A Book 🦦\"","\"title\":5"),previewPublication().replace("\"language\":[\"en\",\"es\"]","\"language\":{}")))
             assertFailsWith<InvalidOpdsException>{book(value)}
         assertFailsWith<InvalidOpdsException>{GutenbergOpds2Parser.root(byteArrayOf(0xc0.toByte(),0xaf.toByte()))}
     }

@@ -144,25 +144,20 @@ internal object GutenbergOpds2Parser {
         val links = links(root)
         val self = links.singleOrNull { "self" in relations(it) } ?: invalid()
         if (self.string("href") != GutenbergUrls.publication(local) || self.string("type") != "application/opds-publication+json") invalid()
-        var epub = false
         links.forEach { link ->
             val rel = relations(link)
             if (rel.any { it.startsWith("http://opds-spec.org/acquisition") }) {
                 // Unknown/malformed acquisition relations are not permission.
                 if (rel != listOf("http://opds-spec.org/acquisition/open-access")) invalid()
-                val type = link.string("type", true)!!
-                val href = link.string("href", true, 2048)!!
-                val length = link.number("length")
-                if (length <= 0) invalid()
-                if (type == "application/epub+zip") {
-                    if (!GutenbergUrls.epub(href, local) || epub) invalid()
-                    epub = true
-                }
-                // TEXT/unknown MIME is not exposed as a readable resource in this catalog-only slice.
+                link.string("type", true)
+                link.string("href", true, 2048)
+                // RWPM defines optional `size`, not `length`. Gutenberg's `length`
+                // extension (including absence/unsupported values) is never byte authority.
+                // Catalog-only: quarantine all delivery metadata, even descriptive EPUB.
+                // No delivery URL, size, or resource reference escapes this parser.
             }
         }
-        val resources = if (epub) listOf(PublicationResource(id, "epub", PublicationFormat.EPUB, "application/epub+zip", revision = null)) else emptyList()
-        return Publication(id, title, PublicationType.BOOK, names, resources, strings("language", 64),
+        return Publication(id, title, PublicationType.BOOK, names, emptyList(), strings("language", 64),
             GutenbergUrls.canonical(local), metadata.string("rights")?.takeIf { it.isNotBlank() })
         // Rights embedded in a prose description are deliberately not promoted to a license field.
     }

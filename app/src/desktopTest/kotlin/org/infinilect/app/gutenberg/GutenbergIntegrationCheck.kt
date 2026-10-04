@@ -4,7 +4,6 @@ package org.infinilect.app.gutenberg
 
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
-import org.infinilect.core.PublicationFormat
 
 /** Opt-in development evidence only; no next-page/image/acquisition request. */
 object GutenbergIntegrationCheck {
@@ -15,11 +14,13 @@ object GutenbergIntegrationCheck {
         try {
             GutenbergSource(observe={synchronized(evidence){evidence+=it}}).use {source->
                 val page=source.search(query);check(page.publications.isNotEmpty())
-                val selected=page.publications.first()
-                val current=source.getPublication(selected.id) ?: error("Selected publication unavailable")
-                check(current.id==selected.id);check(current.resources.none{it.format==PublicationFormat.TEXT})
-                println("publications=${page.publications.size}; next=${page.nextPageToken!=null}; ebook=${current.id.localId}; formats=${current.resources.map{it.format}}; revisions=${current.resources.map{it.revision}}")
-                println("Root search template + current publication self/open-access EPUB links validated; no TEXT acquisition contract. No content/download/redirect/UI/device test.")
+                check(page.publications.all { it.resources.isEmpty() })
+                println("publications=${page.publications.size}; next=${page.nextPageToken!=null}; resources=0; acquisitionRequests=0")
+                page.publications.take(3).forEach {
+                    val title=it.title.take(120).map { char -> if (char.isISOControl()) ' ' else char }.joinToString("")
+                    println("ebook=${it.id.localId}; title=$title")
+                }
+                println("Root discovery + one search validated. Optional delivery metadata is inert; no details/content/download/redirect/UI/device test.")
             }
         } finally {
             synchronized(evidence) {

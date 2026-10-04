@@ -21,15 +21,16 @@ import org.infinilect.core.*
 
 class GutenbergPreviewIntegrationTest {
     private val id=PublicationId(GUTENBERG_ID,"84")
-    private fun source(onRequest: ()->Unit={}): GutenbergSource=GutenbergSource(MockEngine{r->
-        onRequest();respond(when{r.url.toString()==GUTENBERG_ROOT->previewRoot;r.url.encodedPath.endsWith("publications")->previewPublication();else->previewPage()},headers=headersOf(HttpHeaders.ContentType,"application/json"))
+    private fun source(publication: String=previewPublication(), onRequest: ()->Unit={}): GutenbergSource=GutenbergSource(MockEngine{r->
+        onRequest();respond(when{r.url.toString()==GUTENBERG_ROOT->previewRoot;r.url.encodedPath.endsWith("publications")->publication;else->previewPage(publications=publication)},headers=headersOf(HttpHeaders.ContentType,"application/json"))
     })
     private fun <T> value(result: LocalStoreResult<T>)=assertIs<LocalStoreResult.Success<T>>(result).value
     @Test fun metadataLibrarySurvivesRealDatabaseReopenAndUnavailableOpenKeepsUserStores()=runTest {
         withContext(Dispatchers.Default) {
             val root=Files.createTempDirectory("gutenberg-preview-library")
             fun store()=SqlCollectionsStore({JdbcSqliteDriver("jdbc:sqlite:${root.resolve(COLLECTIONS_DATABASE_NAME)}",collectionsJdbcProperties()).also(::initializeCollectionsSchema)})
-            val catalog=source();val first=store()
+            val optionalLength=previewPublication().replace("\"length\":12345","\"length\":null")
+            val catalog=source(publication=optionalLength);val first=store()
             val snapshot=PublicationSnapshot.from(catalog.search("books").publications.single());assertTrue(snapshot.id==id)
             value(first.library.put(snapshot,1));first.close();catalog.close()
             val second=store();var requests=0;val s=source{requests++}
