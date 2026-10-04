@@ -1,3 +1,150 @@
+# PR #11 — Project Gutenberg TEXT (2026-10-04 UTC)
+
+Base verified after fetch/pull: `a5caaadfb859160f742740d23d1869bd78db0f38`, merged
+PR #10. Fresh branch `feature/gutenberg-full-integration`; no prior branch/history
+rewrite. Refetch before delivery found main unchanged.
+
+## Final clean verification
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m 23s**, 146 actionable tasks: 138 executed, 8 up-to-date.
+JDK 21.0.12.1+1; Kotlin/compiler 2.4.20, Compose 1.12.1, Gradle 9.7.1,
+AGP 9.3.1; SDK 37/min 26. No dependency/version/schema/manifest changes.
+
+| Task | Executions | Failures/errors/skips |
+| --- | ---: | --- |
+| core:jvmTest | 38 | 0 / 0 / 0 |
+| app:desktopTest | 411 | 0 / 0 / 0 |
+| core:testAndroidHostTest | 38 | 0 / 0 / 0 |
+| app:testAndroidHostTest | 391 | 0 / 0 / 0 |
+| Total | **878** | **0 / 0 / 0** |
+
+**475 unique cases; 42 new unique** policy/source/session cases shared on both
+app targets. Android host uses real kXML tokenization behind the Android adapter;
+it is not an Android-device execution. androidApp:testDebugUnitTest is NO-SOURCE,
+not a skipped device test. Lint XML: **0 issues/errors/warnings**. No Kotlin/Gradle
+compiler/dependency warnings in the final clean build. The opt-in live Java task
+emits the existing SLF4J no-provider/NOP diagnostic; no logging dependency added.
+
+Focused commands during implementation:
+
+```sh
+./gradlew :app:desktopTest --tests 'org.infinilect.app.gutenberg.*' \
+  :app:testAndroidHostTest --tests 'org.infinilect.app.gutenberg.*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew :app:desktopTest --tests '*GutenbergReadingIntegrationTest*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Intermediate runs caught/fixed compile ambiguity/fixture quoting, redundant !!
+warnings, a close race where source-owned buffered content needed synchronous
+invalidation, and an old Android factory assertion expecting Gutenberg to remain
+search-only. A host test initially waited only for Results and could hang on other
+terminal states; it now observes Error/Empty as well. No regression case was removed.
+Final full suite, including Archive/source security, cache, UTF-8/BOM/limits,
+SQLDelight/Android PRAGMA correction and progress tests, passes.
+
+New tests exercise real SQLDelight/file store recreation with **all recent RAM
+state discarded**, Library saved from search, fresh RDF before saved opens and
+before each acquisition, null-revision cache bypass, >512 KiB indexed reading,
+History success/failure/cancellation, old progress retention, Back/results and
+post-preparation cancellation cleanup. IDs/URLs/MIME/size/XML adversarial cases
+include raw escapes/traversal, confusable hosts, userinfo/ports, loops, malformed
+or contradictory metadata, short/extra bytes, timeout and close/cancellation.
+
+## Live verification (not part of build/test/check)
+
+Initial diagnostic at **2026-10-04T00:21:19.384139225Z**:
+
+```sh
+./gradlew :app:gutenbergTextReadingCheck --args='84 1342' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+It queried `id:84`: **one HTTP 200**, 3,466 bytes, no usable book results, and
+stopped without metadata/acquisition. This was a diagnostic query assumption,
+not a 429/503 or acquisition failure; it is not claimed successful. The check was
+corrected to explicit ebook-ID/title-query pairs, without changing product search
+or adding automatic retry/fallback. This adapter does not promise ID-query syntax.
+
+One corrected execution at **2026-10-04T00:23:25.048871872Z**:
+
+```sh
+./gradlew :app:gutenbergTextReadingCheck --args='84:Frankenstein 1342:Pride' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**Successful shared ReadingSession search → getPublication → fresh RDF resolution
+→ ResourceLoader → ResourceContent → complete strict indexed UTF-8 → Ready → Back**.
+No text logged. Both resources TEXT, `text/plain; charset=utf-8`, revision=null.
+
+| Request (in order) | Status | Consumed bytes |
+| --- | ---: | ---: |
+| `/ebooks/search.opds/?query=Frankenstein` | 200 | 29,425 |
+| `/cache/epub/84/pg84.rdf` (details) | 200 | 19,046 |
+| same RDF (fresh acquisition) | 200 | 19,046 |
+| fresh RDF `/files/84/84-0.txt` | 200 | **421,633** |
+| `/ebooks/search.opds/?query=Pride` | 200 | 62,567 |
+| `/cache/epub/1342/pg1342.rdf` (details) | 200 | 18,220 |
+| same RDF (fresh acquisition) | 200 | 18,220 |
+| fresh RDF `/files/1342/1342-0.txt` | 200 | **738,046** |
+
+Corrected run: **8 requests, 1,326,203 bytes, 0 redirects/retries/403/429/503**.
+Ebook 84: 419,434 code points/397 windows; ebook 1342: 728,846/690 windows.
+Content-Length matched fresh RDF; full EOF/UTF-8 passed, handles closed; Back
+retained query/results. Total live check attempts: **9 requests, 1,329,669 bytes**.
+The large book exceeds the former 512 KiB ceiling without whole-book RAM storage.
+
+Separate official research: 10 requests (9 GET 200 + one HEAD 302), 135,656 consumed
+metadata/documentation bytes; no book body. Robot/terms/offline documentation,
+one bounded harvest page (not crawled), RDF IDs 11/1342/1661/84 and ebook 11 OPDS
+were inspected. The ebook-11 variant HEAD returned a malformed HTTP Location and
+was **not followed or repaired**. This is recorded service/proxy-path observation,
+not a universal storage-host guarantee. Research + live total: **19 requests,
+1,465,325 bytes**; only 84/1342 book bodies were downloaded, once each.
+
+## APK and inspection
+
+Task: `:androidApp:assembleDebug` (standard debug variant).
+Path: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+Delivery copy outside Git: `/workspace/artifacts/INFINILECT-PR11-gutenberg-text-debug.apk`.
+Size **11,634,798 bytes**; SHA-256:
+
+```text
+c0e7126653148829aea6168c78db7f4ad093269c0d8a24f3ea2313d5629e7fca
+```
+
+Aapt2: `org.infinilect.app`, INFINILECT, versionCode 1/0.0.1-SNAPSHOT;
+compile/target 37, min 26. Only INTERNET and the pre-existing app-local
+signature-scoped `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; no storage permissions.
+Apksigner verifies the debug APK and certificate matches PR #10:
+`547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+Package/signature/version therefore support in-place debug update; installation
+and preservation on a real device still need the human smoke test.
+
+No authorized adb device/emulator, DISPLAY or WAYLAND_DISPLAY. **No Codex physical
+Android or visual Desktop test performed**. User separately reports PR #10 large
+TEXT Android opens, bidirectional scrolling, Back/reopen/process-restart progress,
+and brief extreme-scroll loading that promptly resolves. This is human-reported
+physical evidence, not Codex execution and not Gutenberg device verification.
+[Exact pending A–T plan](GUTENBERG.md#verification-and-physical-android-at-plan).
+
+Diff whitespace, local Markdown links, SPDX, dependency inventory, runtime-artifact/
+secret inspection and protected-path diff review passed. Core, reader/progress,
+collections/cache/Archive implementations, SQL schema, dependencies and manifest
+remain unchanged. No APK/RDF dump/book/progress/database/cache file is committed.
+Limits: explicit UTF-8, exact known size ≤16 MiB, fresh extent consistency, exact
+www.gutenberg.org/item-scoped destinations only; no mirrors, HTTP downgrade,
+legacy charset guessing or malformed redirect repair. v0.0.1 is not declared complete.
+
+---
+
 # Verification
 
 

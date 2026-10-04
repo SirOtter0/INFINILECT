@@ -22,17 +22,18 @@ autores e idiomas cuando la fuente los proporciona. La búsqueda se envía media
 una acción explícita; la siguiente página solo se solicita al pulsar **Next page**.
 No hay búsqueda automática ni precarga.
 
-Selecciona **Internet Archive** para buscar textos públicos CC0, pulsa **Open text**
+Selecciona **Project Gutenberg** o **Internet Archive** (subset público CC0), pulsa **Open text**
 y lee un recurso TEXT real en el primer TextReader mínimo. **Back to results**
 conserva la fuente seleccionada, consulta y resultados actuales. Solo admite UTF-8
 estrictamente válido, con tamaño conocido de hasta **16 MiB**; la ausencia de TEXT
 produce un error controlado. El texto usa preparación temporal privada y ventanas acotadas;
-[política del lector](docs/TEXT_READER.md). Project Gutenberg sigue siendo **solo búsqueda**.
+[política del lector](docs/TEXT_READER.md). Gutenberg resuelve archivos UTF-8 actuales mediante RDF oficial por ebook;
+[política de adquisición](docs/GUTENBERG.md).
 
 Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
 entre reinicios, sin ajustes de lector, lector EPUB/PDF ni downloads persistentes. La caché de disco automática
 y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
-de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
+de Archive y Gutenberg no tienen revisión y volver a abrir aún adquiere de nuevo.
 Consulta la [política de caché](docs/CACHE.md).
 Library guarda metadatos de publicaciones localmente; History registra aperturas
 correctas. Ambas sobreviven a reinicios y al borrado de caché. Abrir una entrada
@@ -44,13 +45,14 @@ Clear History requiere confirmación y conserva Library/progreso.
 La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona
 enlaces de descarga. REST rechaza este entorno con HTTP 403 y la transferencia PDF
 sigue bloqueada/no verificada. Consulta [OAPEN](docs/OAPEN.md) y la
-[comparación](docs/ACQUISITION_COMPARISON.md). Gutenberg espera orientación oficial
-para adquisición. No se anuncia fuente/UI OAPEN ni lector PDF.
+[comparación](docs/ACQUISITION_COMPARISON.md). Gutenberg admite aperturas individuales explícitas de TEXT; no hay crawling masivo.
+No se anuncia fuente/UI OAPEN ni lector PDF.
 
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
 → obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS es la primera fuente de búsqueda funcional.
 Desktop y Android son destinos ejecutables. Android requiere API 26+; iOS queda
-para el futuro. Se verifica el APK; la prueba física está pendiente.
+para el futuro. El usuario reporta pruebas físicas Android satisfactorias de
+persistencia y TEXT grande en PRs #8–#10; la prueba Gutenberg de PR #11 está pendiente.
 
 ## Compilar y ejecutar
 
@@ -82,7 +84,9 @@ dispositivo. INTERNET es la única capacidad de plataforma solicitada; AndroidX
 también declara un permiso interno de firma, exclusivo de la app, para proteger
 receivers no exportados. El icono es geometría original provisional.
 
-Para un ejemplo pequeño verificado, selecciona Internet Archive y busca
+Para Gutenberg, busca `Frankenstein` (Frankenstein) o `Pride and Prejudice` (Pride and Prejudice);
+solo Open adquiere el TEXT compatible actual.
+Para un ejemplo de Archive, selecciona Internet Archive y busca
 `identifier:gmb-2015-93040`; después pulsa **Open text**. Es un documento público
 CC0 del gobierno neerlandés. No se enriquecen ni adquieren resultados de forma
 automática. Cambiar de fuente cancela la sesión anterior y vacía consulta/resultados;

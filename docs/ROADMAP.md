@@ -18,15 +18,16 @@ Open INFINILECT → search for a book → get real results → open one → read
    query template and usage rules; no human-page scraping or aggregator.
 2. **Implemented:** trusted desktop GutenbergSource using Ktor outside core,
    bounded StAX parsing, deterministic fixtures/MockEngine tests and an opt-in
-   one-page live check. Detail/acquisition operations are explicitly unsupported.
+   one-page live check. PR #11 adds fresh RDF details and bounded explicit UTF-8 TEXT acquisition.
 3. **Implemented:** Compose search/results UI, Idle/Loading/Results/Empty/Error,
    explicit Next page action with no prefetch. Visual execution still needs a
    graphical desktop; see VERIFICATION.md. This is a search slice, not v0.0.1 completion.
 4. **Implemented for a narrow subset:** select Internet Archive in Desktop,
    search public CC0 items, open a TEXT resource through ResourceLoader/
    ResourceContent, incrementally validate/index UTF-8 up to 16 MiB, display TextReader,
-   and Back to retained query/results. Gutenberg remains search-only. No EPUB/PDF,
-   reader settings or EPUB/PDF support. Graphical smoke verification is pending.
+   and Back to retained query/results. Gutenberg also uses this reader after fresh RDF acquisition. No EPUB/PDF,
+   reader settings or EPUB/PDF support. Codex graphical Desktop verification is pending;
+   PR #10 Android large-TEXT success was human-reported.
 5. **First disk tier implemented:** bounded automatic resource cache with restart
    reuse only for trustworthy revisions, recency eviction and corruption checks.
    Current Archive null revisions still reacquire. L1 memory cache remains
@@ -42,8 +43,9 @@ Open INFINILECT → search for a book → get real results → open one → read
    PR #9 physical testing also confirmed catalog actions and the basic reading flow. [Policy](LIBRARY_HISTORY.md),
    [ADR 0016](adr/0016-local-library-history.md).
 8. **Implemented in PR #10:** disk-backed indexed TEXT preparation, bounded lazy
-   windows and existing logical progress compatibility. Large-publication physical
-   A–J verification remains pending; [TEXT policy](TEXT_READER.md).
+   windows and existing logical progress compatibility. Human-reported physical Android verification confirms >512 KiB opens, forward/
+   backward scrolling, Back/reopen and process-restart progress; brief extreme-scroll
+   loading resolves quickly. This was not a Codex device test; [TEXT policy](TEXT_READER.md).
 9. Verify the full path on Desktop and Android with real results and document its limits.
 
 Completion means actual source-backed reading, not a simulated catalog or a
@@ -62,8 +64,8 @@ flow; no multiple-source UI, cache, persistent download, lending or reader.
 That prefix experiment is now followed by the first UI TEXT reading slice:
 [ADR 0012](adr/0012-bounded-text-reading.md). Full bounded UTF-8 validation is
 implemented; full-file checksum revisions, broader charsets/formats and graphical
-smoke validation remain separate. Gutenberg acquisition stays deferred pending
-official guidance. The small government-document example is not a claim that
+smoke validation remain separate. PR #11 implements Gutenberg TEXT acquisition from official per-ebook RDF after
+user-provided guidance; see [Gutenberg policy](GUTENBERG.md). The small government-document example is not a claim that
 v0.0.1's full book/release roadmap is complete.
 
 The first Android target now shares this exact reading path; build/APK inspection
@@ -80,7 +82,8 @@ TEXT progress is now implemented in a separate persistent user-state store.
 ## After the first working slice
 
 Android is now implemented as a separate launcher consuming the shared app library;
-physical smoke verification remains pending. Add iOS with its own adapters/build
+human-reported physical verification of PRs #8–#10 covers persistence and large TEXT;
+PR #11 Gutenberg device testing is pending. Add iOS with its own adapters/build
 verification, accessible reader controls,
 additional formats based on real needs, and explicit persistent downloads. If
 Readium is selected, isolate it in an Android-specific reader. Expand the module
@@ -104,3 +107,11 @@ Saving changes no History, ReadingProgress or cached bytes and makes no source
 request. Later opening still resolves PublicationId through its owning source;
 stored metadata/rights/URLs never authorize acquisition. No schema/dependency
 change, cover requests or broader reader features. PR #9 physical testing has passed; [policy and manual plan](LIBRARY_HISTORY.md#pr-9-catalog-action-physical-test-plan).
+
+## Gutenberg TEXT — PR #11
+
+Search, catalog Library saves and ID-resolved saved opens now flow through fresh
+RDF, explicit UTF-8 TEXT acquisition, the existing indexed reader, History and
+logical progress. Null revisions still reacquire; no mirror wildcard or bulk
+discovery. Host/live and human device evidence are recorded separately.
+[Scope/limits/manual A–T plan](GUTENBERG.md). v0.0.1 is not declared complete.

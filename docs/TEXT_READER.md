@@ -145,3 +145,12 @@ I. Clear **Android cache only**, not app data. Library/History/ReadingProgress r
 J. Confirm no storage/progress/library/history errors in normal operation.
 
 The current UI is foundational. This PR does not declare v0.0.1 complete.
+
+## Additional source evidence in PR #11
+
+Gutenberg TEXT uses this exact preparation/window API, without another reader,
+charset detector or size change. `text-utf8` is its stable logical progress key.
+The reviewer reports physical PR #10 Android large-TEXT opens, bidirectional
+scrolling and process-restart progress success; that is human-reported evidence,
+not a Codex device test. Gutenberg host/live evidence and pending device plan
+are in [GUTENBERG.md](GUTENBERG.md) and [VERIFICATION.md](VERIFICATION.md).

@@ -29,7 +29,7 @@ attaches the active ApplicationSession (owning ReadingSessions) and cancels it b
 idempotently. Composition disposal detaches/cancels sessions; Activity destruction
 and Desktop disposal close sources. No Activity/Context is retained by adapters.
 
-The same UI offers Gutenberg search-only and public-CC0 Internet Archive TEXT
+The same UI offers Gutenberg UTF-8 TEXT and public-CC0 Internet Archive TEXT
 reading, one explicitly selected source at a time. No simultaneous search or
 registry. The application injects a disk-caching ResourceLoader before
 DirectResourceLoader; neutral format selection remains unchanged. No download store.
@@ -89,7 +89,7 @@ The loader routes by SourceId and applies caching before its source fallback.
 Sources return metadata; readers render it. Neither owns the other.
 
 The first disk tier is implemented in app/jvmSharedMain; MemoryCache remains
-deferred. Persistent reading progress is a separate user-state store. Only stable-revision resources may reuse bytes. Current Archive
+deferred. Persistent reading progress is a separate user-state store. Only stable-revision resources may reuse bytes. Current Archive and Gutenberg
 null revisions bypass disk lookup/fills and retain fresh metadata/acquisition.
 Platform factories choose app-private storage, inject loaders and own closing after
 session cancellation. See [CACHE.md](CACHE.md) and [ADR 0014](adr/0014-persistent-resource-cache.md).
@@ -166,7 +166,7 @@ explicit Open text → OpenPublicationController → PublicationSource.getPublic
 → ResourceContent → bounded strict UTF-8 loading → TextDocument → TextReader
 ```
 
-Only Internet Archive currently enables Open text; Gutenberg remains search-only.
+Both Gutenberg and Internet Archive enable Open text through the same neutral reader path.
 The opener verifies detail identity and selects the first advertised TEXT resource
 with the existing source-neutral helper. No PDF/EPUB fallback. Acquisition still
 refreshes permissions/location metadata within InternetArchiveSource; its public
@@ -304,3 +304,14 @@ Stored metadata/rights/URLs never replace current source permission checks.
 Clearing history/removing library affects only its own table. Details, bounds,
 migration and failure policy in [LIBRARY_HISTORY](LIBRARY_HISTORY.md) and
 [ADR 0016](adr/0016-local-library-history.md).
+
+## Gutenberg catalog and acquisition
+
+GutenbergCatalog owns XML OPDS discovery/pagination; GutenbergRdfParser and
+GutenbergAcquisition independently resolve current per-ebook metadata and explicit
+UTF-8 TEXT locations. GutenbergSource refreshes RDF at details and acquisition
+boundaries. `text-utf8` is logical resource identity; `/ebooks/<id>` is canonical
+provenance, never authority. Only exact HTTPS www.gutenberg.org and item-scoped
+validated redirects are allowed; no mirror wildcard. Revision remains null.
+No core/reader/Library/History/progress changes or source-specific UI policy.
+[Policy](GUTENBERG.md), [ADR 0018](adr/0018-gutenberg-catalog-acquisition.md).

@@ -6,12 +6,12 @@ source. Resource keys are opaque and must be resolved by their owning source.
 
 ## First source: Project Gutenberg / OPDS
 
-Gutenberg is the first functional source, currently **search only** on desktop.
+Gutenberg is the first functional source, supporting search and explicit UTF-8 TEXT reading on Desktop/Android.
 `GutenbergSource : PublicationSource` lives in `app/jvmSharedMain`; shared UI receives
 only core publications/search pages. No Gutendex, mirror catalog or other aggregator
 is used. No human-facing HTML catalog page is fetched or scraped.
 
-### Official interface verified on 2026-10-02
+### Official interface reverified on 2026-10-04
 
 - [Offline Catalogs and Feeds](https://www.gutenberg.org/ebooks/offline_catalogs.html)
   explicitly permits application/machine OPDS discovery and identifies
@@ -38,7 +38,7 @@ is used. No human-facing HTML catalog page is fetched or scraped.
 | Feed `rel="search"` / OpenSearch description | Verified during development; no runtime discovery request |
 | Entry `/ebooks/<numeric id>.opds`, `rel="subsection"` | Determines book ID; no per-result detail fetch |
 | Stable `/ebooks/<id>` landing URL | Derived only from validated Gutenberg ID per the official deep-linking policy; not fetched |
-| `http://opds-spec.org/acquisition` and its subrelations | Map advertised TEXT/HTML/EPUB/PDF links when present; no acquisition request |
+| `http://opds-spec.org/acquisition` and its subrelations | Normalize explicit compatible TEXT to a logical key; no download during search |
 | `alternate`, `start`, author/subject subsections, images/thumbnails | No requests; navigation/cover entries are not books or resources |
 
 ### Request and pagination policy
@@ -59,7 +59,7 @@ parameters, foreign hosts/paths, credentials, fragments and malformed tokens fai
 The displayed page is replaced rather than accumulated indefinitely. Next-page
 failure retains the previous results/token for an explicit retry.
 
-### Mapping and deliberately unsupported operations
+### Mapping and acquisition
 
 Book entries use `SourceId("gutenberg")` and their numeric Gutenberg ID as localId.
 Author/subject navigation and foreign entry IDs are excluded. EBook search results
@@ -75,24 +75,20 @@ rights or acquisitions remain absent. Plain Atom rights are preserved verbatim;
 Gutenberg availability never implies global public-domain status. INFINILECT does
 not host publications. Covers, descriptions and rich metadata remain deferred.
 
-Acquisition links map only supported media types and validated HTTP(S) URLs on
-www.gutenberg.org (legacy HTTP upgraded to HTTPS). Resource keys are source-owned
-validated URLs; duplicate URLs are collapsed. Unknown/non-HTTP/foreign URLs and
-image/archive representations are omitted. This is mapping, not download support.
-All resource revisions remain **null**: observed search `<updated>` changes on
-each request and cannot establish byte identity. See [CACHE.md](CACHE.md).
-
-`getPublication` and `loadResource` first reject another SourceId, then throw
-`UnsupportedOperationException` for owned identities. They never return fake null
-details or empty bytes. Implement and verify actual detail/acquisition, charset,
-stream close/cancellation and revision semantics with the reading slice before
-offering an Open action. The core contract remains unchanged; see [ADR 0009](adr/0009-gutenberg-search.md).
+Catalog TEXT is normalized to `text-utf8` only for validated explicit UTF-8 links.
+Non-TEXT advertised formats remain descriptive; no EPUB/PDF/HTML acquisition is
+implemented. `getPublication` resolves the documented per-ebook RDF; `loadResource`
+refreshes it again and streams only a current eligible TEXT file. No stored/catalog
+URL is authority. Revision remains null and reusable cache is bypassed.
+[Full acquisition/redirect/rights policy and manual plan](GUTENBERG.md),
+[ADR 0018](adr/0018-gutenberg-catalog-acquisition.md). Historical search-only
+verification/ADRs retain their original scope.
 
 ### Input and transport limits
 
-Ktor Java engine 3.6.0 runs only on desktop/JDK 21. Connect timeout is 5 seconds,
+Ktor 3.6.0 uses Java on Desktop/JDK 21 and Android engine on Android. Connect timeout is 5 seconds,
 request timeout 15 seconds; Java engine has no separate socket-timeout guarantee.
-Redirects are disabled, including same-host redirects (report an error rather than
+Catalog/metadata redirects are disabled, including same-host redirects (report an error rather than
 silently fetching another page). HTTP errors are displayed without an automatic retry.
 Queries are 1–256 characters. Feed bodies are bounded to 1 MiB by actual streaming
 reads plus one overflow probe, even with missing/misleading Content-Length; compressed
@@ -124,7 +120,7 @@ unusable. No OapenSource or challenge bypass. See [OAPEN](OAPEN.md).
 InternetArchiveSource is the second concrete PublicationSource and first actual
 resource-acquisition experiment. It uses official advanced search/item JSON APIs
 and documented individual download permalinks, supporting only public CC0 text
-items with validated TEXT/PDF files. Desktop now selects either Gutenberg search
+items with validated TEXT/PDF files. Desktop/Android now select either Gutenberg TEXT reading
 or Internet Archive search/first TEXT reading, one active source at a time.
 The source-neutral TextReader requires full strict UTF-8 with known size ≤16 MiB;
 PDF/EPUB are not opened. Archive's existing opt-in prefix demo still reads at most
