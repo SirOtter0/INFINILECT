@@ -1,5 +1,13 @@
 # Dependencies and licenses
 
+## Desktop runtime verification — PR #12, 2026-10-04
+
+No Maven dependency, version or license changes. The existing Desktop app image
+must include JDK modules `java.net.http` and `java.sql` for its already-declared
+Ktor Java engine and SQLDelight/JDBC driver. The reduced runtime retains upstream
+module notices; [third-party policy](../THIRD_PARTY_NOTICES.md) and
+[actual verification](VERIFICATION.md) distinguish local images from releases.
+
 ## Current PR #11 correction — 2026-10-04
 
 Gutenberg now uses shared OPDS2 JSON via already-declared
