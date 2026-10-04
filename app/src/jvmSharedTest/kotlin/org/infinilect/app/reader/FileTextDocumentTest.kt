@@ -259,4 +259,84 @@ class FileTextDocumentTest {
         second.close()
     } }
 
+    @Test fun adversarialUnicodeForwardBackwardReconstructsIdenticalCodePoints() = runTest { fixture { _, owner ->
+        val text = "a".repeat(2047) + "😀" + "é中𝄞e\u0301\r\n".repeat(700) +
+            "z".repeat(4095) + "\n\n" + "last line without newline"
+        val doc = prepare(owner, bytes(text, 1))
+        val forward = (0 until doc.windowCount).map { doc.window(it).text }
+        val backward = (doc.windowCount - 1 downTo 0).map { doc.window(it).text }.reversed()
+        assertEquals(text, forward.joinToString("")); assertEquals(forward, backward)
+        assertEquals(text.codePointCount(0, text.length), doc.codePoints)
+        var next = 0
+        for (i in 0 until doc.windowCount) {
+            val window = doc.window(i)
+            assertEquals(next, window.startCodePoint)
+            repeat(window.locations.codePoints + 1) { point ->
+                val utf16 = window.locations.utf16Offset(point.toLong())
+                assertEquals(next + point, window.globalOffset(utf16))
+                if (utf16 < window.text.length) assertFalse(window.text[utf16].isLowSurrogate())
+            }
+            next += window.locations.codePoints
+        }
+        assertEquals(doc.codePoints, next)
+    } }
+    @Test fun exactUnderAndOverWindowBoundariesKeepFinalLineAndEof() = runTest { fixture { _, owner ->
+        for (size in listOf(1, 2047, 2048, 2049, 4096, 4097)) {
+            val text = "😀".repeat(size); val doc = prepare(owner, bytes(text, 3))
+            assertEquals(size, doc.codePoints)
+            assertEquals((size + 2047) / 2048, doc.windowCount)
+            val last = doc.window(doc.windowFor(size))
+            assertEquals(size, last.globalOffset(last.text.length))
+            assertEquals(0, doc.window(0).globalOffset(0)); doc.close()
+        }
+    } }
+    @Test fun cacheClearedAtCloseAndCancelledQueuedReadCannotRepopulateIt() = runTest { fixture { _, owner ->
+        val doc = prepare(owner, Content(10000)); val windows = assertIs<FileWindows>(doc.windows)
+        doc.window(0); assertEquals(1, windows.cachedWindows)
+        val queued = launch { doc.window(1) }; queued.cancelAndJoin()
+        doc.close(); doc.close(); assertEquals(0, windows.cachedWindows)
+        assertFailsWith<IllegalStateException> { doc.window(0) }
+        assertEquals(0, windows.cachedWindows)
+    } }
+
+    @Test fun backwardReloadKeepsSemanticProgressThroughCompletePersistentOwnerRestart() = runTest { fixture { root, owner ->
+        val text = "aé😀e\u0301\r\n".repeat(12000)
+        val doc = prepare(owner, bytes(text, 7))
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val directory = root.resolve("reading-progress-v1")
+        val persistence = ProgressPersistence(FileReadingProgressStore(directory, dispatcher = dispatcher), dispatcher)
+        val reading = TextReadingProgress(doc, null, persistence, this)
+        val loader = TextWindowLoader(doc, this)
+        loader.focus(10); val initial = loader.attach(10); runCurrent()
+        val window = assertNotNull(initial.value)
+        val logical = window.globalOffset(window.locations.utf16Offset(123))
+        reading.report(logical)
+        loader.detach(10); loader.focus(30); loader.attach(30); runCurrent()
+        loader.detach(30); loader.focus(10); val back = loader.attach(10); runCurrent()
+        assertEquals(window, back.value)
+        assertEquals(logical, reading.codePointOffset.value) // loading is not a progress event
+        loader.close(); loader.awaitClosed(); reading.close(); persistence.close(); persistence.awaitClosed()
+        doc.close(); runCurrent(); assertTrue(payloads(root).isEmpty())
+        val restartedStore = ProgressPersistence(FileReadingProgressStore(directory, dispatcher = dispatcher), dispatcher)
+        val restartedPreparer = FileTextPreparer(root.resolve(TEXT_DIRECTORY_NAME), dispatcher)
+        try {
+            val reopened = prepare(restartedPreparer, bytes(text, 13))
+            val restored = TextReadingProgress(reopened, restartedStore.get(reopened.progressId!!), restartedStore, this)
+            assertEquals(logical, restored.codePointOffset.value)
+            val restoredWindow = reopened.window(reopened.windowFor(logical))
+            assertEquals(window.startCodePoint, restoredWindow.startCodePoint)
+            assertNull(resource.revision); restored.close(); reopened.close()
+        } finally { restartedStore.close(); restartedStore.awaitClosed(); restartedPreparer.close(); restartedPreparer.awaitClosed() }
+    } }
+
+    @Test fun combiningMarkAndCrLfAtWindowCutsRetainExactLogicalOffsets() = runTest { fixture { _, owner ->
+        for (text in listOf("x".repeat(2047) + "e\u0301tail", "x".repeat(2047) + "\r\ntail")) {
+            val doc = prepare(owner, bytes(text, 1))
+            val first = doc.window(0); val second = doc.window(1)
+            assertEquals(text, first.text + second.text)
+            assertEquals(2048, first.locations.codePoints); assertEquals(2048, second.startCodePoint)
+            assertEquals(2049, second.globalOffset(1)); doc.close()
+        }
+    } }
+
 }
