@@ -62,7 +62,13 @@ containing line's top using that window's **current** TextLayoutResult/lazy view
 line's text offset. Pixels exist only during layout and are never persisted.
 Viewport/density/wrapping changes can alter the exact line; no exact pixel promise.
 Restoration itself does not overwrite a stored position with its rounded line.
-At the scrollable bottom report EOF (100%); there is no separate completion flag,
+PR #14 preserves visited slot heights through eviction/reload and uses stable
+window-start keys within one document generation. Loading earlier/later windows
+is not a progress event. Only real visible layouts report a line offset; pending
+slots preserve the last meaningful position. Initial restoration scrolls once,
+with scrolling enabled afterward; subsequent reports never cause scrollToItem.
+At the scrollable bottom with the actual final window laid out report EOF (100%);
+there is no separate completion flag,
 reading-history or elapsed-reading policy. The reader shows whole percentages.
 
 ## Persistence format and bounds

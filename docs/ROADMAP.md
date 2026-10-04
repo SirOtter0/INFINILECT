@@ -1,6 +1,19 @@
 # Roadmap
 
-## Bounded EPUB foundation — Draft PR #13
+## Large TEXT hardening — Draft PR #14
+
+The reported Android backward-scroll speed defect is traced to cold multi-line
+windows temporarily collapsing to one-line loading items. Shared reading now
+retains measured geometry, uses global logical keys and one bounded loading worker
+with symmetric neighbor prefetch. Tests cover bidirectional anchors, eviction,
+late loads, Unicode and durable progress compatibility. Android gesture symmetry
+and Desktop graphical behavior still require human verification; host simulations
+are not physical smoke tests. [Policy](TEXT_READER.md),
+[decision](adr/0020-stable-text-viewport.md), [results](VERIFICATION.md).
+The separate niri/Wayland black-area observation is untouched, pending Windows
+comparison. No EPUB renderer, source acquisition change or completed release.
+
+## Bounded EPUB foundation — merged PR #13
 
 Pure reader-facing EPUB contracts and bounded ZIP/container/package/manifest/
 spine/XHTML structural preparation are implemented for Desktop and Android.

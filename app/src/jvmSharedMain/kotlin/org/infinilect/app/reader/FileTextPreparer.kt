@@ -281,6 +281,7 @@ internal class FileWindows(
 ) : TextWindows {
     private val closed = AtomicBoolean(false)
     private val guard = Any()
+    private val readMutex = Mutex()
     private val cache = LinkedHashMap<Int, TextWindow>(TEXT_WINDOW_CACHE_ENTRIES, 0.75f, true)
     override val codePoints get() = index.codePoints
     override val count get() = index.count
@@ -289,9 +290,12 @@ internal class FileWindows(
     internal val indexCapacity get() = index.capacity
     override suspend fun read(index: Int): TextWindow = withContext(dispatcher) {
         currentCoroutineContext().ensureActive()
-        synchronized(guard) {
-            check(!closed.get())
-            cache[index]?.let { return@synchronized it }
+        readMutex.withLock {
+            currentCoroutineContext().ensureActive()
+            synchronized(guard) {
+                check(!closed.get())
+                cache[index]?.let { return@withLock it }
+            }
             val start = this@FileWindows.index.byteStart(index)
             val end = if (index + 1 < count) this@FileWindows.index.byteStart(index + 1) else byteLength
             check(end - start in 1..TEXT_WINDOW_CODE_POINTS * 4)
@@ -302,14 +306,21 @@ internal class FileWindows(
                 RandomAccessFile(file.toFile(), "r").use { handle -> handle.seek(start.toLong()); handle.readFully(bytes) }
                 val window = TextWindow(index, start(index), bytes.decodeToString(throwOnInvalidSequence = true))
                 check(window.locations.codePoints <= TEXT_WINDOW_CODE_POINTS)
-                cache[index] = window
-                if (cache.size > TEXT_WINDOW_CACHE_ENTRIES) cache.remove(cache.keys.first())
+                currentCoroutineContext().ensureActive()
+                synchronized(guard) {
+                    check(!closed.get())
+                    cache[index] = window
+                    if (cache.size > TEXT_WINDOW_CACHE_ENTRIES) cache.remove(cache.keys.first())
+                }
                 window
             } catch (error: java.io.IOException) { throw TextDocumentException(TextFailure.STORAGE, error) }
         }
     }
     override fun close() {
-        if (!closed.compareAndSet(false, true)) return
+        synchronized(guard) {
+            if (!closed.compareAndSet(false, true)) return
+            cache.clear()
+        }
         // No filesystem IO or waiting for an in-flight read on the UI thread.
         release(this)
     }
