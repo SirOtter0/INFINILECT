@@ -61,9 +61,6 @@ kotlin {
         getByName("desktopTest") { dependsOn(jvmSharedTest) }
         getByName("androidHostTest") {
             dependsOn(jvmSharedTest)
-            // Host JVM has Android API stubs, not the OS XML parser. Exercise real
-            // pull-tokenization offline; this MIT test fixture never enters the APK.
-            dependencies { implementation("net.sf.kxml:kxml2:2.3.0") }
         }
 
     }
@@ -85,7 +82,7 @@ sqldelight {
 // Opt-in live check: never a dependency of test/check/build.
 tasks.register<JavaExec>("gutenbergSearchCheck") {
     group = "verification"
-    description = "Request one real Gutenberg OPDS search page (no graphical UI)."
+    description = "Inspect Gutenberg's experimental OPDS2 root, one search page and one metadata record (no acquisition)."
     dependsOn("desktopTestClasses")
     val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
     classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
@@ -107,7 +104,6 @@ mapOf(
     "oapenAlternateAccessCheck" to "org.infinilect.app.oapen.OapenAlternateAccessCheck",
     "internetArchiveAcquisitionCheck" to "org.infinilect.app.archive.InternetArchiveAcquisitionCheck",
     "internetArchiveTextReadingCheck" to "org.infinilect.app.archive.InternetArchiveTextReadingCheck",
-    "gutenbergTextReadingCheck" to "org.infinilect.app.gutenberg.GutenbergTextReadingCheck",
 ).forEach { (taskName, entrypoint) ->
     tasks.register<JavaExec>(taskName) {
         group = "verification"

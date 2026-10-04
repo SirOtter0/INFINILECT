@@ -191,7 +191,8 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
             }
         }
         Text("Source: ${sources[selected].name}")
-        Text("Search publications. Open compatible UTF-8 TEXT up to 16 MiB.")
+        Text(if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
+            else "Experimental catalog only. TEXT opening is unavailable for this source.")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = query,
