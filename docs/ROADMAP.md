@@ -14,18 +14,18 @@
 
 Open INFINILECT → search for a book → get real results → open one → read it.
 
-1. **Implemented:** verify Gutenberg's official OPDS search endpoint/OpenSearch
-   query template and usage rules; no human-page scraping or aggregator.
-2. **Implemented:** trusted desktop GutenbergSource using Ktor outside core,
-   bounded StAX parsing, deterministic fixtures/MockEngine tests and an opt-in
-   one-page live check. PR #11 adds fresh RDF details and bounded explicit UTF-8 TEXT acquisition.
+1. **Historical:** original Gutenberg XML discovery; deprecated in direct email.
+   PR #11 removes production use of that unmaintained feed.
+2. **Experimental in corrected PR #11:** official email-supplied OPDS2 development
+   catalog, shared bounded JSON mapping, search/details and metadata-only Library.
+   No verified current TEXT acquisition contract; no RDF or legacy fallback.
 3. **Implemented:** Compose search/results UI, Idle/Loading/Results/Empty/Error,
    explicit Next page action with no prefetch. Visual execution still needs a
    graphical desktop; see VERIFICATION.md. This is a search slice, not v0.0.1 completion.
 4. **Implemented for a narrow subset:** select Internet Archive in Desktop,
    search public CC0 items, open a TEXT resource through ResourceLoader/
    ResourceContent, incrementally validate/index UTF-8 up to 16 MiB, display TextReader,
-   and Back to retained query/results. Gutenberg also uses this reader after fresh RDF acquisition. No EPUB/PDF,
+   and Back to retained query/results. Gutenberg remains experimental catalog-only. No EPUB/PDF,
    reader settings or EPUB/PDF support. Codex graphical Desktop verification is pending;
    PR #10 Android large-TEXT success was human-reported.
 5. **First disk tier implemented:** bounded automatic resource cache with restart
@@ -64,8 +64,8 @@ flow; no multiple-source UI, cache, persistent download, lending or reader.
 That prefix experiment is now followed by the first UI TEXT reading slice:
 [ADR 0012](adr/0012-bounded-text-reading.md). Full bounded UTF-8 validation is
 implemented; full-file checksum revisions, broader charsets/formats and graphical
-smoke validation remain separate. PR #11 implements Gutenberg TEXT acquisition from official per-ebook RDF after
-user-provided guidance; see [Gutenberg policy](GUTENBERG.md). The small government-document example is not a claim that
+smoke validation remain separate. PR #11 corrects its earlier acquisition assumption: the actual email directs
+OPDS2 testing, not RDF/direct downloads; see [Gutenberg policy](GUTENBERG.md). The small government-document example is not a claim that
 v0.0.1's full book/release roadmap is complete.
 
 The first Android target now shares this exact reading path; build/APK inspection
@@ -83,7 +83,7 @@ TEXT progress is now implemented in a separate persistent user-state store.
 
 Android is now implemented as a separate launcher consuming the shared app library;
 human-reported physical verification of PRs #8–#10 covers persistence and large TEXT;
-PR #11 Gutenberg device testing is pending. Add iOS with its own adapters/build
+PR #11 corrected catalog/IA-regression device testing is pending. Add iOS with its own adapters/build
 verification, accessible reader controls,
 additional formats based on real needs, and explicit persistent downloads. If
 Readium is selected, isolate it in an Android-specific reader. Expand the module
@@ -93,9 +93,10 @@ source schema can follow a second engine use case.
 Translation, synchronization, dozens of sources, arbitrary executable plugins and
 a complete plugin system are outside v0.0.1 and this search slice.
 
-Gutenberg documents XML OPDS retirement planned for 2027 and an OPDS2 testing feed
-requiring contact. Recheck the official interface before further source work;
-do not silently substitute an aggregator or an undocumented endpoint.
+Gutenberg's public page still mentions planned XML retirement in 2027, but direct
+email explicitly discourages the unmaintained OPDS0.9 feed now. Its supplied OPDS2
+endpoint is development-only; production preview and TEXT acquisition direction
+remain external gates. No silent fallback/aggregator or guessed production URL.
 
 ## Library actions from catalog results — implemented in PR #9
 
@@ -108,10 +109,10 @@ request. Later opening still resolves PublicationId through its owning source;
 stored metadata/rights/URLs never authorize acquisition. No schema/dependency
 change, cover requests or broader reader features. PR #9 physical testing has passed; [policy and manual plan](LIBRARY_HISTORY.md#pr-9-catalog-action-physical-test-plan).
 
-## Gutenberg TEXT — PR #11
+## Experimental Gutenberg OPDS2 — corrected PR #11
 
-Search, catalog Library saves and ID-resolved saved opens now flow through fresh
-RDF, explicit UTF-8 TEXT acquisition, the existing indexed reader, History and
-logical progress. Null revisions still reacquire; no mirror wildcard or bulk
-discovery. Host/live and human device evidence are recorded separately.
-[Scope/limits/manual A–T plan](GUTENBERG.md). v0.0.1 is not declared complete.
+Search/details/catalog Library saves now use the email-supplied development JSON
+service. The inspected item advertises EPUB only; reading is deliberately disabled.
+Previous RDF/direct-file transfers are technical history, not an acquisition
+recommendation. IA remains the verified reader path; user stores are unaffected.
+[Evidence/limits/new manual plan](GUTENBERG.md). v0.0.1 is not declared complete.

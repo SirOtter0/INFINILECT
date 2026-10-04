@@ -4,111 +4,42 @@ A source obtains publications and resources; it does not choose how they are rea
 The app routes by stable SourceId. Catalog-local IDs are only unique inside that
 source. Resource keys are opaque and must be resolved by their owning source.
 
-## First source: Project Gutenberg / OPDS
+## Project Gutenberg — experimental OPDS2 catalog
 
-Gutenberg is the first functional source, supporting search and explicit UTF-8 TEXT reading on Desktop/Android.
-`GutenbergSource : PublicationSource` lives in `app/jvmSharedMain`; shared UI receives
-only core publications/search pages. No Gutendex, mirror catalog or other aggregator
-is used. No human-facing HTML catalog page is fetched or scraped.
+The exact endpoint supplied in Gutenberg's email is
+`https://opds-test.pglaf.org/opds/`. The reply explicitly discourages unmaintained
+OPDS0.9; it did not answer individual acquisition. [Categorized official/email/live
+basis, limits and manual plan](GUTENBERG.md), [ADR0018](adr/0018-gutenberg-catalog-acquisition.md).
 
-### Official interface reverified on 2026-10-04
+`GutenbergSource` uses shared bounded JSON parsing and Ktor outside core. The first
+explicit search verifies the root self/search template, then requests one page;
+next requires a user action. No legacy `/ebooks/search.opds/`, RDF, guessed download,
+HTML scraping, retries, images or aggregator fallback. No requests at construction.
 
-- [Offline Catalogs and Feeds](https://www.gutenberg.org/ebooks/offline_catalogs.html)
-  explicitly permits application/machine OPDS discovery and identifies
-  `https://www.gutenberg.org/ebooks/search.opds/` as the entry point.
-- [Terms of Use — OPDS Feed](https://www.gutenberg.org/policy/terms_of_use.html)
-  requires an identifiable User-Agent with a contact web page or email and
-  browser-like request volume, including only one result page per search.
-- [Robot access](https://www.gutenberg.org/policy/robot_access.html) prohibits
-  ordinary website crawling; permitted machine interfaces must be used instead.
-- The feed's [OpenSearch description](https://www.gutenberg.org/catalog/osd-books.xml)
-  confirms `query={searchTerms}` for Atom/OPDS. It still advertises legacy HTTP/m.
-  URLs; INFINILECT uses the documented current HTTPS/www entry point, verified
-  with a real query. It does not follow the legacy host or suggestions endpoint.
-- Current XML is Atom (`http://www.w3.org/2005/Atom`) with OPDS 1.x catalog links
-  and Dublin Core terms (`http://purl.org/dc/terms/`), not JSON OPDS2. See the
-  [OPDS 1.2 specification](https://specs.opds.io/opds-1.2.html) for relation semantics.
-  Gutenberg documents an OPDS2 testing feed requiring contact and plans to retire
-  XML OPDS in 2027. Recheck with Gutenberg before migration; do not infer an OPDS2 URL.
-
-| Endpoint / relation | This slice |
+| Observed development interface | Use |
 | --- | --- |
-| `/ebooks/search.opds/?query=<encoded terms>` | One GET per explicit submitted search |
-| Feed `rel="next"` / Atom media type | Validated continuation, requested only by explicit Next page |
-| Feed `rel="search"` / OpenSearch description | Verified during development; no runtime discovery request |
-| Entry `/ebooks/<numeric id>.opds`, `rel="subsection"` | Determines book ID; no per-result detail fetch |
-| Stable `/ebooks/<id>` landing URL | Derived only from validated Gutenberg ID per the official deep-linking policy; not fetched |
-| `http://opds-spec.org/acquisition` and its subrelations | Normalize explicit compatible TEXT to a logical key; no download during search |
-| `alternate`, `start`, author/subject subsections, images/thumbnails | No requests; navigation/cover entries are not books or resources |
+| `/opds/`, OPDS2 self/start/search template | One bounded in-session discovery on first explicit Search |
+| `/opds/search{?query,title,author}` | Only encoded query; one result page≤25 |
+| `next`, `/opds/search?limit=25&query=...&page=...` | Opaque validated token; explicit next action, page≤1000 |
+| `self`, `/opds/publications?id=<ebook number>` | Fresh detail metadata; matching ID/self required |
+| `http://opds-spec.org/acquisition/open-access`, EPUB MIME | Descriptive logical EPUB resource only, revision=null; never fetched |
 
-### Request and pagination policy
+HTTP root/search currently use application/json while link types advertise
+application/opds+json; details use application/opds-publication+json. Strict JSON
+and UTF-8, 1MiB actual payload, preflight depth32/duplicate keys, ≤20,000 nodes,
+bounded arrays/strings and exact HTTPS development routes. Redirects disabled;
+serialization/cancellation off UI. Connect5s/request15s; UA/contact unchanged.
 
-User-Agent: `INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)`.
-The public project issue page is the contact; no private personal data is sent.
-Requests accept Atom and ask for identity encoding. There are no automatic searches,
-debounce requests, retries, background discovery, per-book enrichment or next-page
-prefetches. UI actions while loading are ignored; one source instance serializes
-HTTP requests. Closing the application closes/cancels its owned client and engine.
+Identity remains `PublicationId(SourceId("gutenberg"), positive canonical ebook
+number)`; canonical www/ebooks URL is informational. Title/authors/languages map
+safely; absent dedicated rights remain absent. USA-rights prose/metadata CC0 never
+becomes a worldwide book license. Known EPUB descriptions do not enable reading.
 
-`SearchPage.nextPageToken` is a versioned, source-owned opaque encoding of a verified
-continuation URL. Consumers round-trip it with the **same original query**, without
-parsing or constructing it. It is not a credential or a signed capability: the
-source validates every supplied token before I/O. Only HTTPS/www Gutenberg search
-URLs with that query and a strictly advancing `start_index` are accepted; duplicate
-parameters, foreign hosts/paths, credentials, fragments and malformed tokens fail.
-The displayed page is replaced rather than accumulated indefinitely. Next-page
-failure retains the previous results/token for an explicit retry.
-
-### Mapping and acquisition
-
-Book entries use `SourceId("gutenberg")` and their numeric Gutenberg ID as localId.
-Author/subject navigation and foreign entry IDs are excluded. EBook search results
-are currently classified BOOK independently of any advertised resource format.
-Titles and structured Atom authors are preserved. For the verified Gutenberg
-navigation search feed, `<content type="text">` carries the author display summary;
-it is used only if structured authors are absent and retained as **one display
-string**, without guessing how to split names. HTML content is not used as authors.
-
-Entry `dcterms:language` values are retained as normalized lowercase language tags;
-feed `xml:lang` is not interpreted as the book language. Missing languages/authors,
-rights or acquisitions remain absent. Plain Atom rights are preserved verbatim;
-Gutenberg availability never implies global public-domain status. INFINILECT does
-not host publications. Covers, descriptions and rich metadata remain deferred.
-
-Catalog TEXT is normalized to `text-utf8` only for validated explicit UTF-8 links.
-Non-TEXT advertised formats remain descriptive; no EPUB/PDF/HTML acquisition is
-implemented. `getPublication` resolves the documented per-ebook RDF; `loadResource`
-refreshes it again and streams only a current eligible TEXT file. No stored/catalog
-URL is authority. Revision remains null and reusable cache is bypassed.
-[Full acquisition/redirect/rights policy and manual plan](GUTENBERG.md),
-[ADR 0018](adr/0018-gutenberg-catalog-acquisition.md). Historical search-only
-verification/ADRs retain their original scope.
-
-### Input and transport limits
-
-Ktor 3.6.0 uses Java on Desktop/JDK 21 and Android engine on Android. Connect timeout is 5 seconds,
-request timeout 15 seconds; Java engine has no separate socket-timeout guarantee.
-Catalog/metadata redirects are disabled, including same-host redirects (report an error rather than
-silently fetching another page). HTTP errors are displayed without an automatic retry.
-Queries are 1–256 characters. Feed bodies are bounded to 1 MiB by actual streaming
-reads plus one overflow probe, even with missing/misleading Content-Length; compressed
-responses and non-Atom media types are rejected. Scoped response consumption releases
-I/O on completion, failure or cancellation; XML parsing runs off the UI dispatcher.
-
-The parser is JDK 21's built-in **StAX**, desktop-specific, with DTD/external entities
-disabled, external DTD access empty and a resolver that refuses all external access.
-DOCTYPE/entity-reference events are rejected. It uses namespace-aware selective
-mapping and rejects unsupported xml:base rather than resolving URLs incorrectly.
-Limits: 100 entries (including navigation), depth 32, 100,000 events, 16 attributes
-or namespace declarations per element, 16 KiB per attribute or captured text field. No XML/HTML rendering or
-arbitrary link fetching occurs. This is a Gutenberg subset, not full OPDS validation.
-See [JDK XMLInputFactory documentation](https://docs.oracle.com/en/java/javase/21/docs/api/java.xml/javax/xml/stream/XMLInputFactory.html)
-for the security properties; the built-in provider is selected explicitly.
-JDK license/platform scope is recorded in THIRD_PARTY_NOTICES.md. Android uses
-the system XmlPull parser with namespace processing, document declarations disabled,
-`nextToken` and explicit DOCDECL/user-defined-entity rejection. Verified predefined
-XML/numeric character references become text. XML-token adapters share the same
-bounded mapping policy; no external parser dependency. iOS remains unimplemented.
+Internet Archive is selected initially. **Project Gutenberg (experimental)** is
+catalog-only with metadata Library actions. `getPublication` resolves the observed
+self-link pattern; `loadResource` is explicitly unsupported and performs no I/O,
+even for old/forged TEXT refs. Saved entries remain when opening is unavailable.
+No byte cache reuse/History/progress is created by catalog-only actions.
 
 ## OAPEN alternate access and first acquisition source
 
@@ -120,8 +51,8 @@ unusable. No OapenSource or challenge bypass. See [OAPEN](OAPEN.md).
 InternetArchiveSource is the second concrete PublicationSource and first actual
 resource-acquisition experiment. It uses official advanced search/item JSON APIs
 and documented individual download permalinks, supporting only public CC0 text
-items with validated TEXT/PDF files. Desktop/Android now select either Gutenberg TEXT reading
-or Internet Archive search/first TEXT reading, one active source at a time.
+items with validated TEXT/PDF files. Desktop/Android default to Internet Archive TEXT reading, with an explicitly
+selected experimental Gutenberg catalog as the other source.
 The source-neutral TextReader requires full strict UTF-8 with known size ≤16 MiB;
 PDF/EPUB are not opened. Archive's existing opt-in prefix demo still reads at most
 512 bytes; its new full-text check uses the same session/controller as the UI.
@@ -131,8 +62,7 @@ See [Archive endpoints/rights/hosts](INTERNET_ARCHIVE.md),
 [comparison](ACQUISITION_COMPARISON.md), and
 [ADR 0011](adr/0011-verified-source-acquisition.md), and
 [ADR 0012](adr/0012-bounded-text-reading.md). The later disk-cache loader bypasses
-these null-revision resources; fresh Archive acquisition is unchanged. No downloads
-or progress persistence. See [cache policy](CACHE.md).
+these null-revision resources; fresh Archive acquisition is unchanged. No downloads. Persistent progress remains independent. See [cache policy](CACHE.md).
 
 ## Future declarative definitions
 

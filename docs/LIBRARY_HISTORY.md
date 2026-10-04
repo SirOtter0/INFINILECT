@@ -28,7 +28,8 @@ Only IDs are used to reopen saved entries. Stored resources are deliberately
 absent. A current source must return valid fresh publication details before normal
 acquisition. Internet Archive still requires public CC0 metadata and revalidation,
 item-scoped redirects, size/MIME/EOF checks and revision=null cache bypass.
-Gutenberg now re-resolves fresh RDF and acquires compatible UTF-8 TEXT; see [policy](GUTENBERG.md). Unavailable publications produce safe errors while
+Gutenberg is an experimental metadata-only catalog; saved opens are unavailable
+and keep user state. See [policy](GUTENBERG.md). Unavailable publications produce safe errors while
 retaining the user's entry; an unknown/unsupported source does not trigger HTTP.
 
 ApplicationSession owns small Search/Library/History navigation and temporary
@@ -292,5 +293,6 @@ J. Completely terminate/relaunch once more: no Library/History/progress storage
 errors appear.
 
 Internet Archive remains public CC0-only and revision=null; Library membership
-never skips its fresh metadata/acquisition boundary. Gutenberg now re-resolves fresh RDF and acquires compatible UTF-8 TEXT; see [policy](GUTENBERG.md).
+never skips its fresh metadata/acquisition boundary. Gutenberg is an experimental metadata-only catalog; saved opens are unavailable
+and keep user state. See [policy](GUTENBERG.md).
 No persisted record or publication content is logged during this test.

@@ -17,9 +17,9 @@ ReadingSession, SearchController, opener, TextDocument and TextReader.
 `app/jvmSharedMain` is explicitly shared by Desktop and Android: Java-compatible
 URI/Base64 validation, metadata/OPDS mapping, Ktor engine-independent transport
 and acquisition rules. These APIs are supported at minSdk 26. This is not a claim
-that JVM source code works on iOS. `desktopMain` supplies Ktor Java and JDK StAX;
-`androidMain` supplies Ktor Android (HttpURLConnection) and platform XmlPull.
-Both share one OPDS mapping/limits implementation through a tiny XML-token seam.
+that JVM source code works on iOS. `desktopMain` supplies Ktor Java;
+`androidMain` supplies Ktor Android (HttpURLConnection). Gutenberg now shares
+strict OPDS2 JSON parsing/policy, with no platform XML adapter or legacy fallback.
 OAPEN diagnostics and live CLI checks remain Desktop-only.
 
 `desktopApp` owns Window/application/OS runtime. `androidApp` owns MainActivity,
@@ -29,8 +29,8 @@ attaches the active ApplicationSession (owning ReadingSessions) and cancels it b
 idempotently. Composition disposal detaches/cancels sessions; Activity destruction
 and Desktop disposal close sources. No Activity/Context is retained by adapters.
 
-The same UI offers Gutenberg UTF-8 TEXT and public-CC0 Internet Archive TEXT
-reading, one explicitly selected source at a time. No simultaneous search or
+The same UI defaults to public-CC0 Internet Archive TEXT reading and offers
+Gutenberg as an explicitly selected experimental catalog-only source. No simultaneous search or
 registry. The application injects a disk-caching ResourceLoader before
 DirectResourceLoader; neutral format selection remains unchanged. No download store.
 Core contracts and Archive access/redirect/revision limits
@@ -89,7 +89,7 @@ The loader routes by SourceId and applies caching before its source fallback.
 Sources return metadata; readers render it. Neither owns the other.
 
 The first disk tier is implemented in app/jvmSharedMain; MemoryCache remains
-deferred. Persistent reading progress is a separate user-state store. Only stable-revision resources may reuse bytes. Current Archive and Gutenberg
+deferred. Persistent reading progress is a separate user-state store. Only stable-revision resources may reuse bytes. Current Archive
 null revisions bypass disk lookup/fills and retain fresh metadata/acquisition.
 Platform factories choose app-private storage, inject loaders and own closing after
 session cancellation. See [CACHE.md](CACHE.md) and [ADR 0014](adr/0014-persistent-resource-cache.md).
@@ -145,17 +145,17 @@ claimed. The bounded disk tier is documented separately. See the [ADRs](adr/READ
 `SearchScreen → SearchController → PublicationSource → GutenbergSource → Ktor/OPDS`.
 The same controller works with InternetArchiveSource; no duplicated search logic.
 Shared UI observes Idle, Loading, Results, Empty and Error through StateFlow and
-never parses XML or handles HTTP. Only submit/Next page actions initiate requests;
+never parses source payloads or handles HTTP. Only submit/Next page actions initiate requests;
 busy actions are ignored and the source serializes HTTP operations. Pagination
 replaces the displayed page, keeping memory bounded; a failed next-page request
 keeps the previous results and token for an explicit retry. Cancellation propagates
 and restores the previous/idle state. No cache, retry loop or prefetcher is involved.
 
-GutenbergSource is a trusted platform adapter with shared mapping and policies, not a core implementation
-or an external plugin. It enforces feed, URL, timeout and XML limits. Detail and
-acquisition methods validate source ownership and throw UnsupportedOperationException:
-no false not-found result or fabricated resource bytes. See [Sources](SOURCES.md)
-and [ADR 0009](adr/0009-gutenberg-search.md) for the deliberately limited capabilities.
+GutenbergSource is an experimental trusted adapter outside core. OPDS2 search and
+fresh details use bounded JSON; `loadResource` explicitly rejects unsupported
+acquisition. The old XML feed and RDF download proposal are removed, not a fallback.
+[Sources](SOURCES.md), [corrected ADR0018](adr/0018-gutenberg-catalog-acquisition.md).
+Historical ADR0009 describes the original search-only XML slice, not current policy.
 
 ## First end-to-end TEXT reading slice
 
@@ -166,7 +166,8 @@ explicit Open text → OpenPublicationController → PublicationSource.getPublic
 → ResourceContent → bounded strict UTF-8 loading → TextDocument → TextReader
 ```
 
-Both Gutenberg and Internet Archive enable Open text through the same neutral reader path.
+Internet Archive enables Open text through the neutral reader path; Gutenberg is
+catalog-only and has no reader/source-specific UI branch.
 The opener verifies detail identity and selects the first advertised TEXT resource
 with the existing source-neutral helper. No PDF/EPUB fallback. Acquisition still
 refreshes permissions/location metadata within InternetArchiveSource; its public
@@ -305,13 +306,14 @@ Clearing history/removing library affects only its own table. Details, bounds,
 migration and failure policy in [LIBRARY_HISTORY](LIBRARY_HISTORY.md) and
 [ADR 0016](adr/0016-local-library-history.md).
 
-## Gutenberg catalog and acquisition
+## Experimental Gutenberg catalog boundary
 
-GutenbergCatalog owns XML OPDS discovery/pagination; GutenbergRdfParser and
-GutenbergAcquisition independently resolve current per-ebook metadata and explicit
-UTF-8 TEXT locations. GutenbergSource refreshes RDF at details and acquisition
-boundaries. `text-utf8` is logical resource identity; `/ebooks/<id>` is canonical
-provenance, never authority. Only exact HTTPS www.gutenberg.org and item-scoped
-validated redirects are allowed; no mirror wildcard. Revision remains null.
-No core/reader/Library/History/progress changes or source-specific UI policy.
-[Policy](GUTENBERG.md), [ADR 0018](adr/0018-gutenberg-catalog-acquisition.md).
+`GutenbergCatalog` owns observed OPDS2 discovery/search/details. The shared JSON
+parser validates bounded current metadata, stable numeric IDs and descriptive EPUB
+links; `loadResource` is explicitly unsupported. First Search discovers root once
+per source lifetime, then requests one page; subsequent pages are user-triggered.
+The development service is labelled experimental and IA is the initial source.
+No legacy XML, RDF, file-download or mirror fallback remains. Core/reader/progress/
+cache/collections APIs and source security are unchanged. Existing Gutenberg user
+metadata/progress are kept, but unsupported opens create no successful History.
+[Policy/evidence](GUTENBERG.md), [ADR0018](adr/0018-gutenberg-catalog-acquisition.md).

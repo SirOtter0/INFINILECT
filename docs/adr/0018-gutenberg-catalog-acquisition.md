@@ -1,43 +1,58 @@
-# ADR 0018: Project Gutenberg catalog and acquisition separation
+# ADR 0018: Experimental Gutenberg OPDS2 catalog; acquisition deferred
 
-- Status: Accepted for implementation; human PR/device review pending
-- Date: 2026-10-04
-- Extends: [ADR 0009](0009-gutenberg-search.md); its historical search-only scope is preserved
+Status: Proposed in open PR #11, corrected before merge on 2026-10-04.
+Supersedes only the unmerged PR11 RDF acquisition proposal, not historical ADRs.
 
-## Context
+## Context and evidence provenance
 
-Gutenberg correspondence permits explicit application opens. Current official
-interfaces expose OPDS search and per-ebook RDF with current file/charset/size/rights.
-XML OPDS is planned for retirement in 2027. Durable file URLs, guessed `/files`
-paths, scraping and unbounded/bulk acquisition are inappropriate. The existing
-indexed TEXT reader, source resolution and independent stores already suffice.
+**Direct email:** Gutenberg supplied `https://opds-test.pglaf.org/opds/`, expected a
+production preview soon, and explicitly discouraged unmaintained OPDS0.9. It did
+not answer INFINILECT's individual-acquisition mechanism question.
 
-## Decision
+**Official public documentation:** offline catalogs documents RDF as metadata and
+OPDS2 testing; automated-access docs describe harvest/mirroring; terms describe
+OPDS client identification/volume and stable informational links. None establishes
+RDF → `/files` as the interactive mechanism requested in our email.
 
-Keep core and all reader/persistence contracts unchanged. Isolate catalog XML in
-GutenbergCatalog; use a separate bounded RDF parser/resolver behind GutenbergSource.
-Publication identity is Gutenberg's canonical numeric ID; `/ebooks/<id>` is only
-an informational stable reference. TEXT has logical key `text-utf8`, not a URL.
-Fresh RDF must match the ebook and format ownership. Refresh again immediately
-before acquisition; Library/catalog metadata never authorizes bytes.
+**Current live observation:** the supplied development endpoint exposes OPDS2 JSON
+search, page links and item self links. Inspected item84 advertises an open-access
+EPUB3 link/length, no TEXT. No linked production endpoint or trustworthy byte
+revision was found. Previous HEAD's direct TEXT downloads were technically
+successful, but that is not an endorsement or current OPDS contract.
 
-Prefer explicit UTF-8 direct files over generated variant locations. Require known
-extent, HTTPS exact www.gutenberg.org, item-scoped validated paths, no query/userinfo/
-fragment/ports/escapes and tightly scoped redirects. Do not accept mirrors or repair
-malformed redirects. Reject over 16 MiB before downloading. Preserve strict full
-UTF-8/EOF and existing indexed reader/progress semantics. No charset inference.
+[Exact categorized sources/evidence](../GUTENBERG.md).
 
-Revision remains null: modified timestamps/extent are not a verified byte revision.
-Reusable resource caching is bypassed; reopening acquires again. Keep original book
-rights separate from metadata CC0 and make no worldwide public-domain claim.
-One explicit search page and user-triggered opens only; identifiable project UA,
-finite deadlines, serialized requests, cancellation and close on all terminal paths.
+## Decision — INFINILECT policy
+
+Use the narrow experimental OPDS2 catalog for explicit search and metadata-only
+Library, with IA as initial/default reading source. Mark Gutenberg experimental;
+keep TEXT opening disabled and `loadResource` explicitly unsupported.
+No obsolete XML search, RDF/file acquisition or hidden fallback remains executable.
+
+Retain existing pure core, PublicationSource, source-scoped numeric IDs, canonical
+informational URL, ResourceLoader/reader/cache/progress/collections contracts.
+The shared JSON parser reuses existing serialization-json; legacy platform XML
+adapters/test kXML are removed, no new dependency. Descriptive EPUB resources use
+logical key `epub`, revision=null and never authorize byte transfers.
+
+First user Search resolves/validates the root search template, then one result
+page; continuation is explicit and query-bound. All fetched metadata is bounded,
+strictly parsed, cancellation-aware and host/route scoped. No redirects, inferred
+production URLs, mirrors or execution of remote content.
+
+`getPublication` re-resolves via the advertised development self-link pattern;
+its availability is a preview observation, not a production stability promise.
+Saved Library item opening fails safely without removing user state or recording
+History. Any future acquisition must refresh current authority through the source.
 
 ## Consequences
 
-Both Android/Desktop use the same reading stack and existing local metadata/progress
-stores. Verified OPDS2 can replace catalog discovery without changing readers or
-acquisition contracts. No new dependencies/schema. Some legacy/ASCII-only/mirror-only
-or malformed-redirect books are deliberately unavailable; stale/missing size fails
-closed. High-volume/mirror optimization is deferred. A host live check is evidence
-of server behavior, not device UI verification. See [policy/evidence](../GUTENBERG.md).
+Gutenberg search is useful but experimental; Gutenberg reading is deferred.
+IA remains the verified TEXT path. No source revisions, schema, progress migration,
+new format/reader, downloads or private user information are introduced.
+Root adds one bounded discovery request on first explicit search per source lifetime.
+Strict schema changes produce safe errors rather than silent permissive fallback.
+
+Future Gutenberg production/TEXT evidence can replace this adapter internally.
+Current code still makes architectural sense if legacy search disappears tomorrow.
+[Verification and limitations](../VERIFICATION.md). No device success is claimed.

@@ -4,7 +4,8 @@ Initial real integration verified **2026-10-02**; delivery/lifecycle review and
 one new integration check **2026-10-03**. Narrow
 desktop adapter for public **CC0 text items**, now consumed by the first minimal
 Desktop TextReader as well as CLI demonstrations; not complete Archive support.
-Gutenberg now also supports its own UTF-8 TEXT acquisition; Archive policy is unchanged. Core has no source,
+Gutenberg is now an experimental OPDS2 catalog with acquisition disabled; Archive
+policy is unchanged. Core has no source,
 HTTP, JSON or platform dependency.
 
 ## Official interfaces and access
