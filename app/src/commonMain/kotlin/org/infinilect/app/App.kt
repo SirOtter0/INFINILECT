@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.app.reader.TextReader
 import org.infinilect.app.search.SearchState
+import org.infinilect.app.search.SearchResultsViewport
 import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.collections.LibraryActionState
 import org.infinilect.core.PublicationSource
@@ -52,6 +54,10 @@ fun App(
         onDispose { applicationSources.detach(application) }
     }
     val session by application.searchSession.collectAsState()
+    val searchState by key(session) { session.search.state.collectAsState() }
+    // App owns the viewport across Reader/Back; a successful page gets a fresh top position.
+    val searchViewport = remember(session) { SearchResultsViewport { LazyListState() } }
+    val resultsPosition = searchViewport.forState(searchState)
     val selected by application.selected.collectAsState()
     val destination by application.destination.collectAsState()
     val opening by application.opening.collectAsState()
@@ -75,7 +81,7 @@ fun App(
                         }
                     }
                     if(destination==Destination.SEARCH) key(session) {
-                        SearchScreen(session,applicationSources.options,selected,application::selectSource,
+                        SearchScreen(session,searchState,resultsPosition,applicationSources.options,selected,application::selectSource,
                             application.collections,application::openSearch)
                     } else CollectionScreen(destination,application)
                 }
@@ -167,10 +173,9 @@ internal fun CollectionScreen(destination: Destination, application: Application
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
+internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPosition: LazyListState,
+    sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
     collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open) {
-    val controller = session.search
-    val state by controller.state.collectAsState()
     val query by session.query.collectAsState()
     val membership by collections.membership.collectAsState()
     val libraryError by collections.error.collectAsState()
@@ -191,8 +196,8 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
             }
         }
         Text("Source: ${sources[selected].name}")
-        Text(if (session.textReadingEnabled) "Search public CC0 text items. Open UTF-8 text up to 512 KiB."
-            else "Search books on Project Gutenberg. Acquisition is not available yet.")
+        Text(if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
+            else "Experimental catalog only. TEXT opening is unavailable for this source.")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = query,
@@ -229,7 +234,8 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
         if (displayed != null) {
             if (displayed.page.publications.isEmpty()) Text("No publications found for “${displayed.query}”.")
             else Text("Results for “${displayed.query}”")
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = resultsPosition,
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(displayed.page.publications, key = { it.id.resultKey() }) { publication ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(publication.title, style = MaterialTheme.typography.h6)
@@ -251,8 +257,7 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
                 Button(enabled = !loading, onClick = session::nextPage) { Text("Next page") }
             }
         }
-        Text(if (session.textReadingEnabled) "Only public CC0 items with an eligible text file can be opened. Reading position is saved locally; reopening still checks the source."
-            else "Gutenberg availability in the US does not establish rights in every country.", style = MaterialTheme.typography.caption)
+        Text("Availability does not establish rights in every country. Reading position is saved locally; reopening still checks the source.", style = MaterialTheme.typography.caption)
     }
 }
 

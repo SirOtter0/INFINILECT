@@ -24,3 +24,5 @@ Accepted decisions for the foundation, search, acquisition and first TEXT reader
 - [0017: Bounded indexed TEXT documents](0017-indexed-text-document.md)
 
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.
+
+- [0018: Experimental Gutenberg OPDS2 catalog; acquisition deferred](0018-gutenberg-catalog-acquisition.md)

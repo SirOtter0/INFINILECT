@@ -36,7 +36,9 @@ gets fresh metadata and uses the existing validated acquisition/redirect path;
 no reusable IA entry is populated. No hash is promoted to a source revision and no
 fabricated validator is introduced. The actual TEXT UI uses this loader on Desktop
 and Android, but successful persistent-hit evidence uses offline stable-revision
-fixtures, not a claim about current IA resources. Gutenberg remains search-only.
+fixtures, not a claim about current IA resources. Gutenberg is now experimental catalog-only and populates no byte-cache entries;
+its publications have no acquisition resources; optional delivery metadata never
+becomes a cache key or byte authority.
 
 ## Streaming and atomic publication
 
@@ -129,7 +131,7 @@ never this cache namespace. It survives cache eviction/missing resources, and ca
 persist for revision=null resources without making their bytes reusable. Progress
 corruption cannot invalidate cached bytes. No contents/metadata/credentials/history
 are persisted with progress. See [PROGRESS.md](PROGRESS.md) and
-[ADR 0015](adr/0015-persistent-reading-progress.md). Downloads and SQLDelight remain deferred.
+[ADR 0015](adr/0015-persistent-reading-progress.md). Downloads remain deferred; SQLDelight is used only for separate Library/History metadata.
 
 See [ADR 0014](adr/0014-persistent-resource-cache.md) and actual offline verification
 in [VERIFICATION.md](VERIFICATION.md).

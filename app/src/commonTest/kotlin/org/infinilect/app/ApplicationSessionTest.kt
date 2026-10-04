@@ -8,6 +8,7 @@ import kotlin.test.*
 import org.infinilect.app.collections.*
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.app.progress.ProgressPersistence
+import org.infinilect.app.search.SearchResultsViewport
 import org.infinilect.core.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -43,6 +44,29 @@ class ApplicationSessionTest {
         session.openSearch(source.publication);advanceUntilIdle();assertIs<OpenPublicationState.Ready>(session.opening.value)
         assertEquals("Fresh title",fake.opened[source.publication.id]?.publication?.title)
         session.back();advanceUntilIdle();assertEquals("query",search.query.value);assertSame(results,search.search.state.value)
+        finish(session,owner)
+    }
+    @Test fun catalogLibraryMutationsAndReaderBackRetainTheSearchViewport()=runTest {
+        val source=Source();val fake=FakeCollections();val owner=owner(source,fake);val session=session(owner)
+        val search=session.searchSession.value
+        val viewport=SearchResultsViewport { mutableListOf(0) }
+        search.editQuery("query");search.submitSearch();advanceUntilIdle()
+        val results=search.search.state.value
+        val position=viewport.forState(results);position[0]=17
+        repeat(2) { index ->
+            session.collections.toggleCatalogLibrary(source.publication);advanceUntilIdle()
+            assertEquals(index==0,source.publication.id in fake.saved)
+            assertSame(results,search.search.state.value)
+            assertSame(position,viewport.forState(search.search.state.value))
+            assertEquals(17,position[0])
+        }
+        session.openSearch(source.publication);advanceUntilIdle()
+        assertIs<OpenPublicationState.Ready>(session.opening.value)
+        session.back();advanceUntilIdle()
+        assertSame(search,session.searchSession.value)
+        assertSame(results,search.search.state.value)
+        assertSame(position,viewport.forState(search.search.state.value))
+        assertEquals(17,position[0]);assertEquals("query",search.query.value)
         finish(session,owner)
     }
     @Test fun libraryOpenResolvesSourceAndResourcesRatherThanStoredMetadata()=runTest {

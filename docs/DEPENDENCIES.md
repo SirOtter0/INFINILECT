@@ -1,5 +1,16 @@
 # Dependencies and licenses
 
+## Current PR #11 correction — 2026-10-04
+
+Gutenberg now uses shared OPDS2 JSON via already-declared
+kotlinx.serialization-json 1.11.0 (Apache-2.0), on both Android and Desktop.
+No dependency/version is added or upgraded. The obsolete Gutenberg XML adapters
+and host-only kXML2 2.3.0 declaration are removed. Prior Android/XML graph sections
+below describe their historical configuration; retained upstream license copies
+are unchanged. JDK/Android licenses and all existing runtime dependencies remain
+unchanged. No kXML test jar or parser is newly bundled.
+
+
 ## Local library/history additions — 2026-10-03
 
 Only the new metadata database uses SQLDelight. ReadingProgress remains its existing

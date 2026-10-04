@@ -145,3 +145,11 @@ I. Clear **Android cache only**, not app data. Library/History/ReadingProgress r
 J. Confirm no storage/progress/library/history errors in normal operation.
 
 The current UI is foundational. This PR does not declare v0.0.1 complete.
+
+## Gutenberg correction in PR #11
+
+The TEXT reader/preparation/progress implementation is unchanged. Gutenberg's new
+OPDS2 development catalog is experimental and does not enable reading. The prior
+unmerged RDF/direct TEXT path has been removed pending a verified current contract.
+IA remains the real TEXT source. Human-reported PR10 physical large-TEXT success
+is not a Codex device test. [Corrected source evidence](GUTENBERG.md).

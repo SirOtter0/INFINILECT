@@ -1,5 +1,16 @@
 # Toolchain verification
 
+## Current PR #11 correction — 2026-10-04
+
+Gutenberg now uses shared OPDS2 JSON via already-declared
+kotlinx.serialization-json 1.11.0 (Apache-2.0), on both Android and Desktop.
+No dependency/version is added or upgraded. The obsolete Gutenberg XML adapters
+and host-only kXML2 2.3.0 declaration are removed. Prior Android/XML graph sections
+below describe their historical configuration; retained upstream license copies
+are unchanged. JDK/Android licenses and all existing runtime dependencies remain
+unchanged. No kXML test jar or parser is newly bundled.
+
+
 Official documentation checked on 2026-10-02 for the foundation and rechecked for
 the second technical pass before updating the wrapper.
 
@@ -102,12 +113,13 @@ still applies; actual multi-target builds establish this project's compatibility
 Android libraries/app target JVM bytecode **17**, while JDK **21** runs Gradle and
 Desktop compilation. minSdk 26 supports every shared Java URI/NIO/Base64/atomic API
 used here. No Java desktop engine or javax.xml.stream classes enter the APK.
-The Android parser is platform XmlPull, obtained through android.util.Xml; DTD
+Historically, the first Android Gutenberg parser was platform XmlPull, obtained through android.util.Xml; DTD
 processing is explicitly disabled (Android's default may enable it). Official
 [XmlPull contract](https://developer.android.com/reference/org/xmlpull/v1/XmlPullParser),
 [AOSP Xml implementation](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/util/Xml.java),
 and [AOSP parser factory](https://android.googlesource.com/platform/libcore/+/refs/heads/main/luni/src/main/java/libcore/util/XmlObjectFactory.java)
-identify the OS implementation. Desktop retains hardened JDK StAX.
+identify that historical OS implementation. Corrected PR #11 removes both
+Gutenberg XML adapters and uses already-present shared serialization-json instead.
 
 SDK/toolchain files live outside Git. The debug APK uses standard Android debug
 signing only; no release key/signing configuration. AndroidX's prebuilt graphics

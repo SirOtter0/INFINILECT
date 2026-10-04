@@ -16,18 +16,17 @@ Que Project Gutenberg ofrezca una obra en EE. UU. no implica que sea de dominio 
 ## Estado
 
 El proyecto está en una fase muy temprana. Desktop y la primera aplicación Android
-debug comparten la misma UI. La aplicación busca
-en el catálogo OPDS oficial de Project Gutenberg y muestra resultados reales,
-autores e idiomas cuando la fuente los proporciona. La búsqueda se envía mediante
-una acción explícita; la siguiente página solo se solicita al pulsar **Next page**.
-No hay búsqueda automática ni precarga.
+debug comparten la misma UI. Internet Archive (subset público CC0) es la fuente inicial de lectura TEXT real.
+**Project Gutenberg (experimental)** busca en el catálogo OPDS2 de desarrollo indicado
+por Gutenberg y permite guardar metadata en Library. Se retiraron el feed OPDS0.9
+sin mantenimiento y la adquisición RDF no confirmada; **Gutenberg no permite leer**.
+[Pruebas y bloqueos externos](docs/GUTENBERG.md). Buscar y Next page requieren
+acciones explícitas, sin búsquedas automáticas ni precarga.
 
-Selecciona **Internet Archive** para buscar textos públicos CC0, pulsa **Open text**
-y lee un recurso TEXT real en el primer TextReader mínimo. **Back to results**
-conserva la fuente seleccionada, consulta y resultados actuales. Solo admite UTF-8
-estrictamente válido, con tamaño conocido de hasta **16 MiB**; la ausencia de TEXT
-produce un error controlado. El texto usa preparación temporal privada y ventanas acotadas;
-[política del lector](docs/TEXT_READER.md). Project Gutenberg sigue siendo **solo búsqueda**.
+Selecciona **Internet Archive**, pulsa **Open text** y lee UTF-8 estrictamente válido
+con tamaño conocido≤**16MiB**. Back conserva fuente/consulta/resultados. El texto
+usa preparación temporal privada y ventanas acotadas;
+[política del lector](docs/TEXT_READER.md).
 
 Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
 entre reinicios, sin ajustes de lector, lector EPUB/PDF ni downloads persistentes. La caché de disco automática
@@ -44,13 +43,14 @@ Clear History requiere confirmación y conserva Library/progreso.
 La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona
 enlaces de descarga. REST rechaza este entorno con HTTP 403 y la transferencia PDF
 sigue bloqueada/no verificada. Consulta [OAPEN](docs/OAPEN.md) y la
-[comparación](docs/ACQUISITION_COMPARISON.md). Gutenberg espera orientación oficial
-para adquisición. No se anuncia fuente/UI OAPEN ni lector PDF.
+[comparación](docs/ACQUISITION_COMPARISON.md). Gutenberg sigue como catálogo experimental; no hay crawling masivo.
+No se anuncia fuente/UI OAPEN ni lector PDF.
 
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
 → obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS es la primera fuente de búsqueda funcional.
 Desktop y Android son destinos ejecutables. Android requiere API 26+; iOS queda
-para el futuro. Se verifica el APK; la prueba física está pendiente.
+para el futuro. El usuario reporta pruebas físicas Android satisfactorias de
+persistencia y TEXT grande en PRs #8–#10; la prueba del catálogo experimental corregido de PR #11 está pendiente.
 
 ## Compilar y ejecutar
 
@@ -82,7 +82,9 @@ dispositivo. INTERNET es la única capacidad de plataforma solicitada; AndroidX
 también declara un permiso interno de firma, exclusivo de la app, para proteger
 receivers no exportados. El icono es geometría original provisional.
 
-Para un ejemplo pequeño verificado, selecciona Internet Archive y busca
+Para el catálogo Gutenberg, busca `Frankenstein` o `shakespeare`; puedes guardar
+metadata en Library, pero no abrir EPUB/TEXT desde esta fuente.
+Para un ejemplo de Archive, selecciona Internet Archive y busca
 `identifier:gmb-2015-93040`; después pulsa **Open text**. Es un documento público
 CC0 del gobierno neerlandés. No se enriquecen ni adquieren resultados de forma
 automática. Cambiar de fuente cancela la sesión anterior y vacía consulta/resultados;
@@ -92,11 +94,10 @@ Versiones: Kotlin/compilador Compose 2.4.20, Compose Multiplatform 1.12.1,
 Gradle 9.7.1, AGP 9.3.1, compileSdk 37 / targetSdk 37 / minSdk 26. Consulta las [referencias oficiales de compatibilidad](docs/TOOLCHAIN.md)
 y los [avisos de terceros](THIRD_PARTY_NOTICES.md).
 
-El transporte Gutenberg utiliza Ktor 3.6.0 fuera de core. El parser de escritorio
-usa StAX incluido en JDK 21, con acceso XML externo deshabilitado. Consulta los
-[endpoints y límites de la fuente](docs/SOURCES.md). Los tests sin conexión utilizan
-fixtures OPDS pequeñas de autoría propia y Ktor MockEngine. Una comprobación opcional
-de una página real, independiente de tests/build y sin interfaz gráfica, es:
+Gutenberg utiliza Ktor 3.6.0 y serialization-json existentes fuera de core.
+Desktop/Android comparten el mismo parser JSON seguro. [Endpoints/límites](docs/SOURCES.md).
+Los tests offline usan fixtures OPDS2 pequeñas propias y MockEngine. El check opt-in
+de desarrollo consulta raíz y una página de resultados, sin adquirir contenido:
 
 ```sh
 ./gradlew :app:gutenbergSearchCheck --args="shakespeare"
@@ -135,7 +136,7 @@ Los resultados reales de verificación y límites del entorno están en [VERIFIC
 
 - `core`: modelos/contratos Kotlin puros en `commonMain`, targets JVM y biblioteca Android.
 - `app`: UI Compose, sesión/controladores/reader compartidos; `jvmSharedMain` comparte
-  políticas y mapping de fuentes. Desktop usa HTTP Java/StAX; Android HTTP Android/XmlPull.
+  políticas y mapping de fuentes. Desktop usa HTTP Java; Android HTTP Android; ambos comparten el parser JSON.
 - `desktopApp`: launcher, runtime del sistema y empaquetado Desktop; depende de `app`.
 - `androidApp`: Activity, Back/insets, manifest y APK; depende de `app`.
   [Decisión Android](docs/adr/0013-first-android-application.md) desarrolla ADR 0008.

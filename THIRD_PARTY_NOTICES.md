@@ -1,5 +1,16 @@
 # Third-party notices
 
+## Current PR #11 correction — 2026-10-04
+
+Gutenberg now uses shared OPDS2 JSON via already-declared
+kotlinx.serialization-json 1.11.0 (Apache-2.0), on both Android and Desktop.
+No dependency/version is added or upgraded. The obsolete Gutenberg XML adapters
+and host-only kXML2 2.3.0 declaration are removed. Prior Android/XML graph sections
+below describe their historical configuration; retained upstream license copies
+are unchanged. JDK/Android licenses and all existing runtime dependencies remain
+unchanged. No kXML test jar or parser is newly bundled.
+
+
 Copyright © 2026 SirOtter0 and INFINILECT contributors.
 Original INFINILECT code is GPL-3.0-or-later; upstream components retain their licenses.
 No publication files are bundled. This foundation is not a packaged distribution.
@@ -20,7 +31,7 @@ required by Compose/Ktor. Gradle 9.7.1's official tagged
 | Ktor client core and Java engine | 3.6.0 | Desktop HTTP/OPDS transport | [Apache-2.0](https://github.com/ktorio/ktor/blob/3.6.0/LICENSE) |
 | kotlinx.coroutines core | 1.11.0 | Search state, cancellation and request serialization | [Apache-2.0](https://github.com/Kotlin/kotlinx.coroutines/blob/1.11.0/LICENSE.txt) |
 | Ktor MockEngine; kotlinx.coroutines test | 3.6.0; 1.11.0 | Deterministic tests only | Same upstream Apache-2.0 licenses |
-| kotlinx.serialization JSON (desktop only) | 1.11.0 | Bounded Archive JSON metadata; existing serialization-core reused | [Apache-2.0, exact tag](https://github.com/Kotlin/kotlinx.serialization/blob/v1.11.0/LICENSE.txt) |
+| kotlinx.serialization JSON (shared JVM/Android) | 1.11.0 | Bounded Archive/Gutenberg JSON metadata; existing serialization-core reused | [Apache-2.0, exact tag](https://github.com/Kotlin/kotlinx.serialization/blob/v1.11.0/LICENSE.txt) |
 
 Apache-2.0 is compatible with GPLv3; retain the upstream license and notices when
 redistributing these components. A copy is in [third-party/Apache-2.0.txt](third-party/Apache-2.0.txt).
