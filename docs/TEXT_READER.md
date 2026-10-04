@@ -76,8 +76,72 @@ Restore the same count's offset exactly in logical space; changed lengths retain
 PR #7's proportional approximation. Locate the indexed window and restore to the
 containing line in the current layout. Viewport pixels never become durable state.
 Restoration does not write a new rounded location; subsequent actual scrolling
-reports the top visible line, or EOF at the bottom. Throttled 2s saves/Back flush
+reports the top visible line, or EOF only at a bottom with the actual final window
+laid out. Throttled 2s saves/Back flush
 and fixed save-failure diagnostics remain unchanged. See [PROGRESS.md](PROGRESS.md).
+
+## Stable viewport and bidirectional loading — PR #14
+
+Physical Android testing reported much faster backward than forward scrolling.
+The PR #10 lazy reader kept a complete, stable list of window indices; there was
+**no prepend, append, reindexing or custom fling velocity**. The problem was its
+geometry: each newly composed item started as one line of “Loading text…” while
+`produceState` dispatched `document.window(index)` to IO. This happened even with
+a warm FileWindows cache. An evicted earlier multi-line window therefore briefly
+became one line. Reverse measurement could cross many earlier windows in one
+pixel delta before their real heights returned.
+
+The official [Compose foundation 1.12.1 sources](https://repo.maven.apache.org/maven2/org/jetbrains/compose/foundation/foundation-desktop/1.12.1/foundation-desktop-1.12.1-sources.jar),
+`commonMain/androidx/compose/foundation/lazy/LazyListMeasure.kt`, add each previous
+item's **currently measured** main-axis size while resolving a negative scroll
+offset. A deterministic regression uses previously measured 1,000px windows:
+200px backward from item 10 should land at item 9/800px; the old 20px placeholders
+instead reach item 0. Those numbers are a host simulation, **not device timing or
+measured Android typography**. This establishes the code-level defect; confirming
+gesture symmetry on the reported device remains necessary.
+
+The shared reader now has these invariants:
+
+- Keep every indexed window in the lazy list; key it by its global start code point
+  inside a document-generation `key`. Loading never changes another item's identity.
+- Retain the measured height of each visited window for the current width/font/
+  density. Reloading a cold slot reserves that same height instead of collapsing.
+  Heights are UI-only, never progress records. A layout change gets new geometry.
+  An unvisited pending slot reserves one viewport as an explicit estimate until
+  measured; it is not a promise of exact unseen content geometry.
+- `TextWindowLoader` has one UI-owned worker and one conflated wakeup. Prioritize
+  composed windows near the first visible item, then prefetch **two windows on
+  each side** of that composed range. No per-item IO jobs or network requests.
+- Cache at most **eight** decoded windows in the UI coordinator, keeping useful
+  neighbors immediately available at attachment. Composed items retain their own
+  ready window until disposal, even if the eight-window cache evicts it. The
+  existing eight-window FileWindows LRU is unchanged. These caches commonly share
+  objects; their conservative combined character-payload bound is **128 KiB**,
+  plus viewport/beyond-bounds layout windows (<=4,096 UTF-16 units each). Disposed
+  windows are released, not accumulated across the publication. A primitive height
+  array adds at most **65,536 bytes** (16,384 Ints); no full-book decoded cache.
+- Requests carry a range generation. Changed ranges, close, cancellation or a
+  replaced document cannot apply a late result/failure to the new reader. A
+  non-cooperative local read may finish its bounded IO; it cannot publish afterward.
+- Only initial logical restoration uses `scrollToItem`, once the initial window
+  has a real layout. User scrolling starts afterward. Progress reports never drive
+  programmatic scrolling. A pending visible window reports nothing; EOF needs an
+  actually laid-out final window and the scrollable bottom, not placeholder geometry.
+
+There is no change to fling physics, acquisition/index rebuilding, 2,048-point
+windows, 16 MiB ceiling or persisted progress schema. Per-change work uses only
+composed slots and four neighbors, independent of total document size. Ordinary
+neighbor hits avoid loading labels; extreme flings, unseen regions or slow local
+storage can still display a correctly sized loading slot. Combining sequences or
+CRLF may straddle a window cut; reconstruction preserves all code points, although
+visual grapheme/paragraph continuity across that artificial cut is not guaranteed.
+
+Offline tests cover collapsed-height reproduction, forward/backward anchor
+arithmetic, 500 alternating transitions, eviction/reload, stable keys, 1,000
+coalesced direction changes, late non-cooperative reads/failures, close/cancellation,
+false EOF, complete owner/persistent-store restart, mixed Unicode, combining/CRLF
+cuts and exact document/window boundaries. They test the model and measurement
+seam, **not Compose gesture/rendering or Android filesystem/device behavior**.
 
 ## Private temporary storage and lifecycle
 
@@ -114,7 +178,10 @@ Back, replacement and session/application close flush progress and close the
 reader handle idempotently. close marks handles unavailable synchronously and
 schedules private-file removal off the UI thread. The application drain waits for
 preparer cleanup as well as persistent metadata writers. Concurrent window reads
-are serialized briefly around at-most-8-KiB local IO; there is no source mutex held
+use a cancellable Mutex around at-most-8-KiB local IO; the short cache/close guard
+never holds filesystem IO, and cancellation/closed state is checked before publishing.
+Close clears decoded windows without waiting for an IO operation; there is no
+source mutex held
 while scrolling. Normal UI ownership has one reader; no persistent document registry.
 
 OS cache deletion, IO failures or missing/truncated or invalid UTF-8 backing files produce fixed

@@ -1,3 +1,151 @@
+# PR #14 TEXT viewport hardening verification — 2026-10-04 UTC
+
+Fetched PR #13 and verified it was merged before starting. Exact starting/current
+main: `2093f754e9e22587abfbd7b44a76753f38339259` (PR #13 merge).
+Branch: `feature/text-reader-hardening`. **Draft; no merge.**
+[Diagnosis/invariants](TEXT_READER.md), [ADR 0020](adr/0020-stable-text-viewport.md).
+
+## Scope and actual diagnosis
+
+The reviewer reported much faster upward scrolling on physical Android. The old
+full lazy list already had stable global indices; no prepend/append or custom
+velocity caused the defect. Per-item asynchronous loading temporarily replaced a
+visited multi-line window with a single text line, including warm file-cache hits.
+Compose 1.12.1's official reverse-measurement loop uses that collapsed measured
+extent. The regression independently simulates this loop: a 200px reverse delta
+across known 1,000px slots lands at 9/800px, while old 20px placeholders traverse
+from slot 10 to slot 0. These are synthetic host metrics, not device measurements.
+
+The fix retains visited heights for the current layout, keys windows by global
+code-point start within a document generation, uses one conflated loading worker,
+symmetrically prefetches two neighbors per side, retains composed ready content
+through LRU eviction and rejects stale/cancelled results. Actual final layout is
+required for EOF progress. Initial restoration is the only programmatic scroll;
+scrolling becomes enabled after it. The short FileWindows close/cache guard no
+longer spans IO; its cancellable read Mutex/post-read checks prevent late publication
+and close clears cached references. Physical gesture confirmation remains pending.
+
+Source/acquisition/cache policy, progress persistence format/throttle, Library/
+History SQL, strict UTF-8/BOM, 16 MiB TEXT ceiling, EPUB foundation, toolchain,
+dependencies/licenses, launchers and manifests are unchanged. The separate Desktop
+niri/Wayland black-area observation remains untouched pending Windows comparison.
+
+## Commands and results actually executed
+
+Final focused command (after the last production/test changes):
+
+```sh
+./gradlew :app:desktopTest --tests '*TextViewportTest' --tests '*FileTextDocumentTest' \
+  :app:testAndroidHostTest --tests '*TextViewportTest' --tests '*FileTextDocumentTest' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Passed **61 tests per target** (22 viewport/worker, 39 indexed-document cases).
+BUILD SUCCESSFUL in 1m 11s; 27 actionable tasks: 13 executed, 14 up-to-date.
+
+Final clean verification:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m 26s; 150 actionable tasks: 142 executed, 8 up-to-date.**
+
+| Task | Executions | Failures / errors / skipped |
+| --- | ---: | --- |
+| `:core:jvmTest` | 42 | 0 / 0 / 0 |
+| `:app:desktopTest` | 499 | 0 / 0 / 0 |
+| `:core:testAndroidHostTest` | 42 | 0 / 0 / 0 |
+| `:app:testAndroidHostTest` | 485 | 0 / 0 / 0 |
+| Total | **1,068** | **0 / 0 / 0** |
+
+**555 unique class/method cases; 27 new unique cases**, executed on both app host
+targets. Existing source/authorization/redirect/cache/progress/collections/SQLite
+PRAGMA/EPUB tests are preserved. New coverage includes collapsed-slot reproduction,
+forward/backward arithmetic with variable heights, 500 direction reversals, eviction/
+reload and stable keys, 1,000 coalesced focus changes, one read in flight, distant
+navigation without a full-document scan, cache bounds, retained composed windows,
+late non-cooperative completion/failure, cancellation/idempotent close, false EOF,
+Unicode/combining/CRLF/supplementary cuts, exact window edges and full persistent
+owner/store restart after backward navigation. Host simulation is not a Compose
+rendering/gesture test or an Android OS-filesystem test.
+
+Android lint: **0 issues**. No compiler/Gradle warnings or new warnings. Existing
+SLF4J no-provider/NOP messages remain in two JDBC host-test suites; no dependency
+was added to suppress them. Launcher unit tasks remain `NO-SOURCE`, not claimed
+as executed tests. The existing JDK 21/SDK 37/toolchain and repositories were used;
+no Maven 429/repository workaround was needed. No live Gutenberg/IA/OAPEN checks
+or publication acquisition requests were run. The official Compose source JAR was
+consulted to verify measurement behavior; it is not a project dependency.
+
+## Artifacts actually built and inspected
+
+APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`
+
+- Exact bytes: **11684009** (+16,384 bytes compared with the recorded PR #13 build).
+- SHA-256: `eeb406e897769ea0acfef3f9129696f60ace1becd2b61989ccce5cd881a693a5`.
+- aapt2: `org.infinilect.app`, versionCode 1, versionName 0.0.1-SNAPSHOT,
+  label INFINILECT; minSdk26/target37/compile37.
+- Permissions remain INTERNET plus the existing internal dynamic-receiver
+  permission; no storage permissions or manifest/cleartext changes.
+- apksigner verification passed; certificate SHA-256 is
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`,
+  matching the recorded previous debug APK. Package/signature are update-compatible;
+  installing over that build was not physically tested.
+
+Desktop image: `desktopApp/build/compose/binaries/main/app/desktopApp`.
+`desktopApp:build` and `createDistributable` passed. Gradle-run and the image retain
+one unchanged Desktop entry point consuming the same hardened shared reader.
+Neither graphical app was launched. `adb devices -l` returned no attached devices;
+DISPLAY and WAYLAND_DISPLAY are unset. No device, emulator or graphical Desktop
+smoke test was performed. **Symmetric physical swipes still need reviewer testing.**
+
+## Repository checks
+
+`git diff --check` and `git diff origin/main...HEAD --check` pass. Local Markdown
+links resolve. Kotlin source SPDX checks pass; original GPL-3.0-or-later/upstream
+license declarations and dependency inventory are unchanged. Pure-core imports/
+dependencies remain free of Compose/Ktor/platform APIs. File/credential-pattern
+inspection found no generated APK/database/cache/progress/build artifacts or secrets
+in versioned changes. Complete diff reviewed against the recorded current main;
+no acquisition, schema, dependency or out-of-scope feature change.
+
+## Reviewer physical/graphical plan
+
+1. Install over the current debug build without clearing data. Library/History/
+   ReadingProgress must survive.
+2. Open the same large compatible IA public CC0 TEXT used to report the defect
+   (or `identifier:stcrt-2015-37219` if current metadata still permits it). Scroll
+   downward across more than eight windows, then upward with comparable swipes.
+   Check that revisited windows no longer compress/jump; do not treat host tests
+   as proof of gesture timing.
+3. Alternate forward/backward repeatedly, including fast flings and distant
+   regions, then reach beginning and end. No accumulated anchor drift/false 100%
+   from loading. Extreme cold-region loading can still appear.
+4. Wait >=3s, Back, reopen; then fully terminate/relaunch and reopen. Restore to
+   approximately the same logical region. IA must still fresh-acquire because
+   revision=null; no source authorization/cache bypass.
+5. Open a small TEXT and test Android Back/button Back, retained Search query/
+   results, Library and successful-open History.
+6. Back/close while preparation or window loading is active; switch publication/
+   source and verify no late text appears in another reader.
+7. Clear Android **cache only**. User stores survive; freshly reopening rebuilds
+   disposable preparation and restores progress.
+8. In a graphical Desktop environment test the same bidirectional reader via
+   Gradle and the packaged image. Record niri/Wayland sizing separately; this PR
+   does not diagnose/fix that observation.
+
+Unseen slot geometry is an explicit viewport-sized estimate; typography changes
+reset measured geometry and restoration remains line-approximate. Window cuts
+preserve code points, not grapheme/paragraph layout continuity. No exact physical
+scroll timing or completed v0.0.1 release is claimed.
+
+---
+
 # PR #13 bounded EPUB foundation verification — 2026-10-04 UTC
 
 Verified starting/current main: `b0f73b76b4df662a49fbee54684e3f9281d9a68a`

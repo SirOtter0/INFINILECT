@@ -200,7 +200,14 @@ Application-owned FileTextPreparer writes a private session file and builds two
 bounded primitive byte/code-point indexes. TextDocument exposes total code points,
 window lookup and suspend bounded window reads without source/transport/filesystem
 APIs. Each window is at most 2,048 points; cache at most eight decoded windows.
-Shared Compose lazily lays out visible windows. Production preparation/window IO
+Shared Compose lazily lays out visible windows. PR #14 keeps stable global
+code-point item keys, measured UI-only slot heights across decoded-window eviction,
+and a single generation-checked loading worker with two prefetched neighbors per
+side. Its eight-window UI LRU is separate from the existing eight-window local
+file LRU; only composed layouts retain additional windows. Heights reset for new
+width/font/density and never enter user persistence. Initial restoration scrolls
+once; placeholder loading never writes EOF. [Viewport decision](adr/0020-stable-text-viewport.md).
+Production preparation/window IO
 runs on Dispatchers.IO. Android uses cacheDir/reader-text-v1; Desktop uses private
 per-user cache conventions. Normal close removes files off the UI thread; owner
 locks permit conservative stale cleanup. These files are neither ResourceCache
