@@ -1,3 +1,119 @@
+# PR #13 bounded EPUB foundation verification — 2026-10-04 UTC
+
+Verified starting/current main: `b0f73b76b4df662a49fbee54684e3f9281d9a68a`
+(merged PR #12). New branch: `feature/epub-foundation`. **Draft; no merge.**
+[Policy/API evidence](EPUB.md), [ADR 0019](adr/0019-bounded-epub-foundation.md).
+
+## Production scope and regression boundary
+
+Pure EPUB document contracts plus application-owned Desktop/Android preparation
+are implemented. EPUB remains **unavailable in the reading UI**. No renderer,
+XHTML dump, new source/legal scope, Gutenberg acquisition, EPUB progress,
+dependency/version, schema, manifest/permission or Desktop window/layout change.
+Existing TEXT/source/cache/progress/collections code is unchanged apart from
+application factory ownership of the lazy EPUB preparer.
+
+## Commands actually executed
+
+Focused core/EPUB tests were run first, then the corrected parser/lifecycle suite:
+
+```sh
+./gradlew :core:jvmTest --tests '*EpubDocumentTest*' \
+  :app:desktopTest --tests '*FileEpubPreparerTest*' --tests '*ApplicationSourcesTest*' \
+  :app:testAndroidHostTest --tests '*FileEpubPreparerTest*' --tests '*ApplicationSourcesTest*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+That focused run passed 4 core tests and 51 EPUB + 6 owner tests on each app host
+target. The final clean suite also includes the later close-after-validation
+regression, taking EPUB preparation to **52 cases on each host target**.
+Synthetic ZIP/XML fixtures are generated from original tiny strings, not books.
+Tests cover valid nested/Unicode/multi-spine packages, local ownership/handles,
+ZIP header/CRC/path/alias/symlink/size/ratio attacks, XML/XXE limits, unsupported
+protection/active/remote content, exact size/unknown bounded size, cancellation,
+60s virtual deadline, late handoff, failure/close cleanup, stale owner isolation
+and platform paths. Host Android tests use the host JDK, not a device provider.
+
+Final full clean command, after all production changes:
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m 28s; 150 actionable tasks: 142 executed, 8 up-to-date.**
+
+| Task | Test executions | Failures / errors / skipped |
+| --- | ---: | --- |
+| `:core:jvmTest` | 42 | 0 / 0 / 0 |
+| `:app:desktopTest` | 472 | 0 / 0 / 0 |
+| `:core:testAndroidHostTest` | 42 | 0 / 0 / 0 |
+| `:app:testAndroidHostTest` | 458 | 0 / 0 / 0 |
+| Total | **1,014** | **0 / 0 / 0** |
+
+**528 unique class/method cases; 57 new unique cases** (4 core, 52 preparation,
+1 application-owner case). `androidApp:testDebugUnitTest` and Desktop launcher
+unit tasks remain `NO-SOURCE`, not claimed as executed tests. Lint report: **0
+issues**. No final Kotlin/compiler/Gradle warnings. Two existing JDBC-test suites
+still contain the prior SLF4J no-provider/NOP messages; no logging dependency is
+added. Initial development test/setup failures and one Android nullability warning
+were corrected before this final clean run; no existing test was weakened/deleted.
+
+The configured JDK 21/SDK 37 and existing toolchain/repositories were used. No
+Maven 429/repository workaround was needed by these final commands. Existing
+version/dependency/license declarations and upstream license copies are unchanged.
+
+## Artifacts actually produced/inspected
+
+APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`
+
+- Exact bytes: **11667625**.
+- SHA-256: `2900f83d5e8ac7aa05f639382f7b6abe1c283e8c3641a9d56fabba9ecf79a6cd`.
+- aapt2: package `org.infinilect.app`, versionCode 1, 0.0.1-SNAPSHOT,
+  minSdk26/target37/compile37, label INFINILECT.
+- INTERNET and the existing internal dynamic-receiver permission only; no new
+  storage permission or cleartext policy. Source manifests are unchanged.
+- apksigner verification passed. Debug certificate SHA-256 remains
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`,
+  matching the prior build's package/signature for an update on the same device.
+  It is not a release-signed APK.
+
+Desktop image: `desktopApp/build/compose/binaries/main/app/desktopApp`.
+`createDistributable` passed. A module-restricted JDK probe using the actual image
+JARs and its `MODULES` list loaded the new core/preparer classes and configured/
+parsed local SAX with required external-entity flags/lexical handler successfully.
+The image retains java.xml/java.net.http/java.sql. This is a headless API/runtime
+probe, **not** launching or visually testing the packaged application.
+
+## Audits and remaining manual verification
+
+Both `git diff --check` and `git diff origin/main...HEAD --check`, complete diff
+inspection, local Markdown links, source SPDX and generated/secret/dependency
+checks pass. Core remains pure Kotlin; source/reader/cache/progress/collections/
+SQL/manifest policies are unchanged. No APK, ZIP fixture binary, build output,
+prepared data or credential is committed. Existing historical verification text
+mentions an obsolete license identifier only to say no such declaration exists;
+project code remains GPL-3.0-or-later.
+
+**Zero live source requests:** no IA/Gutenberg/OAPEN live check, acquisition, extra
+page or book download. Official standards/API documentation, GitHub and build
+traffic are separate. **No Codex physical Android/emulator or graphical Desktop
+verification.** Android host tests cannot prove real SAX/NIO/provider/ownership
+behavior. This Draft remains a deliberately narrow foundation: representative
+permitted EPUB compatibility and actual Android provider tests are still needed
+before enabling any EPUB engine. CSS/SVG assets are inert, not sanitized browser
+content; no full EPUB conformance/rendering/security claim is made.
+
+Human checks for this APK should preserve existing small/large TEXT, Back/source
+switch, Library/History/progress restart and cache-only deletion behavior. There
+is no user-facing EPUB action to smoke-test. The previously reported Desktop
+window/niri observation is untouched and no new conclusion/test is asserted here.
+
+---
+
 # PR #12 Desktop first-slice verification — 2026-10-04 UTC
 
 Starting/fetched main is exactly `dde04ffcced213d020197e8dfc686136118885c0`,

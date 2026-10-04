@@ -140,6 +140,22 @@ and progress have separate lifetimes; see [Cache](CACHE.md).
 No complete reader framework, engine registry or downloads are
 claimed. The bounded disk tier is documented separately. See the [ADRs](adr/README.md).
 
+## Structural EPUB foundation (Draft PR #13)
+
+`ResourceLoader → ResourceContent → EpubPreparer → EpubDocument` parallels TEXT
+preparation without changing its opener/UI. Pure core contracts expose package
+metadata, canonical internal paths, manifest/spine/navigation and manifest-owned
+local byte handles. Standard ZIP/SAX validation and private seekable session
+storage live in app/jvmSharedMain, owned by ApplicationSources on both platforms.
+Preparation finishes bounded ZIP/CRC/XML/ownership checks before exposing a
+document; close cancels work/handles and drains cleanup on IO.
+
+This is not rendered EPUB reading. No UI availability, source acquisition policy,
+TEXT/progress behavior, schema or dependency changes. Future renderers remain
+platform adapters with their own no-script/no-remote sandbox; EPUB needs a distinct
+logical locator. Prepared ZIP data is neither ResourceCache nor Downloads.
+[Policy/limits/API evidence](EPUB.md), [ADR 0019](adr/0019-bounded-epub-foundation.md).
+
 ## Search slice
 
 `SearchScreen → SearchController → PublicationSource → GutenbergSource → Ktor/OPDS`.

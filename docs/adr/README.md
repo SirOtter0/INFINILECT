@@ -26,3 +26,5 @@ Accepted decisions for the foundation, search, acquisition and first TEXT reader
 Amend superseded decisions with a new ADR explaining the concrete need and tradeoff.
 
 - [0018: Experimental Gutenberg OPDS2 catalog; acquisition deferred](0018-gutenberg-catalog-acquisition.md)
+
+- [0019: Bounded structural EPUB preparation, renderer deferred](0019-bounded-epub-foundation.md)
