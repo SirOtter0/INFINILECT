@@ -96,15 +96,15 @@ class GutenbergSourceTest {
         }
     }
 
-    @Test fun foreignIdsAreRejectedAndDeferredCapabilitiesAreExplicit() = runTest {
+    @Test fun foreignIdsAndInvalidResourcesAreRejectedWithoutRequests() = runTest {
         var requests = 0
         GutenbergSource(MockEngine { requests++; error("Unexpected request") }).use { source ->
             val foreign = PublicationId(SourceId("other"), "11")
             val own = PublicationId(SourceId("gutenberg"), "11")
             assertFailsWith<IllegalArgumentException> { source.getPublication(foreign) }
             assertFailsWith<IllegalArgumentException> { source.loadResource(PublicationResource(foreign, "text", PublicationFormat.TEXT, "text/plain")) }
-            assertFailsWith<UnsupportedOperationException> { source.getPublication(own) }
-            assertFailsWith<UnsupportedOperationException> { source.loadResource(PublicationResource(own, "text", PublicationFormat.TEXT, "text/plain")) }
+            assertFailsWith<IllegalArgumentException> { source.getPublication(own.copy(localId="0")) }
+            assertFailsWith<IllegalArgumentException> { source.loadResource(PublicationResource(own, "text", PublicationFormat.TEXT, "text/plain")) }
             assertEquals(0, requests)
         }
     }

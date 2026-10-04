@@ -45,7 +45,7 @@ class AndroidOpdsXmlReaderTest {
     private fun text(value: String) = Token(XmlPullParser.TEXT, text = value)
     private fun document(title: List<Token>) = listOf(start("feed",1),start("entry",2),start("id",3),
         text("https://www.gutenberg.org/ebooks/11.opds"),end("id",3),start("title",3)) + title + listOf(end("title",3),
-        start("link",3,mapOf("rel" to "http://opds-spec.org/acquisition","type" to "text/plain","href" to "https://www.gutenberg.org/files/11/11.txt")),
+        start("link",3,mapOf("rel" to "http://opds-spec.org/acquisition","type" to "text/plain; charset=utf-8","href" to "https://www.gutenberg.org/files/11/11.txt")),
         end("link",3),end("entry",2),end("feed",1))
     private fun parse(pull: Pull) = GutenbergOpdsParser { AndroidOpdsXmlReader(it,pull.reader) }
         .parse(byteArrayOf(),GutenbergUrls.search("books"),"books")

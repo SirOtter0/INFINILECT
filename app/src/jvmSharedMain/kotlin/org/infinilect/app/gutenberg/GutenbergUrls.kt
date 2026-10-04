@@ -33,7 +33,7 @@ internal object GutenbergUrls {
         val url = Url(resolved)
         if (url.parameters.names().isNotEmpty()) return null
         return Regex("/ebooks/([1-9][0-9]{0,9})(?:\\.opds)?").matchEntire(url.encodedPath)
-            ?.groupValues?.get(1)
+            ?.groupValues?.get(1)?.takeIf { runCatching { GutenbergAcquisition.identifier(it) }.isSuccess }
     }
 
     fun nextToken(href: String, currentUrl: String, query: String): String {

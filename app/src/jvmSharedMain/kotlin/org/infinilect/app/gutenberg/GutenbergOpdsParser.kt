@@ -151,7 +151,10 @@ internal class GutenbergOpdsParser(private val openXml: (ByteArray) -> OpdsXmlRe
                     else -> return@mapNotNull null
                 }
                 val url = GutenbergUrls.resolve(link.href, pageUrl) ?: return@mapNotNull null
-                PublicationResource(publicationId, url, format, link.type, revision = null)
+                if (format == PublicationFormat.TEXT) {
+                    if (!GutenbergAcquisition.utf8(link.type) || GutenbergAcquisition.location(url, localId) == null) return@mapNotNull null
+                    GutenbergAcquisition.resource(publicationId)
+                } else PublicationResource(publicationId, url, format, link.type, revision = null)
             }.distinctBy { it.key }
             return Publication(
                 id = publicationId,

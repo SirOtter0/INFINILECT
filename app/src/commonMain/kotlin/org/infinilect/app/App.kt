@@ -191,8 +191,7 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
             }
         }
         Text("Source: ${sources[selected].name}")
-        Text(if (session.textReadingEnabled) "Search public CC0 text items. Open UTF-8 text up to 512 KiB."
-            else "Search books on Project Gutenberg. Acquisition is not available yet.")
+        Text("Search publications. Open compatible UTF-8 TEXT up to 16 MiB.")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = query,
@@ -251,8 +250,7 @@ internal fun SearchScreen(session: ReadingSession, sources: List<SourceOption>, 
                 Button(enabled = !loading, onClick = session::nextPage) { Text("Next page") }
             }
         }
-        Text(if (session.textReadingEnabled) "Only public CC0 items with an eligible text file can be opened. Reading position is saved locally; reopening still checks the source."
-            else "Gutenberg availability in the US does not establish rights in every country.", style = MaterialTheme.typography.caption)
+        Text("Availability does not establish rights in every country. Reading position is saved locally; reopening still checks the source.", style = MaterialTheme.typography.caption)
     }
 }
 

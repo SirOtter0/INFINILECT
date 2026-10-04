@@ -30,7 +30,7 @@ internal fun createSources(
     )
     val textPreparer = org.infinilect.app.reader.FileTextPreparer(textDirectory)
     return ApplicationSources(listOf(
-        SourceOption("Project Gutenberg", gutenberg),
+        SourceOption("Project Gutenberg", gutenberg, textReadingEnabled = true),
         SourceOption("Internet Archive", archive, textReadingEnabled = true),
     ), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer) {
         try { cache.close() } finally { try { gutenberg.close() } finally { archive.close() } }

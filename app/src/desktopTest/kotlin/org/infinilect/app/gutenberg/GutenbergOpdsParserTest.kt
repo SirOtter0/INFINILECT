@@ -46,7 +46,8 @@ class GutenbergOpdsParserTest {
         assertEquals(listOf(PublicationFormat.TEXT, PublicationFormat.EPUB, PublicationFormat.PDF, PublicationFormat.HTML), book.resources.map { it.format })
         assertEquals("text/plain; charset=utf-8", book.resources.first().mediaType)
         assertTrue(book.resources.all { it.publicationId == book.id && it.revision == null && it.cacheKey == null })
-        assertTrue(book.resources.all { it.key.startsWith("https://www.gutenberg.org/") })
+        assertEquals(GUTENBERG_TEXT_KEY,book.resources.first().key)
+        assertTrue(book.resources.drop(1).all { it.key.startsWith("https://www.gutenberg.org/") })
     }
 
     @Test fun missingOptionalFieldsRemainAbsent() {
@@ -63,7 +64,7 @@ class GutenbergOpdsParserTest {
           <link rel="http://opds-spec.org/acquisition" type="text/plain"
                 href="http://www.gutenberg.org/files/11/a%2Fb%25c.txt?label=a%26b"/>
         </entry></feed>""")
-        assertEquals("https://www.gutenberg.org/files/11/a%2Fb%25c.txt?label=a%26b", page.publications.single().resources.single().key)
+        assertTrue(page.publications.single().resources.isEmpty()) // unsafe/unspecified TEXT never authorizes acquisition
     }
 
     @Test fun emptyFeedIsValidAndHasNoNextPage() {
