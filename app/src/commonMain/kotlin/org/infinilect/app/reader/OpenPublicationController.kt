@@ -95,7 +95,7 @@ internal class OpenPublicationController(
                         currentCoroutineContext().ensureActive()
                         return@withTimeout OpenPublicationState.EpubReady(reader, details)
                     }
-                    if (textResource == null && pagePreparer != null && details.resources.any { it.format == PublicationFormat.PAGES }) {
+                    if (textResource == null && pagePreparer != null && details.resources.any { it.format == PublicationFormat.PAGES || it.format == PublicationFormat.CBZ }) {
                         openingPages = true
                         val document = pagePreparer.prepare(details, loader)
                         val reader = try {

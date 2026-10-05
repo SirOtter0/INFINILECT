@@ -13,7 +13,7 @@ data class PublicationId(val sourceId: SourceId, val localId: String) {
 }
 
 enum class PublicationType { BOOK, COMIC, MAGAZINE, ARTICLE, DOCUMENT }
-enum class PublicationFormat { EPUB, PDF, PAGES, HTML, TEXT }
+enum class PublicationFormat { EPUB, CBZ, PDF, PAGES, HTML, TEXT }
 
 /** Opaque source-owned reference. Readers must resolve it through ResourceLoader. */
 data class PublicationResource(

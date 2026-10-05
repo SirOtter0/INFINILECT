@@ -17,7 +17,9 @@ import org.infinilect.app.collections.*
 /** Extract the application-private path immediately; neither cache nor sources retain Context. */
 fun createApplicationSources(context: Context): ApplicationSources {
     val appContext = context.applicationContext
-    val directory = try { androidCacheDirectory(context.applicationContext.cacheDir) } catch (_: Exception) { null }
+    val appCache = try { context.applicationContext.cacheDir.toPath() } catch (_: Exception) { null }
+    val cbzDirectory = try { androidCbzPreparationDirectory(appContext.cacheDir) } catch (_: Exception) { null }
+    val directory = try { appCache?.resolve(CACHE_DIRECTORY_NAME) } catch (_: Exception) { null }
     val progressDirectory = try { androidProgressDirectory(context.applicationContext.filesDir) } catch (_: Exception) { null }
     val settingsDirectory = try { androidEpubSettingsDirectory(appContext.filesDir) } catch (_: Exception) { null }
     val pageSettingsDirectory = try { androidPageSettingsDirectory(appContext.filesDir) } catch (_: Exception) { null }
@@ -31,10 +33,14 @@ fun createApplicationSources(context: Context): ApplicationSources {
         developmentEpubEnabled = debuggable,
         epubDirectory = org.infinilect.app.epub.androidEpubDirectory(appContext.cacheDir.toPath()),
         epubSettingsDirectory = settingsDirectory, developmentComicEnabled = debuggable,
-        pageSettingsDirectory = pageSettingsDirectory)
+        pageSettingsDirectory = pageSettingsDirectory,
+        cbzPreparationDirectory = cbzDirectory)
 }
 
 internal fun androidCacheDirectory(privateCacheDir: File): Path = privateCacheDir.toPath().resolve(CACHE_DIRECTORY_NAME)
+
+internal fun androidCbzPreparationDirectory(privateCacheDir: File): Path =
+    privateCacheDir.toPath().resolve(org.infinilect.app.reader.page.CBZ_PREPARATION_DIRECTORY)
 
 internal fun createApplicationSources(
     privateCacheDir: File,

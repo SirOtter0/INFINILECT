@@ -18,5 +18,7 @@ internal object PagePolicy {
 }
 internal interface PagePreparer {
     suspend fun prepare(publication: Publication, loader: ResourceLoader): PageDocument
+    fun close() = Unit
+    suspend fun awaitClosed() = Unit
 }
 internal expect fun defaultPagePreparer(): PagePreparer
