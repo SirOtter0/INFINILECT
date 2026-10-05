@@ -29,10 +29,12 @@ internal class ReadingSession(
     decodingDispatcher: CoroutineDispatcher = org.infinilect.app.reader.textPreparationDispatcher,
     progress: ProgressPersistence? = null,
     preparer: org.infinilect.app.reader.TextPreparer = org.infinilect.app.reader.defaultTextPreparer(),
+    val epubReadingEnabled: Boolean = false,
+    epubPreparer: org.infinilect.app.reader.EpubPreparer? = null,
     onOpened: (Publication) -> Unit = {},
 ) : ApplicationSessionLifetime {
     val search = SearchController(source)
-    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, preparer, onOpened)
+    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, preparer, epubPreparer = if (epubReadingEnabled) epubPreparer else null, onOpened = onOpened)
     private val mutableQuery = MutableStateFlow("")
     val query: StateFlow<String> = mutableQuery.asStateFlow()
     private var searchJob: Job? = null
@@ -52,7 +54,7 @@ internal class ReadingSession(
     }
 
     fun open(publication: Publication) {
-        if (!closed && textReadingEnabled && searchJob?.isActive != true && search.state.value !is SearchState.Loading)
+        if (!closed && (textReadingEnabled || epubReadingEnabled) && searchJob?.isActive != true && search.state.value !is SearchState.Loading)
             opening.open(publication)
     }
 

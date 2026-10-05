@@ -26,6 +26,7 @@ fun createApplicationSources(context: Context): ApplicationSources {
         if (debuggable) Log.w("INFINILECTProgress", "${failure.operation}/${failure.stage}/${failure.reason}")
     }, collections = ApplicationCollections(store.library,store.history,release = store::close),
         textDirectory = org.infinilect.app.reader.androidTextDirectory(appContext.cacheDir.toPath()),
+        developmentEpubEnabled = debuggable,
         epubDirectory = org.infinilect.app.epub.androidEpubDirectory(appContext.cacheDir.toPath()))
 }
 
