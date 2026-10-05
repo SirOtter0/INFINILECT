@@ -84,11 +84,47 @@ secret pattern inspection passed. No new dependency, Gradle/SQL/progress schema,
 manifest permission, reader implementation or source policy change. Existing
 build-script SPDX omissions are pre-existing and untouched.
 
+## Post-review cancellation fix and affected verification
+
+Independent handoff review identified prompt cancellation at the IO return boundary:
+an opened local handle could be discarded before reaching the caller, retaining one
+of eight slots. A deterministic queued-dispatcher regression reproduced this once
+(**1 test, 1 expected pre-fix failure**). The local loader now closes the undelivered
+handle on a failed return; the same focused regression passed (**1/1**). Command,
+using the environment/flags above:
+
+```sh
+./gradlew :app:desktopTest \
+  --tests '*FileLocalPublicationSourceTest.cancellationAtIoReturnClosesUndeliveredHandle*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all --offline \
+  -Pkotlin.compiler.execution.strategy=in-process
+```
+
+All affected app suites/builds/lint/artifacts were then rerun, without another clean
+matrix or unrelated core executions:
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :app:build \
+  :desktopApp:build :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all --offline \
+  -Pkotlin.compiler.execution.strategy=in-process
+```
+
+`BUILD SUCCESSFUL in 2m 29s`; **128 actionable tasks: 31 executed, 97 up-to-date**.
+795 Desktop + 764 Android-host executions = **1,559**, zero failures/errors/skips
+or compiler warnings; lint remains **No issues found**. Including the unchanged
+core's previously executed 53 + 53 cases, latest report coverage is **1,665**
+executions / **866 unique cases**, with **33 new import cases**. This is combined
+latest coverage, not a claim that a second clean matrix was executed. No unresolved
+regression remains. The final APK and Desktop image below were rebuilt after this
+fix; documentation-only corrections afterward need only diff/Markdown checks.
+
 ## Artifacts and signing
 
 APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`
-(**11,995,423 bytes**), SHA-256:
-`7741fa56c6fde3f90c7f0b871a835ffff5473652a74e8c740fe1fb738f0ecd06`.
+(**12,039,320 bytes**), SHA-256:
+`b9465b7d22b5f10b8695e0a9d00bfa3a5f2a6a04d4b5d9479f4873148d485b40`.
 Package `org.infinilect.app`; versionCode `1`, versionName `0.0.1-SNAPSHOT`;
 minSdk 26, targetSdk/compileSdk 37. Manifest permissions remain INTERNET and the
 AndroidX-generated `org.infinilect.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`;

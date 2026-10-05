@@ -126,7 +126,9 @@ internal class FileLocalPublicationSource(
         readRecord(initialize().resolve("${publicationId.localId}.import"), publicationId.localId)?.publication
     }
 
-    override suspend fun loadResource(resource: PublicationResource): ResourceContent = operation {
+    override suspend fun loadResource(resource: PublicationResource): ResourceContent {
+        var acquired: ResourceContent? = null
+        try { return operation {
         require(resource.publicationId.sourceId == id && DIGEST_NAME.matches(resource.publicationId.localId))
         val key = resource.publicationId.localId
         val entry = initialize().resolve("$key.import")
@@ -134,9 +136,16 @@ internal class FileLocalPublicationSource(
         require(record.publication.resources.single() == resource)
         if (contents.size >= 8) fail(ImportFailure.LIMIT)
         val handle = payloadContent(entry.resolve("payload"), record.size, key) { contents.remove(it) }
+        acquired = handle
         contents.add(handle)
         if (closed.get()) { handle.close(); throw CancellationException() }
         handle
+        } } catch(e: Throwable) {
+            // withContext may discard the result when cancellation wins its return dispatch.
+            // Ownership transfers only when this method actually returns to its caller.
+            try { acquired?.close() } catch (_: Exception) { }
+            throw e
+        }
     }
 
     private suspend fun validate(path: Path, key: String, title: String): Publication {

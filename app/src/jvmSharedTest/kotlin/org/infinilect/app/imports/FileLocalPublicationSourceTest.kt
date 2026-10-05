@@ -16,6 +16,28 @@ import org.infinilect.core.*
 import kotlin.test.*
 
 class FileLocalPublicationSourceTest {
+    @Test fun cancellationAtIoReturnClosesUndeliveredHandle()=runBlocking<Unit> {
+        val owner=Owner();val pub=owner.source.import(selection("text".encodeToByteArray()).first)
+        owner.source.close();owner.source.awaitClosed()
+        val queued=java.util.ArrayDeque<Runnable>()
+        val io=object:CoroutineDispatcher() {
+            override fun dispatch(context:kotlin.coroutines.CoroutineContext,block:Runnable){queued.add(block)}
+        }
+        val source=FileLocalPublicationSource(owner.base.resolve("files/$IMPORT_DIRECTORY_NAME"),owner.text,owner.epub,owner.pages,io=io)
+        val cancelled=launch(start=CoroutineStart.UNDISPATCHED){source.loadResource(pub.resources.single());error("cancelled handle must not escape")}
+        queued.removeFirst().run() // Open on IO; delivery back to the caller is still queued.
+        cancelled.cancelAndJoin()
+        val handles=mutableListOf<ResourceContent>()
+        try {
+            repeat(8) {
+                val load=async(start=CoroutineStart.UNDISPATCHED){source.loadResource(pub.resources.single())}
+                queued.removeFirst().run();handles+=load.await()
+            }
+            assertEquals(8,handles.size) // A leaked undelivered handle would consume one slot.
+        } finally {
+            handles.forEach{it.close()};source.close();queued.removeFirst().run();source.awaitClosed();owner.close()
+        }
+    }
     @Test fun cancellationOrOwnerCloseDuringPreparationClosesValidationHandleAndDiscardsPartial()=runBlocking<Unit> {
         for (closeOwner in listOf(false,true)) {
             val owner=Owner();val entered=CompletableDeferred<Unit>();var handle:ResourceContent?=null
