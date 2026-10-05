@@ -143,4 +143,55 @@ class EpubReaderControllerTest {
     @Test fun outOfRangeChapterActionIsIgnored() = runTest { use { reader, _, _, _, _ ->
         val state = reader.state.value; reader.chapter(-1); reader.chapter(3); assertEquals(state, reader.state.value)
     } }
+    @Test fun fontChangePreservesLatestUnicodeLocatorWithoutReparse() = runTest { use { reader, _, parser, store, _ ->
+        val ready = assertIs<EpubReaderState.Ready>(reader.state.value)
+        reader.report(ready.ticket, 0, 2)
+        reader.presentationChanged(EpubReaderSettings(fontSize = 26))
+        val after = assertIs<EpubReaderState.Ready>(reader.state.value)
+        assertEquals(0 to 2, after.initialPosition); assertNotEquals(ready.ticket, after.ticket)
+        assertEquals(1, parser.parsed.size); runCurrent()
+        assertEquals(2L, (store.values[id]?.locator as ReadingLocator.Epub).codePointOffset)
+    } }
+    @Test fun marginsSpacingThemeAndViewportKeepSemanticPosition() = runTest { use { reader, _, _, _, _ ->
+        reader.report(assertIs<EpubReaderState.Ready>(reader.state.value).ticket, 1, 3)
+        for (settings in listOf(EpubReaderSettings(margin = 32), EpubReaderSettings(lineSpacingPercent = 190), EpubReaderSettings(theme = EpubReadingTheme.DARK))) {
+            reader.presentationChanged(settings)
+            assertEquals(1 to 3, assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+        }
+        reader.presentationChanged() // orientation/viewport without a settings mutation
+        assertEquals(1 to 3, assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+    } }
+    @Test fun staleLayoutAfterSettingsCannotOverwriteProgress() = runTest { use { reader, _, _, store, _ ->
+        val old = assertIs<EpubReaderState.Ready>(reader.state.value).ticket
+        reader.report(old, 0, 2); reader.presentationChanged(EpubReaderSettings(fontSize = 24))
+        reader.report(old, 1, 5); reader.flush(); runCurrent()
+        assertEquals(2L, (store.values[id]?.locator as ReadingLocator.Epub).codePointOffset)
+    } }
+    @Test fun loadingSettingsDoNotCancelOrSupersedeChapterNavigation() = runTest { use { reader, _, _, _, _ ->
+        reader.chapter(2); reader.presentationChanged(EpubReaderSettings(fontSize = 22)); advanceUntilIdle()
+        assertEquals(2, assertIs<EpubReaderState.Ready>(reader.state.value).spineIndex)
+        assertEquals(22, reader.settings.value.fontSize)
+    } }
+    @Test fun backAfterSettingsFlushesAndClosesDocument() = runTest { use { reader, doc, _, store, _ ->
+        reader.report(assertIs<EpubReaderState.Ready>(reader.state.value).ticket, 1, 3)
+        reader.presentationChanged(EpubReaderSettings(margin = 40)); reader.close(); reader.close(); runCurrent()
+        assertEquals(1, doc.closes); assertEquals(3L, (store.values[id]?.locator as ReadingLocator.Epub).codePointOffset)
+    } }
+    @Test fun settingsOnClosedReaderAreIgnored() = runTest { use { reader, _, _, _, _ ->
+        reader.close(); reader.presentationChanged(EpubReaderSettings(fontSize = 30)); assertEquals(18, reader.settings.value.fontSize)
+    } }
+    @Test fun settingsHaveFiniteValidatedBounds() {
+        for (action in listOf({ EpubReaderSettings(fontSize = 13) }, { EpubReaderSettings(fontSize = 31) },
+            { EpubReaderSettings(lineSpacingPercent = 119) }, { EpubReaderSettings(lineSpacingPercent = 201) },
+            { EpubReaderSettings(margin = 7) }, { EpubReaderSettings(margin = 41) })) assertFailsWith<IllegalArgumentException> { action() }
+    }
+
+    @Test fun staleVisibleMediaCallbackCannotAttachOldChapterImages() = runTest { use { reader, _, _, _, _ ->
+        val old = assertIs<EpubReaderState.Ready>(reader.state.value).ticket
+        reader.presentationChanged(EpubReaderSettings(fontSize = 24))
+        reader.visibleMedia(old, listOf(EpubImage(EpubEntryPath("OPS/missing.png"), "image/png", "Alt")))
+        runCurrent(); assertTrue(reader.media.state.value.isEmpty())
+        reader.close(); reader.visibleMedia(old, emptyList()); assertEquals(0, reader.media.retained)
+    } }
+
 }

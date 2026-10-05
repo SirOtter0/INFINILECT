@@ -270,4 +270,36 @@ class EpubReadingLifecycleTest {
         assertTrue(payloads(root).isEmpty())
     }
 
+    @Test fun settingsThenBackAndFreshOwnerRestoreSemanticPassage() = runBlocking<Unit> {
+        val first = Owner(this)
+        val open = first.searchOpen(); val ready = open.reader.next(2)
+        val block = ready.chapter.blocks.indexOfFirst { it.text.startsWith("Passage 20 ") }
+        open.reader.report(ready.ticket, block, 12)
+        open.reader.presentationChanged(EpubReaderSettings(fontSize = 28, margin = 36, lineSpacingPercent = 180, theme = EpubReadingTheme.DARK))
+        assertEquals(block to 12, assertIs<EpubReaderState.Ready>(open.reader.state.value).initialPosition)
+        first.session.back(); first.close()
+        root.resolve("resource-cache-v1").toFile().deleteRecursively()
+        root.resolve("epub-preparation-v1").toFile().deleteRecursively()
+        val second = Owner(this)
+        try {
+            val restored = second.searchOpen(); val position = assertIs<EpubReaderState.Ready>(restored.reader.state.value)
+            assertEquals(2, position.spineIndex); assertEquals(block to 12, position.initialPosition)
+            assertEquals(EpubReaderSettings(), restored.reader.settings.value) // settings deliberately session-only
+            assertEquals(1, second.source.details); assertEquals(1, second.source.loads)
+        } finally { second.close() }
+    }
+    @Test fun originalPreparedZipExposesOnlyLocalDeclaredRasterArtwork() = runBlocking<Unit> {
+        val owner = Owner(this)
+        try {
+            val open = owner.searchOpen(); val c = assertIs<EpubReaderState.Ready>(open.reader.state.value).chapter
+            assertEquals(listOf("image/png", "image/jpeg", "image/svg+xml"), c.blocks.mapNotNull { it.image?.mediaType })
+            for (image in c.blocks.mapNotNull { it.image }.filter { it.mediaType != "image/svg+xml" }) {
+                val bytes = open.reader.document.openResource(image.path).readBytes(2 * 1024 * 1024)
+                assertEquals(96 to 64, epubRasterDimensions(bytes, image.mediaType))
+            }
+            assertEquals(1, owner.source.loads) // media uses document handles, never another acquisition
+        } finally { owner.close() }
+        assertTrue(payloads(root).isEmpty())
+    }
+
 }

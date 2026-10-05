@@ -15,7 +15,7 @@ compose.desktop {
         mainClass = "org.infinilect.app.MainKt"
         nativeDistributions {
             // The bundled runtime must support Ktor's Java engine and SQLite JDBC.
-            modules("java.net.http", "java.sql", "java.xml")
+            modules("java.net.http", "java.sql", "java.xml", "java.desktop")
         }
     }
 }

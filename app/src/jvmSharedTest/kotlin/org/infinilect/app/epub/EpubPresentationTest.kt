@@ -150,4 +150,50 @@ class EpubPresentationTest {
         assertFalse(rendered.any { it.isSurrogate() })
     }
 
+    @Test fun headingLevelsRemainSemanticInsteadOfPublisherStyles() = runBlocking {
+        assertEquals(listOf(1,2,3,6), parse("<h1>A</h1><h2>B</h2><h3>C</h3><h6>D</h6>").blocks.map { it.headingLevel })
+    }
+    @Test fun orderedAndUnorderedListsHaveSeparateMarkers() = runBlocking {
+        val blocks = parse("<ol start=\"3\"><li>A</li><li>B</li></ol><ul><li>C</li></ul>").blocks
+        assertEquals(listOf(EpubListMarker(true,3,0), EpubListMarker(true,4,0), EpubListMarker(false,1,0)), blocks.map { it.listMarker })
+        assertEquals(listOf("A","B","C"), blocks.map { it.text }) // markers never enter logical text
+        assertEquals(listOf("3. ","4. ","• "), blocks.map(::epubListPrefix))
+    }
+    @Test fun nestedListsHaveBoundedSemanticDepthAndRestartNumbering() = runBlocking {
+        val blocks = parse("<ol><li>Outer<ul><li>Inner</li></ul></li><li>Second</li></ol>").blocks
+        assertEquals(listOf(EpubListMarker(true,1,0), EpubListMarker(false,1,1), EpubListMarker(true,2,0)), blocks.map { it.listMarker })
+    }
+    @Test fun invalidOrExcessiveListStartIsRejected() = runBlocking {
+        for (start in listOf("0","-1","10000","wrong")) reject("<ol start=\"$start\"><li>A</li></ol>")
+    }
+    @Test fun separatorsAreSemanticWithNoFabricatedCodePoints() = runBlocking {
+        val c = parse("<p>A</p><hr/><p>B</p>"); assertEquals(EpubBlockKind.SEPARATOR, c.blocks[1].kind); assertEquals(2, c.codePoints)
+    }
+    @Test fun preformattedWhitespaceAndUnicodeArePreserved() = runBlocking {
+        val b = parse("<pre> A\n  📚 B</pre>").blocks.single()
+        assertEquals(EpubBlockKind.PREFORMATTED, b.kind); assertEquals(" A\n  📚 B", b.text)
+    }
+    @Test fun captionsKeepPassiveTextAndInlineEmphasis() = runBlocking {
+        val b = parse("<figure><figcaption>Original <em>caption</em></figcaption></figure>").blocks.single()
+        assertEquals(EpubBlockKind.CAPTION, b.kind); assertEquals("Original caption", b.text)
+    }
+    @Test fun imagesAreReferencesAndParserDoesNotOpenTheirBytes() = runBlocking {
+        val doc = Document(mapOf(chapter.value to xhtml("<p>A<img src=\"image.xhtml\" alt=\"Art\"/>B</p>"), "OPS/image.xhtml" to xhtml("<p>not decoded</p>")))
+        val c = BoundedEpubParser().chapter(doc, chapter)
+        assertEquals(listOf("A","[Image: Art]","B"), c.blocks.map { it.text }); assertEquals(1, doc.opened)
+        assertEquals(EpubImage(EpubEntryPath("OPS/image.xhtml"), "application/xhtml+xml", "Art"), c.blocks[1].image)
+        // Historical paragraph offset still names the same text after image block splitting.
+        assertEquals(2 to 0, c.locate(ReadingLocator.Epub(chapter, listOf(0,0), 13, .5)))
+    }
+    @Test fun imageFragmentsQueriesSchemesAndAliasesNeverReachRenderer() = runBlocking {
+        for (src in listOf("../image.xhtml", "../../secret", "%2e%2e/secret", "image.xhtml#x", "image.xhtml?x=1", "/image.xhtml", "file:///image.xhtml", "content://image", "http://image", "https://image", "//host/image", "data:image/png;base64,x", "javascript:alert(1)", "missing.png")) {
+            val doc = Document(mapOf(chapter.value to xhtml("<p><img src=\"$src\" alt=\"Alt\"/></p>"), "OPS/image.xhtml" to xhtml("<p>unused</p>")))
+            assertFailsWith<EpubException>(src) { BoundedEpubParser().chapter(doc, chapter) }; assertEquals(doc.opened, doc.handlesClosed)
+        }
+    }
+    @Test fun excessiveImagesAreRejectedBeforeAnyDecode() = runBlocking {
+        val doc = Document(mapOf(chapter.value to xhtml("<p><img src=\"image.xhtml\" alt=\"Alt\"/></p>".repeat(65)), "OPS/image.xhtml" to xhtml("<p>unused</p>")))
+        assertEquals(EpubFailure.LIMIT, assertFailsWith<EpubException> { BoundedEpubParser().chapter(doc, chapter) }.failure); assertEquals(1, doc.opened)
+    }
+
 }
