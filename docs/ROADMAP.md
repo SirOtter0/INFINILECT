@@ -181,3 +181,14 @@ No production comic source, CBZ, PDF, manga-site compatibility or Mihon integrat
 Physical Android and graphical Desktop acceptance remain explicit review gates.
 Future CBZ/web/download adapters may reuse PageDocument; PDF needs a separate reader.
 This does not complete v0.0.1. [Limits/manual checklist](PAGE_READER.md).
+
+## Bounded CBZ preparation (Draft PR #18)
+
+The original development comic now also ships as an opt-in CBZ resource. A shared
+ZIP32 inspector serves EPUB and CBZ structural safety; strict PNG/JPEG CBZ pages map
+to the existing PageDocument/PageReader through synthetic ordinal keys and
+deterministic natural path order. ZIP order is not reading order. No production comic
+source, CBR/RAR/7z, local import, PDF, permissions or dependency is added. Android
+uses app cache storage and Desktop its safe per-user cache root; preparation bytes are
+disposable and separate from persistent progress and collections. Draft status means
+the full verification matrix and physical Android/Desktop acceptance remain open.

@@ -48,7 +48,7 @@ class ApplicationSources internal constructor(
     /** Join the independent preference writer before a Desktop process intentionally exits. */
     suspend fun awaitPreferencesClosed() { epubSettings?.awaitClosed(); pageSettings?.awaitClosed() }
 
-    suspend fun awaitProgressClosed() { awaitPreferencesClosed(); progress?.awaitClosed(); collections?.awaitClosed(); textPreparer.awaitClosed(); epubPreparer?.awaitClosed() }
+    suspend fun awaitProgressClosed() { awaitPreferencesClosed(); progress?.awaitClosed(); collections?.awaitClosed(); textPreparer.awaitClosed(); epubPreparer?.awaitClosed(); pagePreparer?.awaitClosed() }
 
     fun close() {
         if (closed) return
@@ -61,6 +61,7 @@ class ApplicationSources internal constructor(
         collections?.close()
         textPreparer.close()
         epubPreparer?.close()
+        pagePreparer?.close()
         releaseSources()
     }
 }

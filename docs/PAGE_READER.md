@@ -169,6 +169,59 @@ never masquerades as a comic; only low-level raster presentation may be shared.
 None is implemented here. No OCR, covers, library redesign, double spreads, arbitrary
 image import, extreme full-resolution scans, zoom persistence or production comics.
 
+## Bounded CBZ input (Draft PR #18)
+
+CBZ flows through `CBZ resource → shared bounded ZIP32 inspector → CBZ page adapter →
+PageDocument → existing PageReader`. The app-owned generic ZIP layer checks physical
+record layout, local/central agreement, ZIP32 only, flags/methods, safe relative ASCII
+paths, alias/ancestor collisions, entry types, comments/extras, declared bounds and
+CRC. EPUB continues to apply its own exact first-STORED `mimetype`, package/XML,
+manifest and spine policy above this generic layer. The CBZ path does not weaken or
+reinterpret EPUB rules.
+
+Accepted entries are directories and regular PNG/JPEG pages only. Every regular
+payload must have a recognized `.png`, `.jpg` or `.jpeg` suffix and the bounded byte
+header must confirm that exact media type; anything else rejects the archive. ZIP
+order is ignored. Relative paths sort using ordinal ASCII case-folded comparison with
+contiguous digit runs compared by numeric value, fewer leading zeroes first when
+numeric runs tie, then the original ordinal path as a deterministic tie-break. The
+whole normalized path participates, so nested directory names sort before their
+children's leaf names. For example, `page/1.png`, `page/2.png`, `page/3.png`,
+`page/03.png`, `page/10.png` sorts as `1`, `2`, `3`, `03`, `10`; equal numeric names
+do not collide. Reading direction remains the user's global PageReader setting.
+
+Bounds: archive 32 MiB; total declared expansion 64 MiB; one ZIP entry 8 MiB;
+512 total ZIP records (directories included); compression ratio at most 100:1; at
+least one and at most 512 page files; one encoded raster at most 2 MiB. Raster header
+inspection accepts only the existing static PNG/JPEG policy and checks dimensions
+≤2048 per side, ≤1,048,576 pixels (≤4 MiB ARGB per decoded frame). Preparation keeps
+one 8 KiB transfer buffer and at most one encoded page (2 MiB) at a time. It verifies
+all ZIP entry streams/CRCs without retaining page payloads, then validates each
+raster's signature/geometry without decoding it to ARGB. PageReader retains at most
+three decoded frames, with one serialized decoder and one-page prefetch. At four MiB
+maximum ARGB per frame, three retained frames plus one in-flight decode are bounded
+to 16 MiB ARGB, plus at most one 2 MiB encoded page. The preparer allows at most two
+open prepared documents and three live page handles per document.
+
+The archive is streamed from ResourceLoader to a UUID-named temporary file beneath
+`cacheDir/cbz-preparation-v1` on Android and the existing per-user Desktop cache root
+under `cbz-preparation-v1`. ZIP paths never become filesystem paths; no extraction is
+performed. A document publishes only after complete bounded transfer, structural
+inspection, CRC/size verification and image-header validation. Closing it closes the
+ZipFile/handles and deletes its backing archive; owner shutdown cancels preparation
+and drains cleanup. Startup cleanup is locked and removes only the CBZ adapter's exact
+UUID `.part`/`.zip` namespace. Incomplete/cancelled files cannot be opened as a
+document. OS cache clearing may discard prepared bytes; reopening prepares them again
+through the source and does not affect Library/History or ReadingProgress.
+
+The `CBZ development demo` is original project-owned artwork generated from the
+existing comic art, available only in Android debug and with Desktop
+`INFINILECT_COMIC_DEMO=1`. Its physical ZIP order differs from page order and includes
+numeric names, leading zeroes, a nested directory, PNG/JPEG and varied geometry.
+Production comic sources and local import are not enabled. Future local file import
+must be a separate platform acquisition boundary into this preparer. CBR/RAR/7z,
+PDF, OCR, and local-file picking remain out of scope; this is not a PDF engine.
+
 ## Android physical acceptance — user-reported partial acceptance for PR #17
 
 Automated host tests are not device tests. The user has now physically tested PR #17

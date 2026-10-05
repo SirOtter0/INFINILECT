@@ -67,7 +67,7 @@ persisted cache key and does not introduce session persistence.
 ID and local publication ID, so identical local IDs from different catalogs do
 not collide. Do not flatten it with an unescaped separator in storage or URLs.
 `PublicationType` describes meaning (BOOK, COMIC, MAGAZINE, ARTICLE, DOCUMENT).
-`PublicationFormat` describes representation (EPUB, PDF, PAGES, HTML, TEXT).
+`PublicationFormat` describes representation (EPUB, CBZ, PDF, PAGES, HTML, TEXT).
 A publication can offer multiple representations without changing semantic type.
 
 `PublicationResource` is an opaque source-owned resource reference, with a
@@ -415,3 +415,22 @@ same reactive shared Back state including PageReady; root Search keeps system ex
 No production comic source, permission, dependency or SQL migration. Future CBZ/web
 adapters feed PageDocument; PDF needs a separate semantic PdfReader. [PAGE_READER](PAGE_READER.md)
 and [ADR 0023](adr/0023-bounded-page-reader.md) define budgets/limitations/manual gates.
+
+
+## Bounded CBZ preparation (Draft PR #18)
+
+CBZ is a transport/resource format, not a publication type or a second reader:
+`CBZ resource → bounded ZIP32 inspection → natural-ordered validated raster pages →
+PageDocument → existing PageReader`. A shared app-owned ZIP32 validator contains
+archive structure, path, header, size, flags and CRC checks; EpubZip retains EPUB
+mimetype/package/XML rules. The CBZ adapter streams the acquired archive to a
+dedicated app-private temporary cache file and exposes only synthetic page keys and
+validated dimensions to PageDocument. Page opens are sequential bounded
+ResourceContent handles from the owned ZipFile. No extraction or ZIP path reaches core.
+
+The original development CBZ is exposed only under the existing Android debug and
+Desktop explicit comic-demo opt-in. CBR/RAR/7z, PDF, local import/file picker and
+production comic sources remain out of scope. Future local-file support needs a
+separate platform acquisition boundary feeding this preparer; PageReader does not
+become a filesystem reader. Prepared archives are disposable cache data, independent
+of Library/History and ReadingProgress.

@@ -1,3 +1,60 @@
+# PR #18: bounded CBZ preparation verification
+
+Focused CBZ and EPUB regression tests passed with:
+
+```sh
+JAVA_HOME='/tmp/infinilect-jdk/jdk-21.0.12.1+1' \
+GRADLE_USER_HOME=/tmp/infinilect-gradle \
+GRADLE_OPTS='-Dorg.gradle.native=false' \
+./gradlew :app:desktopTest \
+  --tests org.infinilect.app.page.CbzPagePreparerTest \
+  --tests org.infinilect.app.epub.FileEpubPreparerTest \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all --offline \
+  -Pkotlin.compiler.execution.strategy=in-process
+```
+
+Results: `CbzPagePreparerTest` **14/14** and `FileEpubPreparerTest` **53/53**;
+67 executions, 0 failures/errors/skips.
+
+The final full PR #18 verification passed with:
+
+```sh
+JAVA_HOME='/tmp/infinilect-jdk/jdk-21.0.12.1+1' \
+JAVA_TOOL_OPTIONS='-Duser.home=/tmp/infinilect-home' \
+ANDROID_HOME=/tmp/infinilect-android-sdk \
+ANDROID_USER_HOME=/tmp/infinilect-android-user \
+GRADLE_USER_HOME=/tmp/infinilect-gradle \
+GRADLE_OPTS='-Dorg.gradle.native=false -Dorg.gradle.java.installations.auto-detect=true' \
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all \
+  -Pkotlin.compiler.execution.strategy=in-process
+```
+
+`BUILD SUCCESSFUL`, 150 actionable tasks (142 executed, 8 up-to-date). Final test reports:
+
+| Task | Executions | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| `:core:jvmTest` | 53 | 0 | 0 | 0 |
+| `:app:desktopTest` | 763 | 0 | 0 | 0 |
+| `:core:testAndroidHostTest` | 53 | 0 | 0 | 0 |
+| `:app:testAndroidHostTest` | 733 | 0 | 0 | 0 |
+| `:androidApp:testDebugUnitTest` | 0 (`NO-SOURCE`) | 0 | 0 | 0 |
+| **Total test executions** | **1,602** | **0** | **0** | **0** |
+
+The XML reports contain **833 unique class/method cases** after normalizing the
+JVM/Desktop/Android-host target suffixes.
+Android lint passed. The debug APK was produced at
+`androidApp/build/outputs/apk/debug/androidApp-debug.apk` (11,929,828 bytes;
+SHA-256 `f1586557706077c4e2db2723ab11881f93c094bee8129927ff60bf84cbdd977e`).
+The Desktop distributable was built at
+`desktopApp/build/compose/binaries/main/app/desktopApp`; it was not graphically run.
+No live publication-source request or physical-device test was run. The initial
+matrix attempt exposed a read-only default home in forked JVM workers and was stopped;
+the successful run explicitly propagated a writable temporary home to all workers.
+
 # PR #16 follow-up: durable global EPUB settings — 2026-10-05 UTC
 
 Fetched and verified existing Draft PR #16 HEAD

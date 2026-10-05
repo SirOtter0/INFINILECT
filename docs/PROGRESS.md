@@ -256,3 +256,9 @@ unchanged**, independently tested against their historical serializers. No SQL
 migration or schema change to Library/History. Corrupt/future/malformed locators remain
 absent progress. Global page reading mode persists in its own preferences record,
 not ReadingProgressStore. [Page policy/restoration limits](PAGE_READER.md).
+
+Draft PR #18 CBZ uses this same PAGE progress contract. Its prepared page keys are
+ordinal and path-independent, so progress persists no archive path, ZIP metadata or
+transport locator. Re-preparing a CBZ maps the same natural page order back to the
+existing synthetic keys; no progress schema migration is introduced. Closing/clearing
+temporary CBZ cache storage leaves ReadingProgress untouched.

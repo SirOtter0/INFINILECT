@@ -206,6 +206,7 @@ class FileEpubPreparerTest {
     @Test fun nestedArchivesAreNotAcceptedAsOpaquePayloads() = runBlocking<Unit> {
         invalidFixture { entries["nested.zip"] = byteArrayOf(1) }
         invalidFixture { entries["nested.bin"] = byteArrayOf(80, 75, 3, 4) }
+        invalidFixture { entries["nested.bin"] = byteArrayOf(80, 75, 3, 4) + ByteArray(32) }
     }
     @Test fun truncatedArchivePrefixTrailerAndHeaderDisagreementAreRejected() = runBlocking<Unit> {
         val bytes = EpubFixture().zip()
