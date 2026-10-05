@@ -1,3 +1,151 @@
+# PR #19: durable local-file import verification
+
+Base: `6cb31d1517618bdadc60794af5045a3d8af35e3a`, the verified PR #18 merge.
+Branch: `feature/local-file-import`. This PR is Draft; no merge was performed.
+
+## Focused development verification
+
+Production integration first compiled with `:app:compileKotlinDesktop
+:androidApp:compileDebugKotlin`. Local import tests then passed with
+`:app:desktopTest --tests '*FileLocalPublicationSourceTest'` (19 initial cases),
+and `:app:desktopTest --tests '*LocalImport*' --tests '*FileLocalPublicationSourceTest'`
+(29 cases before the two additional failure/preparation-cancellation tests).
+
+The final focused regression run used the same environment/flags below, without
+`clean`, and these tasks/filters:
+
+```sh
+./gradlew :app:desktopTest \
+  --tests '*LocalImport*' --tests '*FileLocalPublicationSourceTest' \
+  --tests '*Text*' --tests '*Epub*' --tests '*Cbz*' --tests '*Page*' \
+  --tests '*Collections*' --tests '*Progress*' --tests '*Application*' \
+  :app:testAndroidHostTest --tests '*Import*' --tests '*AndroidSourcesTest' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all --offline \
+  -Pkotlin.compiler.execution.strategy=in-process
+```
+
+563 Desktop + 16 Android-host executions, zero failures/errors/skips; 27 actionable
+tasks (12 executed, 15 up-to-date). An unnecessary test-only non-null assertion
+warning was removed before the final clean run. Filters can match method names as
+well as class names; the complete new suite runs in the final matrix below.
+
+New tests cover real streamed imports/EPUB/CBZ preparation, exact/unknown sizes,
+capacity bounds, binary/malformed ZIP rejection, malicious filenames, byte dedup,
+corruption, symlink/resource ownership, handle bounds, cancellation/owner close in
+copy and preparation, scoped stale cleanup and failed metadata publication.
+Actual JDBC Library/History + file progress integration drops **all** owners before
+reopening; cache deletion and original deletion do not supply a RAM shortcut.
+Session tests cover picker dismissal, durable Library failure, retained Search,
+History return, Back cancellation and non-cooperative late results. Platform tests
+cover private persistent directories and Desktop external stream ownership.
+
+## Single final clean matrix
+
+Executed once after implementation/focused regressions stabilized:
+
+```sh
+JAVA_HOME='/tmp/infinilect-jdk/jdk-21.0.12.1+1' \
+JAVA_TOOL_OPTIONS='-Duser.home=/tmp/infinilect-home' \
+ANDROID_USER_HOME=/home/agent/.android \
+ANDROID_HOME=/tmp/infinilect-android-sdk \
+GRADLE_USER_HOME=/tmp/infinilect-gradle \
+GRADLE_OPTS='-Dorg.gradle.native=false' \
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all --offline \
+  -Pkotlin.compiler.execution.strategy=in-process
+```
+
+`BUILD SUCCESSFUL in 3m 17s`; **150 actionable tasks: 142 executed, 8 up-to-date**.
+Zero compiler/build warnings in this clean run. Configuration-cache suggestion is
+informational. No live publication/source requests occurred; offline dependency
+resolution used the existing Gradle cache.
+
+| Task | Executions | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| `:core:jvmTest` | 53 | 0 | 0 | 0 |
+| `:app:desktopTest` | 794 | 0 | 0 | 0 |
+| `:core:testAndroidHostTest` | 53 | 0 | 0 | 0 |
+| `:app:testAndroidHostTest` | 763 | 0 | 0 | 0 |
+| `:androidApp:testDebugUnitTest` | 0 (`NO-SOURCE`) | 0 | 0 | 0 |
+| **Total** | **1,663** | **0** | **0** | **0** |
+
+XML class/method normalization yields **865 unique cases**, including **32 new
+local-import cases** (31 Desktop, 30 Android-host executions). Host tests are not
+Android device or real SAF tests. Android lint: **No issues found**, zero errors or
+warnings. Existing source/cache/TEXT/EPUB/CBZ/PageReader/progress/collections tests
+remain green; no test was weakened or removed.
+
+`git diff --check`, the complete base diff inspection, local Markdown links,
+changed Kotlin SPDX headers, core/owned-contract import scans and generated/runtime/
+secret pattern inspection passed. No new dependency, Gradle/SQL/progress schema,
+manifest permission, reader implementation or source policy change. Existing
+build-script SPDX omissions are pre-existing and untouched.
+
+## Artifacts and signing
+
+APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`
+(**11,995,423 bytes**), SHA-256:
+`7741fa56c6fde3f90c7f0b871a835ffff5473652a74e8c740fe1fb738f0ecd06`.
+Package `org.infinilect.app`; versionCode `1`, versionName `0.0.1-SNAPSHOT`;
+minSdk 26, targetSdk/compileSdk 37. Manifest permissions remain INTERNET and the
+AndroidX-generated `org.infinilect.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`;
+no broad/storage/manage-storage permission or persisted URI grant was added.
+
+`apksigner verify --verbose --print-certs` passed (APK Signature Scheme v2).
+Certificate SHA-256:
+`547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+It **exactly matches** the trusted installed PR #17/recovered PR #18 identity.
+The existing external keystore was selected via ANDROID_USER_HOME; no key was
+created, copied, changed or committed. Signing compatibility is verified; actual
+update installation is a device gate.
+
+Desktop distributable built at
+`desktopApp/build/compose/binaries/main/app/desktopApp`; its entry point remains
+`org.infinilect.app.MainKt`, shared with Gradle run. It was **BUILT, not graphically
+executed**. No APK/runtime/cache/import/database file is committed.
+
+## Pending physical Android acceptance
+
+Codex performed no physical device/emulator/picker test of PR #19. Prior user
+acceptance of older PRs does not validate this new local acquisition flow.
+
+1. Update-install over PR #18 without clearing app data; confirm existing Library,
+   History and TEXT/EPUB/PAGE progress/settings survive.
+2. Import a small local UTF-8 TXT, read, Back, reopen from Library.
+3. Import a supported passive EPUB3, open/read/navigate normally.
+4. Import a supported PNG/JPEG CBZ, open/navigate normally.
+5. Confirm History records successful local opens; Back retains the prior destination.
+6. Terminate/relaunch; reopen each import through Library and History; verify progress.
+7. Move/delete the ORIGINAL files externally; all owned copies must still open.
+8. Clear CACHE ONLY; imports, Library/History/progress/preferences must survive.
+9. Reimport identical bytes under a different name: no duplicate publication/Library ID.
+10. Remove a local Library row; History/Imported files (`*`) must still reopen its copy.
+11. Cancel picker/import, use system Back, and rotate during acquisition; no stale
+    navigation, partial catalog entry or crash. Retry malformed/unreadable providers.
+12. Try empty, malformed, unsupported/PDF and oversized input: fixed controlled failure.
+13. Confirm existing Gutenberg catalog-only/IA TEXT and debug EPUB/CBZ flows still work;
+    no permission, source-acquisition or telemetry behavior changed.
+
+## Pending graphical Desktop acceptance
+
+1. Gradle run and packaged application: import TXT/EPUB/CBZ using the native picker.
+2. Open/read each, Back, reopen through existing Library/History and restore progress.
+3. Restart, delete/move originals, reopen owned copies; clear only cache and repeat.
+4. Dismiss/cancel the picker and attempt malformed/oversized input; controlled behavior.
+5. Verify retained Search/source flow and existing readers, including large-TEXT
+   bidirectional scrolling. No graphical Desktop result is claimed.
+
+Limitations: conservative reader subsets/size and finite storage budget; no explicit
+import deletion/orphan cleanup/export or PDF. Non-cooperative external providers and
+filesystem power-loss guarantees require platform testing; Library-save failure keeps
+an owned import discoverable via Imported files with an explicit failure message.
+[Durable storage, detection and lifecycle policy](LOCAL_IMPORT.md).
+
+---
+
 # PR #18: bounded CBZ preparation verification
 
 Focused CBZ and EPUB regression tests passed with:

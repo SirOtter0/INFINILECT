@@ -1,5 +1,15 @@
 # Roadmap
 
+## Durable local-file workflow — Draft PR #19
+
+Android SAF/Desktop native selection → bounded validated owned copy → local source
+→ existing TEXT/EPUB/CBZ readers → existing Library/History/progress is implemented.
+Source identity is independent of the original location; exact-byte deduplication
+and non-destructive Library removal preserve user ownership. Physical picker/update/
+restart and graphical Desktop checks remain separate human gates. PDF, explicit
+import deletion/orphan cleanup, bulk/directory import and backup remain future work.
+[Policies and limitations](LOCAL_IMPORT.md). No v0.0.1 completion claim.
+
 ## EPUB usability and local media — Draft PR #16
 
 Session font/spacing/margin/theme controls, semantic heading/list distinctions, captions/

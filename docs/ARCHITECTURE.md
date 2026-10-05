@@ -24,6 +24,19 @@ replacement constraints: [dependency boundaries](DEPENDENCY_BOUNDARIES.md).
 
 ## Foundation, search and bounded TEXT reading implemented today
 
+### Durable local acquisition — PR #19
+
+Platform pickers provide an owned `LocalFileSelection`/`ResourceContent` acquisition
+offer. `LocalPublicationImporter` validates and commits durable bytes; the local
+`PublicationSource` resolves stable digest-scoped IDs through the normal opener.
+External Android URIs/Desktop paths never enter reader models or persisted identity.
+The implementation is selected in application composition; core remains unchanged.
+Android filesDir/Desktop persistent data contain `local-imports-v1`, physically
+separate from cache, prepared documents, progress, preferences and collections SQL.
+Library metadata is committed before automatic opening, and existing successful-open
+History/progress behavior applies. Library removal is non-destructive to owned bytes.
+No new reader, dependency or database schema. [Local import policy](LOCAL_IMPORT.md).
+
 Four modules now have concrete consumers: `core`, `app` (shared KMP library),
 `desktopApp` and `androidApp`. The dependency direction is both launchers → app →
 core. No empty registry/engine/navigation modules. Keeping the established `app`

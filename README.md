@@ -28,8 +28,8 @@ with known size≤**16MiB**. Back retains source/query/results. Text is prepared
 private temporary storage and displayed through bounded lazy windows;
 [reader policy](docs/TEXT_READER.md).
 
-This is a conservative first reading path, with local approximate TEXT progress across restarts, without reader
-settings, production EPUB/PDF reading or persistent downloads. Automatic bounded disk caching
+This is a conservative remote reading path, with local approximate TEXT progress across restarts,
+without production EPUB acquisition, PDF reading or explicit downloads. Automatic bounded disk caching
 only reuses resources with trustworthy revisions; current Archive resources have
 no revision and reopening still acquires again. See [cache policy](docs/CACHE.md).
 Library saves publication metadata locally; History records successful opens.
@@ -37,6 +37,13 @@ Both survive restarts and cache deletion. Saved entries reopen through their sou
 with normal acquisition and reading-progress restoration. History Clear requires
 confirmation and keeps Library/progress. [Local storage policy](docs/LIBRARY_HISTORY.md).
 **v0.0.1 is not complete**. [Acquisition scope](docs/INTERNET_ARCHIVE.md).
+
+**Import local file** copies a selected UTF-8 TEXT, supported EPUB3 or PNG/JPEG CBZ
+into private durable application storage, adds it to Library and opens it through
+the existing readers. Library/History reopen and progress survive restart, cache
+clearing and removal of the original file. Imports are bounded to 32 MiB (TEXT:
+16 MiB), deduplicated by bytes and retained after Library removal. Android uses SAF;
+Desktop uses a native picker. [Ownership, limits and pending manual checks](docs/LOCAL_IMPORT.md).
 
 OAPEN's official alternate metadata interface is accessible and supplies download
 links; REST rejects this environment with HTTP 403 and PDF transfer remains
