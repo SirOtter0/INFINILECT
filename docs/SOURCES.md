@@ -78,3 +78,12 @@ expression evaluation. Installing a definition cannot install executable code.
 The first adapter can be built in. Do not build a plugin marketplace, universal
 scraper or broad engine configuration language for v0.0.1. Authentication and
 additional sources should be designed only when a concrete legal source needs them.
+
+## Original EPUB development route (Draft PR #15)
+
+An explicitly labeled development source generates only original project-owned
+three-chapter EPUB content: debug Android, explicitly opted-in Desktop. It uses the
+same PublicationSource/ResourceLoader boundary and normal saved-ID re-resolution,
+without network, imported files or changing production-source policies. It is not
+a public catalog or plugin system. Archive EPUB acquisition remains unverified and
+disabled; Gutenberg remains catalog-only. [Exact route and evidence](EPUB_READER.md).

@@ -140,21 +140,30 @@ and progress have separate lifetimes; see [Cache](CACHE.md).
 No complete reader framework, engine registry or downloads are
 claimed. The bounded disk tier is documented separately. See the [ADRs](adr/README.md).
 
-## Structural EPUB foundation (Draft PR #13)
+## EPUB preparation and first passive reader (Draft PR #15)
 
-`ResourceLoader → ResourceContent → EpubPreparer → EpubDocument` parallels TEXT
-preparation without changing its opener/UI. Pure core contracts expose package
-metadata, canonical internal paths, manifest/spine/navigation and manifest-owned
-local byte handles. Standard ZIP/SAX validation and private seekable session
-storage live in app/jvmSharedMain, owned by ApplicationSources on both platforms.
-Preparation finishes bounded ZIP/CRC/XML/ownership checks before exposing a
-document; close cancels work/handles and drains cleanup on IO.
+`ResourceLoader → ResourceContent → EpubPreparer → EpubDocument` preserves the
+structural ZIP/CRC/XML/manifest boundary established by PR #13. A separate bounded
+parser creates chapter blocks, styled text runs and manifest-owned internal targets;
+shared EpubReaderController/Compose presentation never handles HTTP, filesystem URLs,
+browsers or scripts. Core gains only a typed layout-independent EPUB progress locator.
+Two parsed chapters and one serialized navigation parser are retained; no whole-book
+DOM, CSS execution or image decoding. Document/resource ownership closes on error,
+cancellation, Back/replacement and application disposal. TEXT/PR #14 are unchanged.
 
-This is not rendered EPUB reading. No UI availability, source acquisition policy,
-TEXT/progress behavior, schema or dependency changes. Future renderers remain
-platform adapters with their own no-script/no-remote sandbox; EPUB needs a distinct
-logical locator. Prepared ZIP data is neither ResourceCache nor Downloads.
-[Policy/limits/API evidence](EPUB.md), [ADR 0019](adr/0019-bounded-epub-foundation.md).
+The neutral opener prefers offered TEXT, otherwise selects EPUB only for an enabled
+application source. Successful first-chapter parsing precedes History. Library and
+History still re-resolve IDs; prepared ZIPs remain disposable cache infrastructure,
+separate from resource cache and persistent user metadata/progress. Historical TEXT
+progress stays v1; EPUB adds v2/tag2 without SQL changes. [Reader subset/research/
+limits/manual route](EPUB_READER.md), [foundation](EPUB.md),
+[ADR 0021](adr/0021-semantic-epub-reader.md).
+
+Production IA EPUB and Gutenberg acquisition remain disabled. Android debug and
+explicitly opted-in Desktop expose an original development EPUB source exercising
+the actual ResourceLoader/preparation/rendering/persistent-state pipeline. This is
+not a source registry or production catalog. Desktop's bundled runtime explicitly
+includes java.xml for the shared SAX parser; Android uses its existing API26+ provider.
 
 ## Search slice
 

@@ -1,3 +1,129 @@
+# PR #15 passive EPUB reader verification — 2026-10-04 UTC
+
+Verified PR #14 was merged before creating `feature/epub-reader`. Exact base/main:
+`0968a36e3401a1ba86ef18a4098c2a7f69ce4e0c`. A fresh fetch on 2026-10-05 confirmed
+main still had that SHA. **PR #15 is Draft; no merge.**
+[Supported subset/research/budgets/manual plans](EPUB_READER.md),
+[ADR 0021](adr/0021-semantic-epub-reader.md).
+
+## Implementation and honest acquisition status
+
+The real ResourceLoader/ResourceContent/ZIP preparation path now leads to bounded
+semantic XHTML blocks/runs, passive shared Compose reading, chapter/TOC/internal
+navigation and typed persistent EPUB progress. An original development source
+exercises UI/source-resolved Library/History reopen on debug Android and opted-in
+Desktop. **No production EPUB acquisition is enabled or claimed.** Archive's CC0,
+fresh metadata/redirect/null-revision policy and Gutenberg catalog-only behavior
+remain unchanged. No TEXT viewport change, new dependency, SQL schema, manifest,
+permission, Downloads or cache/progress conflation.
+
+Independent self-review identified a handoff/deadline race in the initial new
+implementation: publishing Ready/History inside withTimeout could race cancellation
+at its return boundary. Handoff now occurs only after successfully leaving the
+deadline and checking cancellation/generation. A dedicated regression verifies
+successful History handoff is outside the preparation deadline; timeout/cancel/
+parser failure/foreign prepared identity close the document without History.
+Review also bounded/serialized navigation parser work and protected supplementary
+Unicode at the bounded image-alt cutoff. No browser/image decoder is present.
+
+## Commands actually executed
+
+Focused iterations ran `:core:jvmTest :app:desktopTest` with the same wrapper flags.
+The last focused pass before the final review additions passed 48 core +573 app
+cases, BUILD SUCCESSFUL in 53s, 17 tasks (11 executed, 6 up-to-date). Earlier
+compile/test failures were corrected: Int resource bound, shared collection label
+scope, newline preservation, legacy TEXT timeout wording, JUnit Unit-return and
+an integration-test search synchronization assumption. No failing tests were
+removed/weakened. The complete clean pass below includes all final production/test
+changes, including the six deadline/ownership cases and supplementary-alt case.
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m31s; 150 actionable tasks:142 executed,8 up-to-date.**
+
+| Task | Executions | Failures / errors / skipped |
+| --- | ---: | --- |
+| `:core:jvmTest` | 48 | 0 / 0 / 0 |
+| `:app:desktopTest` | 580 | 0 / 0 / 0 |
+| `:core:testAndroidHostTest` | 48 | 0 / 0 / 0 |
+| `:app:testAndroidHostTest` | 566 | 0 / 0 / 0 |
+| **Total** | **1,242** | **0 / 0 / 0** |
+
+**642 unique class/method cases,87 new** (6 core +81 app), each new case runs on
+both corresponding host targets. Android launcher unit task is NO-SOURCE, not
+counted as device/launcher tests. Android lint XML: **0 issues**. No compiler/Gradle
+warnings or new actionable warnings; existing SLF4J no-provider/NOP JDBC messages
+remain. Toolchain/repositories were unchanged; no Maven429 workaround was needed.
+
+Coverage includes the real bounded parser/mixed order/Unicode/styles/lists/quotes/
+links/TOC, malformed and active/foreign/remote/file/content/javascript input,
+traversal/encoded aliases, resource closure, XML/model bounds, cancellation,
+serialized navigation/stale generations, two-chapter cache, typed semantic progress,
+two-second saves/idempotent close, full owner/store restart after preparation/cache
+deletion, actual committed .progress records, TEXT v1 +EPUB v2 coexistence, original
+ZIP/source ownership, successful-only History, source-resolved Library/History and
+failed acquisition/resolution preserving metadata. All existing source authorization,
+redirect/cache/TEXT UTF8/BOM/size/progress/SQLite PRAGMA/catalog tests remain green.
+Host simulations do not prove Android's actual SAX/filesystem provider or Compose
+layout/gesture behavior.
+
+## Artifacts inspected
+
+- APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`
+- Exact size: **11,749,545 bytes** (65,536 bytes above the inspected PR #14 APK).
+- SHA-256: `7090873bb6a4ce594520f4d3efb22767163145e215d144c8084661882e3e8cb8`
+- Package: `org.infinilect.app`; version `0.0.1-SNAPSHOT`, versionCode1.
+- minSdk26, targetSdk37, compileSdk37; visible app name INFINILECT.
+- Permissions unchanged: INTERNET plus AndroidX's application-specific
+  `org.infinilect.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (signature guard).
+  No storage permission or cleartext relaxation.
+- `apksigner verify --verbose --print-certs`: verifies, v2 true, one RSA2048 signer.
+- Debug certificate SHA-256:
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+  Direct comparison with the PR #14 artifact matches package/version/certificate;
+  update installation is intended to retain data, **not physically tested here**.
+- Desktop app image: `desktopApp/build/compose/binaries/main/app/desktopApp`.
+  **Built, not graphically executed.** Its bundled runtime release explicitly
+  contains java.xml alongside the existing HTTP/SQL/Desktop modules.
+
+Inspected with standard SDK aapt2/apksigner, runtime release metadata and hashes.
+No APK/runtime/ZIP/database/cache/progress files are committed.
+
+## Live evidence and environment limitations
+
+One official Archive MDAPI request on 2026-10-04T21:27:07Z checked
+`https://archive.org/metadata/gmb-2015-93040`: HTTP200,1 request,5,359 bytes,
+no redirect, licenseurl CC0, no EPUB files. No book acquisition or additional
+source/page request; no429/503/retry. This is bounded metadata evidence, not an
+EPUB production-source proof. Upstream renderer documentation was also read; tests
+remain fully offline. No Gutenberg/OAPEN live checks were repeated.
+
+DISPLAY/WAYLAND_DISPLAY are unset. `adb devices` on 2026-10-05 reported an empty
+list after starting the permitted local daemon. **No Android device/emulator test,
+Desktop graphical smoke test or physical performance measurement was performed.**
+The exact Android/Desktop review plans are in EPUB_READER.md. They cover existing
+persistent state and bidirectional TEXT, EPUB development chapters/TOC/internal
+links, Back and full process restart, Library/History, cache-only deletion,
+cancellation/rapid switching. Actual production EPUB remains a future verified gate.
+
+## Repository audits
+
+`git diff --check` and diff against current origin/main passed. Local Markdown
+links, original-code SPDX, pure-core imports/dependencies, dependency/license
+inventory, SQL schema/manifest/source/TEXT-policy invariance, complete diff,
+credential patterns and generated/runtime artifact paths were reviewed. The final
+committed branch is checked clean before publication. No merge/rebase/squash or
+force push. Draft status and physical/provider/production-source limitations remain
+explicit; no v0.0.1 completion claim.
+
+---
+
 # PR #14 TEXT viewport hardening verification — 2026-10-04 UTC
 
 Fetched PR #13 and verified it was merged before starting. Exact starting/current

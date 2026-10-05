@@ -1,5 +1,15 @@
 # Roadmap
 
+## First semantic EPUB reader — Draft PR #15
+
+A narrow shared Compose EPUB3 subset now reads original development publications
+through real preparation, chapter/TOC/internal navigation, typed persisted semantic
+progress and source-resolved Library/History reopen. Production EPUB acquisition
+is not enabled, CSS/images/active content are unsupported, and physical/manual
+verification is pending. [Exact subset and plans](EPUB_READER.md). No release or
+v0.0.1 completion claim. The large TEXT behavior from merged, approved PR #14 is
+preserved; its Android improvement was reported by the reviewer.
+
 ## Large TEXT hardening — Draft PR #14
 
 The reported Android backward-scroll speed defect is traced to cold multi-line
@@ -17,9 +27,9 @@ comparison. No EPUB renderer, source acquisition change or completed release.
 
 Pure reader-facing EPUB contracts and bounded ZIP/container/package/manifest/
 spine/XHTML structural preparation are implemented for Desktop and Android.
-No EPUB renderer or UI reading action is enabled. Limits/subset and platform
+At that stage no renderer or UI reading action was enabled. Limits/subset and platform
 verification gaps are in [EPUB.md](EPUB.md) and [ADR 0019](adr/0019-bounded-epub-foundation.md).
-Future work requires a separately sandboxed platform rendering engine and an EPUB
+PR #15 adds a separate passive shared renderer and a typed EPUB
 logical locator; TEXT progress cannot be reused as EPUB progress. Gutenberg stays
 experimental catalog-only and IA rights/acquisition/cache policy stays unchanged.
 No release/v0.0.1 completion or new manual Desktop observation is claimed.
@@ -49,8 +59,8 @@ Open INFINILECT → search for a book → get real results → open one → read
 4. **Implemented for a narrow subset:** select Internet Archive in Desktop,
    search public CC0 items, open a TEXT resource through ResourceLoader/
    ResourceContent, incrementally validate/index UTF-8 up to 16 MiB, display TextReader,
-   and Back to retained query/results. Gutenberg remains experimental catalog-only. No EPUB/PDF,
-   reader settings or EPUB/PDF support. Codex graphical Desktop verification is pending;
+   and Back to retained query/results. Gutenberg remains experimental catalog-only. Production EPUB/PDF and
+   reader settings remain deferred. Codex graphical Desktop verification is pending;
    PR #10 Android large-TEXT success was human-reported.
 5. **First disk tier implemented:** bounded automatic resource cache with restart
    reuse only for trustworthy revisions, recency eviction and corruption checks.

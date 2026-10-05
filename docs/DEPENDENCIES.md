@@ -301,3 +301,11 @@ SLF4J API has no license element in its module POM; MIT is verified from its [ta
 | `org.jetbrains.kotlin:kotlin-util-klib` | 2.4.20 | [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.kotlin:kotlin-util-klib-metadata` | 2.4.20 | [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm` | 1.8.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) |
+
+## Draft PR #15 renderer decision
+
+No new dependencies or version changes. Existing Compose annotated text/lazy
+layout and hardened platform SAX/ZIP implement the passive EPUB subset. Desktop's
+bundled JDK explicitly includes the standard `java.xml` module alongside its
+existing HTTP/SQL modules. Readium, WebView, JavaFX, JCEF and compose-richtext were
+researched but not added; [upstream/version/license evidence and trade-offs](EPUB_READER.md).

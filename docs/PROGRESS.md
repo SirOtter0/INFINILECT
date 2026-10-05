@@ -32,10 +32,12 @@ fresh getPublication/acquisition permission/location/size checks on every open.
 Progress restoration happens **after** full successful bounded acquisition/decoding.
 It cannot authorize content, bypass permissions, or enable offline reading.
 
-ReadingLocator.Text(codePointOffset, documentCodePoints) is the first typed variant.
-Add EPUB href/locator, PDF page or PAGES index variants when those readers exist;
-no engine/Compose/platform dependency belongs in core. The file implementation
-currently supports TEXT only. Progression must be finite in [0,1]; timestamps are
+ReadingLocator.Text(codePointOffset, documentCodePoints) remains the compatible TEXT
+variant. Draft PR #15 adds ReadingLocator.Epub(spinePath, elementPath, codePointOffset,
+chapterProgression): canonical ZIP spine identity, bounded element-child ordinals
+(rooted at body with a synthetic ordinal0), and Unicode position within the semantic
+block. No pixels/lazy indices or engine/platform object. PDF/PAGES variants remain
+future work. [Exact EPUB semantics/security/development status](EPUB_READER.md). Progression must be finite in [0,1]; timestamps are
 nonnegative and older saves cannot replace newer committed state.
 
 ## TEXT location and approximation
@@ -76,7 +78,10 @@ reading-history or elapsed-reading policy. The reader shows whole percentages.
 App/jvmSharedMain uses FileReadingProgressStore with standard JDK/Android NIO and
 SHA-256. Schema v1: magic INFPROGR, version, bounded body length, length-prefixed
 UTF-8 identity fields, typed TEXT tag, offset/observed length, progression,
-timestamp, and SHA-256 of the body. The digest of the structured identity yields
+timestamp, and SHA-256 of the body. TEXT stays byte-for-byte v1. EPUB uses v2/tag2,
+length-prefixed canonical spine path, 1–32 validated child ordinals, code-point
+offset and chapter fallback; readers accept only matching schema/tag/format. No
+migration, deletion or SQL schema change. The digest of the structured identity yields
 `p-<64 hex>.progress`; untrusted identifiers never become paths or delimiter joins.
 
 - Maximum encoded identity: 8 KiB; record: 16 KiB.
@@ -199,3 +204,17 @@ No new dependencies or persistence/network permissions. Host tests verify algori
 and real temporary-file restart/corruption behavior; actual Compose layout, Android
 filesDir/filesystem/process lifecycle and device restart smoke remain manual checks.
 See [verification](VERIFICATION.md) and [ADR 0015](adr/0015-persistent-reading-progress.md).
+
+## EPUB approximation and lifecycle (Draft PR #15)
+
+Same spine/element structure restores the block and containing line using current
+layout. Offsets clamp to block bounds; changed element structure falls back by
+chapter progression. Removed spine paths start at chapter1. Whole-book progression
+is chapter-weighted, (spine ordinal + chapter fraction)/spine count. No exact pixel,
+page or word-count claim. Unicode surrogate pairs count once. Initial restore does
+not save its rounded line; real scrolling/internal navigation report semantic
+positions. One fixed 2s throttle saves during continuous reading and Back/application
+close flush pending state. Closed readers/old navigation tickets cannot submit late
+updates. Full restart tests discard all ProgressPersistence recent RAM, reopen the
+actual checksummed files, rebuild prepared EPUB and restore. Cache-only deletion
+never removes this user state. Production EPUB acquisition remains disabled.

@@ -29,7 +29,7 @@ private temporary storage and displayed through bounded lazy windows;
 [reader policy](docs/TEXT_READER.md).
 
 This is a conservative first reading path, with local approximate TEXT progress across restarts, without reader
-settings, EPUB/PDF reader or persistent downloads. Automatic bounded disk caching
+settings, production EPUB/PDF reading or persistent downloads. Automatic bounded disk caching
 only reuses resources with trustworthy revisions; current Archive resources have
 no revision and reopening still acquires again. See [cache policy](docs/CACHE.md).
 Library saves publication metadata locally; History records successful opens.
@@ -168,3 +168,13 @@ Foundation, either version 3 of the License, or (at your option) any later versi
 The project license does not relicense publications obtained from sources.
 
 Copyright © 2026 SirOtter0 and INFINILECT contributors.
+
+## Experimental EPUB reader (Draft PR #15)
+
+Android debug builds offer **EPUB development demo**: select it, search `original`,
+and Open EPUB. Desktop opt-in: `INFINILECT_EPUB_DEMO=1 ./gradlew :desktopApp:run`.
+This original three-chapter publication exercises shared passive Compose reading,
+TOC/internal navigation, durable semantic progress and Library/History reopen.
+**Production EPUB acquisition is disabled.** Publisher CSS/images/scripts and generic
+EPUB compatibility are not claimed. Existing TEXT behavior is retained. [Subset,
+security, limits and manual test plans](docs/EPUB_READER.md). v0.0.1 remains unfinished.

@@ -144,3 +144,9 @@ evictable cache. Clearing Library/History cannot evict bytes or reading position
 cache-only deletion cannot delete those stores. A saved entry must re-resolve its
 owning source and follow normal acquisition, including Archive null-revision
 cache bypass. See [LIBRARY_HISTORY](LIBRARY_HISTORY.md).
+
+Draft PR #15 keeps prepared EPUB session ZIPs separate from ResourceCache. The
+original development route has revision=null and does not populate reusable byte
+entries. Semantic EPUB progress resides in the existing persistent progress path,
+not preparation/cache storage; rebuilding after cache-only deletion restores it.
+[Renderer/storage/lifecycle policy](EPUB_READER.md).
