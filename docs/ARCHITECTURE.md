@@ -2,6 +2,26 @@
 
 > A source obtains publications. A reader displays them. INFINILECT connects both.
 
+## Dependency ownership
+
+Business/domain/application code depends on INFINILECT-owned contracts. Replaceable
+infrastructure libraries implement those contracts behind adapters and composition
+roots. Platform/framework abstractions are introduced only where they provide a
+real boundary; INFINILECT does not abstract libraries mechanically.
+
+`PublicationSource`, `ResourceLoader`/`ResourceContent`, `ReadingProgressStore`,
+`LibraryRepository` and `ReadingHistoryRepository` keep transport and persistence
+out of their consumers. `EpubPreparer`/`EpubDocument` and `EpubParser` separate local
+preparation, semantic parsing and presentation. Platform factories select concrete
+implementations and own their lifecycle. Infrastructure-specific types may cross
+between infrastructure helpers and their wiring, never into these business contracts.
+
+Compose is deliberately the UI framework; coroutines are deliberately the application
+concurrency foundation. Neither requires mechanical wrappers. Replacing infrastructure
+can change adapters, composition, implementation tests and persistent-data migration;
+it should not require unrelated domain/session/reader/UI rewrites. Current audit and
+replacement constraints: [dependency boundaries](DEPENDENCY_BOUNDARIES.md).
+
 ## Foundation, search and bounded TEXT reading implemented today
 
 Four modules now have concrete consumers: `core`, `app` (shared KMP library),

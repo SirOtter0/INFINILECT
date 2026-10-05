@@ -1,3 +1,42 @@
+# PR #15 dependency-independence audit — 2026-10-05 UTC
+
+Fetched GitHub before inspection. Exact code/PR HEAD audited:
+`557fb6b43148879ee88f2d842c197f4072730d9f`; current main/base:
+`0968a36e3401a1ba86ef18a4098c2a7f69ce4e0c`. GitHub reported PR #15 Open,
+Draft and MERGEABLE; branch was clean and0 behind/4 ahead before this documentation
+follow-up. The user now reports physical Android testing passed, including corrected
+system Back inside EPUB. This supersedes the earlier pending-device finding below;
+it is user evidence, not a new physical test performed by Codex.
+
+The [independent audit](DEPENDENCY_BOUNDARIES.md) maps current imports/types,
+contracts, composition, replacement/migration implications and deliberate limits.
+No production boundary leak requiring correction was found. Only documentation
+changes: concise durable dependency-ownership rule, audit evidence and this record.
+No new interfaces, dependencies, schema, runtime files, behavior, source policy or
+reader changes. PR #15 remains Draft and unmerged; PR #16 was not created.
+
+Checks performed for this follow-up:
+
+- Classified imports across every production Kotlin source set and launchers, and
+  inspected build declarations, SQL generation/schema, infrastructure constructors,
+  factories, public/owned signatures and fake/real implementation tests.
+- Scanned both imports and fully qualified references in all29 core/commonMain
+  production Kotlin files: no SQLDelight/Ktor/JSON/NIO/SAX/ZIP/Android or concrete
+  infrastructure type reference. Core has no production library dependency. Compose
+  use is confined to the four intended common UI files and platform launchers.
+- Reviewed both contract test seams and implementation integration test coupling.
+  No runtime tests were removed, added or altered.
+- Local Markdown links and both `git diff --check` / full diff against main checks;
+  generated-artifact/secret scan and unchanged-production/configuration checks.
+
+**No Gradle tests, APK rebuild, source live check or device/graphical test were
+rerun for documentation-only changes.** The complete clean run for the unchanged
+code is recorded below:1,255 executions,651 unique cases,0 failures/errors/skipped,
+Android lint0 issues, APK/desktop artifacts built. This audit does not present those
+historical executions as newly run tests, nor claim a real dependency replacement.
+
+---
+
 # PR #15 Android system Back follow-up — 2026-10-05 UTC
 
 The user physically tested the initial PR #15 APK: the EPUB flow worked, but Android
