@@ -28,7 +28,7 @@ internal class ApplicationSession(
     val destination=mutableDestination.asStateFlow()
     val collections=CollectionsController(sources.collections,this.scope,clock)
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
-        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer) { publication ->
+        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings) { publication ->
         collections.enteredReader(publication)
         sources.collections?.recordOpened(publication,clock())
     }

@@ -309,3 +309,14 @@ layout and hardened platform SAX/ZIP implement the passive EPUB subset. Desktop'
 bundled JDK explicitly includes the standard `java.xml` module alongside its
 existing HTTP/SQL modules. Readium, WebView, JavaFX, JCEF and compose-richtext were
 researched but not added; [upstream/version/license evidence and trade-offs](EPUB_READER.md).
+
+## EPUB presentation/media — PR #16
+
+No new third-party dependency/plugin/version. Android uses SDK26+ BitmapFactory /
+ColorSpace; Desktop uses standard JDK21 ImageIO with bounded byte-stream input and
+explicit java.desktop in the packaged runtime. Compose Image/ImageBitmap and existing
+Android/Skia conversion support already ship in the app graph. app/desktopTest now
+uses desktopApp's same `compose.desktop.currentOs` dependency to execute real headless
+Skia image conversion; no decoder fake substitutes for that Desktop integration test.
+Existing Compose/Skiko/Skia/JDK notices/licenses apply unchanged. Android host tests
+exercise shared header/policy/controller logic, not the real BitmapFactory runtime.

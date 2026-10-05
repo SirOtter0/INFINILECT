@@ -169,12 +169,13 @@ The project license does not relicense publications obtained from sources.
 
 Copyright © 2026 SirOtter0 and INFINILECT contributors.
 
-## Experimental EPUB reader (Draft PR #15)
+## Experimental EPUB reader (bounded passive subset)
 
 Android debug builds offer **EPUB development demo**: select it, search `original`,
 and Open EPUB. Desktop opt-in: `INFINILECT_EPUB_DEMO=1 ./gradlew :desktopApp:run`.
 This original three-chapter publication exercises shared passive Compose reading,
 TOC/internal navigation, durable semantic progress and Library/History reopen.
-**Production EPUB acquisition is disabled.** Publisher CSS/images/scripts and generic
-EPUB compatibility are not claimed. Existing TEXT behavior is retained. [Subset,
+**Production EPUB acquisition is disabled.** PR #16 adds persistent global EPUB font/spacing/margin/
+theme controls, semantic numbered lists and bounded local PNG/JPEG presentation. SVG
+remains alt text; publisher CSS/scripts and generic EPUB compatibility are not claimed. Existing TEXT behavior is retained. [Subset,
 security, limits and manual test plans](docs/EPUB_READER.md). v0.0.1 remains unfinished.

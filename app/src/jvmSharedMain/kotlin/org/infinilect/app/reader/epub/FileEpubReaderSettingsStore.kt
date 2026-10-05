@@ -1,0 +1,123 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 SirOtter0 and INFINILECT contributors.
+package org.infinilect.app.reader.epub
+
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.*
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.StandardOpenOption.*
+import java.nio.file.attribute.PosixFileAttributeView
+import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.*
+
+internal const val EPUB_SETTINGS_DIRECTORY_NAME = "epub-reader-preferences-v1"
+internal const val EPUB_SETTINGS_RECORD_NAME = "settings.preferences"
+internal const val EPUB_SETTINGS_RECORD_BYTES = 68
+private const val magic = 0x494e464550554253L // INFEPUBS
+private val processLock = Any()
+private val tempName = Regex("t-[0-9a-f-]{36}\\.part")
+private val lastPreferenceTime = AtomicLong(0)
+internal fun epubPreferenceTime(): Long = lastPreferenceTime.updateAndGet {
+    maxOf(System.currentTimeMillis().coerceAtLeast(0), if (it == Long.MAX_VALUE) it else it + 1)
+}
+
+/** One fixed-size checksummed record in private persistent storage, NOT cache.
+ * Same-directory temp + force + atomic replacement. Unsupported/failed commit preserves
+ * the previous record; no destructive fallback. Short operations serialize across owners.
+ * No filesystem API or retained path escapes into the reader/settings contract.
+ */
+internal class FileEpubReaderSettingsStore(
+    private val directory: Path?,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val beforeCommit: () -> Unit = {},
+) : EpubReaderSettingsStore {
+    override suspend fun load(): EpubReaderPreferences = operation(EpubReaderPreferences()) { root, _ -> read(root) ?: EpubReaderPreferences() }
+    override suspend fun save(preferences: EpubReaderPreferences): Boolean = operation(false) { root, context ->
+        val previous = read(root)
+        if (previous != null && previous.updatedAtEpochMillis >= preferences.updatedAtEpochMillis)
+            return@operation previous.updatedAtEpochMillis > preferences.updatedAtEpochMillis || previous == preferences
+        // Only stale files in our exact namespace are cleaned under the owner/OS lock.
+        var scanned = 0
+        Files.newDirectoryStream(root).use { entries ->
+            for (entry in entries) {
+                context.ensureActive()
+                if (++scanned > 4096) return@operation false
+                if (tempName.matches(entry.fileName.toString()) && !Files.isDirectory(entry, NOFOLLOW_LINKS))
+                    Files.deleteIfExists(entry)
+            }
+        }
+        val target = root.resolve(EPUB_SETTINGS_RECORD_NAME)
+        if (Files.exists(target, NOFOLLOW_LINKS) && !Files.isRegularFile(target, NOFOLLOW_LINKS)) return@operation false
+        val bytes = encode(preferences)
+        val temp = root.resolve("t-${UUID.randomUUID()}.part")
+        try {
+            FileChannel.open(temp, CREATE_NEW, WRITE, NOFOLLOW_LINKS).use { channel ->
+                permissions(temp, false)
+                val buffer = ByteBuffer.wrap(bytes)
+                while (buffer.hasRemaining()) { context.ensureActive(); check(channel.write(buffer) > 0) }
+                channel.force(true)
+            }
+            beforeCommit(); context.ensureActive()
+            Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            true
+        } finally { try { Files.deleteIfExists(temp) } catch (_: Exception) { } }
+    }
+
+    private suspend fun <T> operation(fallback: T, action: (Path, kotlin.coroutines.CoroutineContext) -> T): T = withContext(dispatcher) {
+        val context = currentCoroutineContext()
+        context.ensureActive()
+        try { synchronized(processLock) {
+            context.ensureActive()
+            val root = directory?.takeIf { it.isAbsolute } ?: return@synchronized fallback
+            Files.createDirectories(root)
+            if (!Files.isDirectory(root, NOFOLLOW_LINKS)) return@synchronized fallback
+            permissions(root, true)
+            FileChannel.open(root.resolve(".settings.lock"), CREATE, WRITE, NOFOLLOW_LINKS).use { channel ->
+                permissions(root.resolve(".settings.lock"), false)
+                val lock = channel.tryLock() ?: return@synchronized fallback
+                lock.use { action(root, context) }
+            }
+        } } catch (error: CancellationException) { throw error }
+        catch (_: Exception) { fallback }
+    }
+    private fun read(root: Path): EpubReaderPreferences? = try {
+        val path = root.resolve(EPUB_SETTINGS_RECORD_NAME)
+        if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) null else FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
+            if (channel.size() != EPUB_SETTINGS_RECORD_BYTES.toLong()) return@use null
+            val bytes = ByteBuffer.allocate(EPUB_SETTINGS_RECORD_BYTES)
+            while (bytes.hasRemaining()) if (channel.read(bytes) <= 0) return@use null
+            if (channel.size() != EPUB_SETTINGS_RECORD_BYTES.toLong()) return@use null
+            decode(bytes.array())
+        }
+    } catch (_: Exception) { null }
+
+    companion object {
+        private fun permissions(path: Path, directory: Boolean) {
+            // API 26+ Android supports this attribute view; do NOT call getFileStore().
+            Files.getFileAttributeView(path, PosixFileAttributeView::class.java, NOFOLLOW_LINKS)
+                ?.setPermissions(PosixFilePermissions.fromString(if (directory) "rwx------" else "rw-------"))
+        }
+        private fun encode(record: EpubReaderPreferences): ByteArray {
+            val buffer = ByteBuffer.allocate(EPUB_SETTINGS_RECORD_BYTES)
+            buffer.putLong(magic).putInt(1)
+            val settings = record.settings
+            buffer.putInt(settings.fontSize).putInt(settings.lineSpacingPercent).putInt(settings.margin)
+            buffer.putInt(when (settings.theme) { EpubReadingTheme.SYSTEM -> 0; EpubReadingTheme.LIGHT -> 1; EpubReadingTheme.DARK -> 2 })
+            buffer.putLong(record.updatedAtEpochMillis)
+            buffer.put(MessageDigest.getInstance("SHA-256").digest(buffer.array().copyOfRange(0, 36)))
+            return buffer.array()
+        }
+        private fun decode(bytes: ByteArray): EpubReaderPreferences {
+            require(MessageDigest.isEqual(bytes.copyOfRange(36, 68), MessageDigest.getInstance("SHA-256").digest(bytes.copyOfRange(0, 36))))
+            val input = ByteBuffer.wrap(bytes)
+            require(input.long == magic && input.int == 1)
+            val font = input.int; val spacing = input.int; val margin = input.int
+            val theme = when (input.int) { 0 -> EpubReadingTheme.SYSTEM; 1 -> EpubReadingTheme.LIGHT; 2 -> EpubReadingTheme.DARK; else -> error("Unsupported preference") }
+            return EpubReaderPreferences(EpubReaderSettings(font, spacing, margin, theme), input.long)
+        }
+    }
+}

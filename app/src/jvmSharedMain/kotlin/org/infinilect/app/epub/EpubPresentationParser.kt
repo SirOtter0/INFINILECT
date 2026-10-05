@@ -7,7 +7,7 @@ import org.infinilect.app.reader.epub.*
 import org.infinilect.core.*
 
 private const val XHTML = "http://www.w3.org/1999/xhtml"
-private val blockTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "section", "div", "body")
+private val blockTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "section", "div", "body", "pre", "figcaption")
 private val forbidden = setOf("script", "iframe", "object", "embed", "form", "input", "button", "textarea", "select", "audio", "video", "canvas", "base", "applet")
 
 /** No browser, network, CSS evaluation or image decoder. Bounded current-chapter semantics. */
@@ -49,15 +49,19 @@ internal class BoundedEpubParser : EpubParser {
         var linkCount = 0
         var contextPath = listOf(0)
         var kind = EpubBlockKind.PARAGRAPH
+        var heading = 1
+        var marker: EpubListMarker? = null
+        var image: EpubImage? = null
+        var imageCount = 0
         val runs = mutableListOf<EpubRun>()
         var units = 0
         fun flush() {
-            if (runs.isEmpty()) return
+            if (runs.isEmpty() && kind != EpubBlockKind.SEPARATOR) return
             val text = runs.joinToString("") { it.text }
-            if (text.isNotBlank()) {
+            if (text.isNotBlank() || kind == EpubBlockKind.SEPARATOR) {
                 if (blocks.size >= 2048 || totalUnits + text.length > 262_144) limit()
                 val start = offsets[contextPath] ?: 0
-                val block = EpubBlock(contextPath.toList(), start, kind, runs.toList(), logical)
+                val block = EpubBlock(contextPath.toList(), start, kind, runs.toList(), logical, heading, marker, image)
                 pendingAnchors.forEach { anchors[it] = EpubPosition(block.elementPath, start) }
                 pendingAnchors.clear()
                 blocks.add(block); logical += block.codePoints; totalUnits += text.length
@@ -76,14 +80,29 @@ internal class BoundedEpubParser : EpubParser {
                 runs[runs.lastIndex] = previous.copy(text = previous.text + normalized)
             else runs.add(EpubRun(normalized, em, strong, target))
         }
-        fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: Boolean = false) {
+        fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: EpubListMarker? = null, pre: Boolean = false) {
             job.ensureActive()
             val tag = node.name.local
-            val isBlock = tag in blockTags
+            val isBlock = tag in blockTags || tag == "img" || tag == "hr"
             val savedPath = contextPath; val savedKind = kind
+            val savedHeading = heading; val savedMarker = marker; val savedImage = image
             if (isBlock) {
                 flush(); contextPath = pathParts
-                kind = when { tag.startsWith("h") -> EpubBlockKind.HEADING; tag == "li" || list -> EpubBlockKind.LIST_ITEM; tag == "blockquote" || quote -> EpubBlockKind.QUOTE; else -> EpubBlockKind.PARAGRAPH }
+                kind = when { tag == "img" -> EpubBlockKind.IMAGE; tag == "hr" -> EpubBlockKind.SEPARATOR; tag == "pre" || pre -> EpubBlockKind.PREFORMATTED; tag == "figcaption" -> EpubBlockKind.CAPTION; tag.matches(Regex("h[1-6]")) -> EpubBlockKind.HEADING; tag == "li" || list != null -> EpubBlockKind.LIST_ITEM; tag == "blockquote" || quote -> EpubBlockKind.QUOTE; else -> EpubBlockKind.PARAGRAPH }
+                heading = tag.takeIf { it.matches(Regex("h[1-6]")) }?.last()?.digitToInt() ?: 1
+                marker = list; image = null
+                if (tag == "img" && runs.isEmpty()) {
+                    // Keep historical alt-placeholder code-point semantics for saved progress.
+                    // Inline images split a paragraph, but use its existing element path/offsets.
+                    contextPath = if (savedPath.size > 1) savedPath else pathParts
+                    if (++imageCount > 64) limit()
+                    val src = node.attr("src") ?: invalid()
+                    requireEpub(!src.contains('#') && src.split('/').none { it == "." || it == ".." })
+                    val targetPath = ownedTarget(document, path, src, false).path
+                    val item = document.manifest.single { it.path == targetPath }
+                    val alt = node.attr("alt")?.let { it.substring(0, it.epubUtf16(it.epubPointAtUtf16(minOf(256, it.length)))) } ?: ""
+                    image = EpubImage(targetPath, item.mediaType, alt)
+                }
             }
             node.attr("id")?.let { id ->
                 if (anchors.size + pendingAnchors.size >= 4096) limit()
@@ -95,16 +114,26 @@ internal class BoundedEpubParser : EpubParser {
                 if (++linkCount > 512) limit()
                 ownedTarget(document, path, node.attr("href")!!, true)
             } else target
-            if (tag == "br") append("\n", em, strong, nextTarget, literal = true)
+            if (tag == "hr") { /* semantic separator, no injected reading text */ }
+            else if (tag == "br") append("\n", em, strong, nextTarget, literal = true)
             else if (tag == "img") append("[Image${node.attr("alt")?.let { alt -> alt.substring(0, alt.epubUtf16(alt.epubPointAtUtf16(minOf(256, alt.length)))) }?.let { ": $it" } ?: " not rendered"}]", em, strong, null)
             else {
                 var child = 0
+                var ordinal = if (tag == "ol") node.attr("start")?.toIntOrNull()?.also { requireEpub(it in 1..9999) } ?: 1 else 1
+                if (tag == "ol" && node.attr("start") != null) requireEpub(node.attr("start")!!.toIntOrNull() != null)
                 for (part in node.content) when (part) {
-                    is EpubXmlContent.Text -> append(part.value.toString(), em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget)
-                    is EpubXmlContent.Element -> visit(part.value, pathParts + child++, em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, quote || tag == "blockquote", list || tag == "li")
+                    is EpubXmlContent.Text -> append(part.value.toString(), em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, literal = pre || tag == "pre")
+                    is EpubXmlContent.Element -> {
+                        val childList = if (tag in setOf("ol", "ul") && part.value.name.local == "li") {
+                            val depth = (list?.depth ?: -1) + 1
+                            if (depth > 7 || ordinal > 9999) limit()
+                            EpubListMarker(tag == "ol", ordinal++, depth)
+                        } else list
+                        visit(part.value, pathParts + child++, em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, quote || tag == "blockquote", childList, pre || tag == "pre")
+                    }
                 }
             }
-            if (isBlock) { flush(); contextPath = savedPath; kind = savedKind }
+            if (isBlock) { flush(); contextPath = savedPath; kind = savedKind; heading = savedHeading; marker = savedMarker; image = savedImage }
         }
         visit(body, listOf(0))
         flush()

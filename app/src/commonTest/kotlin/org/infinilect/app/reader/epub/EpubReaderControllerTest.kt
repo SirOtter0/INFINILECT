@@ -13,8 +13,41 @@ class EpubReaderControllerTest {
     private val publicationId = PublicationId(SourceId("fixture"), "epub")
     private val id = ReadingProgressId(publicationId, "book", PublicationFormat.EPUB)
     private val paths = (1..3).map { EpubEntryPath("OPS/chapter$it.xhtml") }
-    private inner class Doc : EpubDocument {
-        override val publicationId = this@EpubReaderControllerTest.publicationId
+    private class SettingsStore : EpubReaderSettingsStore {
+        var record = EpubReaderPreferences()
+        var saves = 0
+        override suspend fun load() = record
+        override suspend fun save(preferences: EpubReaderPreferences): Boolean { saves++; record = preferences; return true }
+    }
+    @Test fun immediateReaderBackPersistsGlobalPreferencesForAnotherEpubAndPreservesLocator() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val settingsStore = SettingsStore()
+        val preferences = EpubSettingsPersistence(settingsStore, dispatcher)
+        val progressStore = Store(); val progress = ProgressPersistence(progressStore, dispatcher) { 5 }
+        val first = EpubReaderController(Doc(), id, this, Parser(), progress, preferences)
+        val settings = EpubReaderSettings(26, 190, 36, EpubReadingTheme.DARK)
+        try {
+            first.initialize(null)
+            val original = assertIs<EpubReaderState.Ready>(first.state.value)
+            first.report(original.ticket, 0, 2)
+            first.presentationChanged(settings)
+            assertEquals(0 to 2, assertIs<EpubReaderState.Ready>(first.state.value).initialPosition)
+            first.close(); runCurrent()
+            assertEquals(settings, settingsStore.record.settings)
+            val otherId = ReadingProgressId(PublicationId(SourceId("fixture"), "another"), "another-book", PublicationFormat.EPUB)
+            val second = EpubReaderController(Doc(otherId.publicationId), otherId, this, Parser(), preferences = preferences)
+            try {
+                second.initialize(null); assertEquals(settings, second.settings.value)
+                first.presentationChanged(EpubReaderSettings()) // old reader is closed
+                assertEquals(settings, preferences.settings.value)
+                assertEquals(1, settingsStore.saves)
+                second.presentationChanged() // viewport/layout event, not a preference edit
+                second.close(); runCurrent(); assertEquals(1, settingsStore.saves)
+            } finally { second.close() }
+            assertEquals(2L, (assertNotNull(progressStore.values[id]).locator as ReadingLocator.Epub).codePointOffset)
+        } finally { first.close(); preferences.close(); preferences.awaitClosed(); progress.close(); progress.awaitClosed() }
+    }
+    private inner class Doc(override val publicationId: PublicationId = this@EpubReaderControllerTest.publicationId) : EpubDocument {
         override val packagePath = EpubEntryPath("OPS/package.opf")
         override val metadata = EpubMetadata("fixture", "Title", listOf("en"), "2026-10-04T00:00:00Z")
         override val manifest = paths.mapIndexed { i, path -> EpubManifestItem("c$i", path, "application/xhtml+xml") }
@@ -143,4 +176,55 @@ class EpubReaderControllerTest {
     @Test fun outOfRangeChapterActionIsIgnored() = runTest { use { reader, _, _, _, _ ->
         val state = reader.state.value; reader.chapter(-1); reader.chapter(3); assertEquals(state, reader.state.value)
     } }
+    @Test fun fontChangePreservesLatestUnicodeLocatorWithoutReparse() = runTest { use { reader, _, parser, store, _ ->
+        val ready = assertIs<EpubReaderState.Ready>(reader.state.value)
+        reader.report(ready.ticket, 0, 2)
+        reader.presentationChanged(EpubReaderSettings(fontSize = 26))
+        val after = assertIs<EpubReaderState.Ready>(reader.state.value)
+        assertEquals(0 to 2, after.initialPosition); assertNotEquals(ready.ticket, after.ticket)
+        assertEquals(1, parser.parsed.size); runCurrent()
+        assertEquals(2L, (store.values[id]?.locator as ReadingLocator.Epub).codePointOffset)
+    } }
+    @Test fun marginsSpacingThemeAndViewportKeepSemanticPosition() = runTest { use { reader, _, _, _, _ ->
+        reader.report(assertIs<EpubReaderState.Ready>(reader.state.value).ticket, 1, 3)
+        for (settings in listOf(EpubReaderSettings(margin = 32), EpubReaderSettings(lineSpacingPercent = 190), EpubReaderSettings(theme = EpubReadingTheme.DARK))) {
+            reader.presentationChanged(settings)
+            assertEquals(1 to 3, assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+        }
+        reader.presentationChanged() // orientation/viewport without a settings mutation
+        assertEquals(1 to 3, assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+    } }
+    @Test fun staleLayoutAfterSettingsCannotOverwriteProgress() = runTest { use { reader, _, _, store, _ ->
+        val old = assertIs<EpubReaderState.Ready>(reader.state.value).ticket
+        reader.report(old, 0, 2); reader.presentationChanged(EpubReaderSettings(fontSize = 24))
+        reader.report(old, 1, 5); reader.flush(); runCurrent()
+        assertEquals(2L, (store.values[id]?.locator as ReadingLocator.Epub).codePointOffset)
+    } }
+    @Test fun loadingSettingsDoNotCancelOrSupersedeChapterNavigation() = runTest { use { reader, _, _, _, _ ->
+        reader.chapter(2); reader.presentationChanged(EpubReaderSettings(fontSize = 22)); advanceUntilIdle()
+        assertEquals(2, assertIs<EpubReaderState.Ready>(reader.state.value).spineIndex)
+        assertEquals(22, reader.settings.value.fontSize)
+    } }
+    @Test fun backAfterSettingsFlushesAndClosesDocument() = runTest { use { reader, doc, _, store, _ ->
+        reader.report(assertIs<EpubReaderState.Ready>(reader.state.value).ticket, 1, 3)
+        reader.presentationChanged(EpubReaderSettings(margin = 40)); reader.close(); reader.close(); runCurrent()
+        assertEquals(1, doc.closes); assertEquals(3L, (store.values[id]?.locator as ReadingLocator.Epub).codePointOffset)
+    } }
+    @Test fun settingsOnClosedReaderAreIgnored() = runTest { use { reader, _, _, _, _ ->
+        reader.close(); reader.presentationChanged(EpubReaderSettings(fontSize = 30)); assertEquals(18, reader.settings.value.fontSize)
+    } }
+    @Test fun settingsHaveFiniteValidatedBounds() {
+        for (action in listOf({ EpubReaderSettings(fontSize = 13) }, { EpubReaderSettings(fontSize = 31) },
+            { EpubReaderSettings(lineSpacingPercent = 119) }, { EpubReaderSettings(lineSpacingPercent = 201) },
+            { EpubReaderSettings(margin = 7) }, { EpubReaderSettings(margin = 41) })) assertFailsWith<IllegalArgumentException> { action() }
+    }
+
+    @Test fun staleVisibleMediaCallbackCannotAttachOldChapterImages() = runTest { use { reader, _, _, _, _ ->
+        val old = assertIs<EpubReaderState.Ready>(reader.state.value).ticket
+        reader.presentationChanged(EpubReaderSettings(fontSize = 24))
+        reader.visibleMedia(old, listOf(EpubImage(EpubEntryPath("OPS/missing.png"), "image/png", "Alt")))
+        runCurrent(); assertTrue(reader.media.state.value.isEmpty())
+        reader.close(); reader.visibleMedia(old, emptyList()); assertEquals(0, reader.media.retained)
+    } }
+
 }

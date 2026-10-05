@@ -47,6 +47,7 @@ legitimately exchange backend types within their own implementation/wiring layer
 | ZIP / EPUB structural storage | `EpubZip`, `EpubPackage`, `FileEpubPreparer`, development-fixture source. ZipFile/ZipEntry/CRC/Path never reach a reader. | `EpubPreparer.prepare` returns core `EpubDocument`; `openResource(EpubEntryPath)` returns `ResourceContent`. The platform root selects FileEpubPreparer. | Replace archive/storage implementation and its real ZIP/provider tests; keep structural/security/size/ownership guarantees. Prepared archives are disposable. No change to source identity, Library/History or semantic progress. |
 | XHTML / SAX | SAX is imported only in `EpubXml.kt`; the separate desktop OAPEN XML diagnostic uses StAX. `EpubXmlNode` is adapter-internal to package/presentation parsing, not an application model. `BoundedEpubParser` implements EpubParser. | `EpubParser` returns `EpubChapter`, `EpubBlock`, `EpubRun` and owned TOC/targets. `defaultEpubParser` actual selects the implementation; opener/controller accept injectable EpubParser. | A SAX-provider substitution can stay inside EpubXml/provider tests and retain its owned intermediate tree. A different semantic parser replaces BoundedEpubParser and, if necessary, its helpers; adjust the factory. Preserve passive-content validation, limits, cancellation and semantic element-path/Unicode-offset conventions. A parser-library substitution must not silently reinterpret persisted locators. No acquisition/session/collections rewrite. |
 | Compose / renderer | Shared App, ApplicationBackHandler, TextReader and EpubReader plus the Android/Desktop launchers. Semantic chapter/block/run/locator models have no Compose types. | UI consumes owned session/controller StateFlows and document models; platform Back is injected as a UI callback. | A UI-framework replacement necessarily rewrites UI and launcher integration. A richer renderer can consume the same semantic boundary; rendering a larger EPUB subset/browser would need an explicit reader-local security/locator adapter, not a claim of a zero-file drop-in swap. Sources/collection repositories/persistent publication identity remain unaffected. |
+| EPUB user preferences / filesystem | FileEpubReaderSettingsStore in jvmSharedMain contains NIO/checksum/file-lock/atomic-write implementation. Platform CreateSources selects the private persistent directory and injects the store into application-owned EpubSettingsPersistence. | EpubReaderSettingsStore and EpubReaderPreferences; reader/session use only owned validated settings and persistence lifetime, with no Path, SQLDelight, SharedPreferences or Compose persistence types. | Replace the adapter and composition wiring, optionally import its small versioned user-preference record. No progress/cache/schema/source/reader-business rewrite. Preference failure/restart tests use both owned fake stores and real files/new owners. |
 | Android / Desktop/JVM | Activity/insets/Back and Window/runtime packaging in launchers; Context/Log/engine/driver/private-path selection in platform factories. Java-compatible implementation is deliberately in jvmSharedMain for Android/Desktop, not claimed portable to iOS. | ApplicationSources/session-owned lifetimes, owned document/storage/source contracts, expect/actual infrastructure factories and the composable platform Back callback. | Replace platform adapters/composition, source-set/build configuration and platform tests. Shared business/session models remain. Preserve/import platform-private user data if its storage location changes. Supporting iOS requires new platform infrastructure, not moving JVM APIs into common/core. |
 
 The current rule is documented in [ARCHITECTURE](ARCHITECTURE.md#dependency-ownership).
@@ -113,3 +114,19 @@ implementation. This follow-up adds documentation only. No substitution, runtime
 data migration, dependency change, new source request, APK rebuild or new device
 test was performed. Documentation/import/type/diff checks are recorded in
 [VERIFICATION](VERIFICATION.md); preceding clean build evidence remains historical.
+
+## PR #16 media boundary (2026-10-05)
+
+The earlier PR #15 audit above is historical evidence. PR #16 adds one justified
+owned adapter boundary: EpubRasterDecoder accepts bounded local bytes/MIME and returns
+EpubRaster (dimensions/ARGB array), never Android Bitmap, ImageIO/Skia or Compose types.
+Semantic EpubImage has only canonical manifest path, media type and bounded alt text.
+EpubMediaController owns validation, visibility/retention/generations and document
+handles. Android/desktop actual factories select BitmapFactory/ImageIO implementations.
+The expect/actual ImageBitmap conversion is explicitly UI-only, not a semantic or
+application contract. Replacing a decoder changes its adapter and implementation
+integration tests; changing UI technology changes presentation, not source permission,
+progress identity, repositories or chapter parsing. No new dependency is introduced:
+Desktop tests reuse desktopApp's existing Compose/Skiko runtime to exercise the real
+conversion headlessly; java.desktop is explicitly bundled for ImageIO. Coroutines
+and ordinary pixel arrays are not mechanically wrapped in hypothetical abstractions.

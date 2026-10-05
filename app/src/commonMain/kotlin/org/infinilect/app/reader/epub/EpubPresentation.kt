@@ -6,11 +6,16 @@ import org.infinilect.core.*
 
 internal data class EpubTarget(val path: EpubEntryPath, val anchor: String? = null)
 internal data class EpubRun(val text: String, val emphasis: Boolean = false, val strong: Boolean = false, val target: EpubTarget? = null)
-internal enum class EpubBlockKind { PARAGRAPH, HEADING, LIST_ITEM, QUOTE }
+internal enum class EpubBlockKind { PARAGRAPH, HEADING, LIST_ITEM, QUOTE, IMAGE, SEPARATOR, PREFORMATTED, CAPTION }
+internal data class EpubListMarker(val ordered: Boolean, val ordinal: Int, val depth: Int)
+internal data class EpubImage(val path: EpubEntryPath, val mediaType: String, val alt: String) {
+    init { require(alt.length <= 256 && mediaType.length in 1..128) }
+}
 internal data class EpubPosition(val elementPath: List<Int>, val codePointOffset: Int)
 internal data class EpubBlock(
     val elementPath: List<Int>, val startOffset: Int, val kind: EpubBlockKind,
     val runs: List<EpubRun>, val logicalStart: Int,
+    val headingLevel: Int = 1, val listMarker: EpubListMarker? = null, val image: EpubImage? = null,
 ) {
     val text = runs.joinToString("") { it.text }
     val codePoints = text.epubCodePoints()

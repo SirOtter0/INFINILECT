@@ -1,7 +1,8 @@
-# First semantic EPUB reader — Draft PR #15
+# Passive EPUB reader — bounded EPUB3 subset
 
 The existing [EPUB preparation](EPUB.md) proves structure, ownership and bounded
-local resource access. This reader adds a separate **passive presentation** boundary.
+local resource access. Merged PR #15 added the initial reader; Draft PR #16 improves
+its session presentation and bounded local media. This reader adds a separate **passive presentation** boundary.
 It supports a narrow EPUB3/XHTML subset on Android and Desktop with the same
 Compose UI. It does not claim generic EPUB compatibility or a completed v0.0.1.
 
@@ -20,7 +21,8 @@ that gate remains explicit instead of broadening the adapter or legal scope.
 
 The debug Android APK offers **EPUB development demo** as an explicitly selected
 source. Search `original`, then **Open EPUB**. It constructs one original,
-deterministic three-chapter EPUB from project-owned text (GPL-3.0-or-later), no
+deterministic three-chapter EPUB from project-owned text and geometric PNG/JPEG
+artwork (GPL-3.0-or-later), no
 Internet, copyrighted book or imported file. Release Android builds do not offer
 this option. Desktop requires explicit opt-in:
 
@@ -66,24 +68,139 @@ are not inside either reader. Successful History begins only after TOC and first
 chapter parsing succeed. Library/History reopen still resolves source-owned IDs,
 acquires/rebuilds preparation, then restores progress.
 
-Supported presentation: headings, paragraphs, sections/div boundaries, unordered
-list-item bullets (ordered lists also use bullets), blockquotes, emphasis/strong,
-line breaks, Unicode and internal spine links/anchors. Mixed text/element order
-is preserved. Passive unknown XHTML elements unwrap; HTML whitespace collapses.
-`pre`/tables do not retain their original layout. Previous/Next follows package
-spine order, including non-linear items; no inferred chapter ordering. TOC retains
-bounded nested labels/targets, and the reader displays chapter context/whole percent.
+Supported presentation: h1–h6 hierarchy, paragraphs, sections/div boundaries,
+ordered/unordered list markers, nested lists (8 levels), blockquotes, emphasis/strong,
+line breaks, separators, preformatted whitespace, captions, Unicode and owned internal
+spine links/anchors. Basic ordered lists start at 1 or a bounded `start` (1–9999),
+with sequential numbering; `li value`/reversed/custom styles are not implemented.
+Markers are semantic fields, never injected into logical text. Multiple paragraphs in
+one list item repeat its marker. Preformatted text wraps on phones, not a CSS layout.
+Tables unwrap to text without a grid, column sizing or layout fidelity; richer tables
+are deferred. Previous/Next follows spine order; bounded Contents entries navigate
+only declared spine paths/anchors. Missing anchors give a safe fixed error.
 
-Not supported: CSS layout, publisher fonts, fixed-layout fidelity, RTL publication
-layout policy, scripting, audio/video, forms, SVG/MathML, remote resources, image
-decoding, EPUB2/NCX, DRM, annotations, settings or Downloads. Manifest image references
-are validated but display only bounded alt text; no decoder or image-resource read.
-There is no decompression-to-image allocation or image-bomb path. Foreign namespace
-content and active constructs fail, rather than becoming browser content.
+PNG/JPEG local images render within a stable-height 200dp presentation area using
+Fit, with bounded alt-text and figure captions where available. Other images display
+alt/unsupported text. Only manifest-owned resources are opened. No SVG/GIF/WebP,
+responsive `srcset`/picture selection, remote or data URLs, external fonts or browser.
+
+Not supported: arbitrary CSS, publisher fonts, fixed-layout fidelity, RTL layout
+policy, scripting, audio/video/forms, SVG/MathML rendering, remote resources,
+EPUB2/NCX, DRM, annotations or Downloads. Foreign namespace/active content fails.
+No generic EPUB compatibility or production acquisition claim.
+
+### Reading settings and semantic position
+
+A compact, height-bounded scrollable Settings dialog controls font size (14–30sp), line spacing (120–200%),
+horizontal margins (8–40dp) and system/light/dark reading theme. Settings affect only
+EPUB presentation. They are global user preferences, restored across reader exit,
+other EPUBs, process restart and cache deletion; TEXT remains unchanged. Reading text remains real
+accessible text; image alt labels, theme controls and navigation are labelled.
+
+Changes in settings, width, density or font scale preserve the latest semantic
+locator, invalidate previous layout tickets, and restore its block/containing line
+using the new layout. They never persist pixels/indices, reparse the chapter or save
+loading layouts. Theme/style changes do not mutate chapter content. Restoration is
+approximate within a passage; stable 200dp image space prevents delayed decoding from
+moving the viewport. Whole percentages remain chapter-weighted approximations.
+
+### Durable global EPUB preferences (PR #16 physical-test follow-up)
+
+The initial PR #16 implementation kept settings in each reader; physical acceptance
+passed its media/navigation/progress behavior but identified unwanted resets. The
+follow-up adds `EpubReaderSettingsStore` behind the application-owned
+`EpubSettingsPersistence`; no filesystem, database or Compose persistence types
+enter the controller. `FileEpubReaderSettingsStore` is the current replaceable adapter.
+Settings are user preferences, **not ReadingProgress, ResourceCache or Library/History**.
+There is no publication identifier/content, telemetry, network or schema migration.
+
+One fixed **68-byte** big-endian record (`settings.preferences`) contains an 8-byte
+magic, version1, four Int fields (font/spacing/margin/theme), a Long choice timestamp,
+and SHA-256 of the first36 bytes. The loader reads only this exact length, validates
+checksum/version/ranges/theme/nonnegative ordering timestamp, and otherwise uses
+current defaults:18sp/150%/16dp/SYSTEM. All invalid/out-of-range values are rejected
+as a record, never trusted as layout values. Missing/future records also use defaults.
+The checksum detects corruption, not authenticity against an attacker with app-data access.
+
+Android selects `applicationContext.filesDir/epub-reader-preferences-v1` (not cacheDir);
+only the path is retained. Desktop uses a sibling of reading-progress-v1 in the
+existing absolute per-user persistent app-data root: Linux XDG_DATA_HOME or
+~/.local/share, macOS Application Support, Windows LOCALAPPDATA or AppData/Local,
+under org.infinilect.app. Relative/unsafe paths never fall back to cwd. Cache deletion
+cannot remove preferences; application data deletion can.
+
+IO is off the UI thread. A process monitor and short OS file lock serialize recreated
+owners; NOFOLLOW_LINKS rejects root/record/lock symlinks. The fixed record is written
+to a same-directory unique temp, forced, then atomically replaces the target. Failed,
+unsupported or cancelled pre-commit operations leave the previous committed record;
+no destructive fallback. Only exact owned stale temp names are cleaned under lock;
+unrelated files survive. POSIX attributes use the Android-compatible path view,
+never getFileStore. Successful rename provides atomic visibility and normal-restart
+durability, not a power-loss guarantee for unsynced directory metadata.
+
+The application writer owns one latest pending record and serializes saves with a
+**300ms coalescing interval** (continuous adjustments cannot postpone saving forever).
+Back/reader close/onStop request an immediate flush; application close drains its
+independent worker; Desktop joins it before intentional process exit, and
+awaitProgressClosed also joins it. Each storage operation has a5s
+coroutine deadline; non-cooperative OS IO can delay cancellation. No write occurs for
+viewport-only changes. A current-reader lease rejects old-reader edits; immutable
+record timestamps use a process-monotonic clock and store comparisons reject older
+draining-owner writes. The latest in-memory choice is useful for the next reader,
+but only committed file bytes prove restart persistence. A failed save shows the
+fixed message “Reading settings could not be saved on this device.”; a later successful
+save clears it. Saving choices does not change semantic locator/progress schemas.
+
+As with progress, Android process death provides no guaranteed final callback:
+allow a short moment for the periodic save. Host tests exercise real files and fresh
+owners but do not establish Android-device correctness by themselves. The user
+subsequently physically verified the follow-up at HEAD
+`d365e59d3868c674de062168fe88db5c007cad75`: leaving/reopening and process restart
+preserve settings, and the persistence fix works correctly. This is user-reported
+Android evidence, not Codex/device testing.
+
+### Image boundary and upstream API evidence (2026-10-05)
+
+`EpubImage(path, mediaType, alt)` belongs to the semantic chapter. It contains no
+image decoder, pixels, filesystem path or framework object. `EpubRasterDecoder`
+returns INFINILECT-owned bounded ARGB data, used only by the session media controller.
+A separate UI-only platform conversion produces Compose ImageBitmap. Replacement
+of BitmapFactory/ImageIO affects adapters, not sources, progress, Library/History
+or parser models. See [dependency boundaries](DEPENDENCY_BOUNDARIES.md).
+
+The existing Compose Multiplatform 1.12.1 artifacts expose Image/ImageBitmap,
+annotated links, lazy layout and Android/Skia bitmap conversion. No HTML/image-loading
+library is needed; no new third-party dependency/version/plugin is added. Desktop
+host image tests use the same existing Compose/Skiko runtime as desktopApp. Official
+sources checked: [Compose upstream](https://github.com/JetBrains/compose-multiplatform),
+[Android BitmapFactory.Options](https://developer.android.com/reference/android/graphics/BitmapFactory.Options)
+(`inJustDecodeBounds` explicitly avoids allocating pixels),
+[JDK21 ImageReader](https://docs.oracle.com/en/java/javase/21/docs/api/java.desktop/javax/imageio/ImageReader.html)
+(`getWidth`/`getHeight` before `read`), and existing compiled platform conversion APIs.
+Desktop bundles java.desktop explicitly for its standard ImageIO provider; no new
+native/browser engine. Android minSdk26 supports the selected APIs.
+
+Shared preflight verifies PNG signature/IHDR, chunk lengths/CRC and dimensions;
+accepts static 8-bit pixel/palette/transparency chunks only. Animation, ICC/compressed
+metadata/EXIF and unknown PNG extensions degrade to alt text. JPEG allows 8-bit
+baseline/progressive grayscale/RGB, optional JFIF; EXIF/ICC/other APP extensions are
+unsupported. Both provider bounds must match preflight before pixel allocation.
+Encoded bytes and decoded pixels are bounded independently. The decoder is not an
+integrity/authenticity or complete image-conformance proof.
+
+Image references cannot contain dot/dot-dot segments, encoding, query or fragment
+aliases, schemes/absolute/network-relative paths, or undeclared resources. Other
+existing relative EPUB link normalization stays unchanged. The controller independently
+checks exact path and MIME against the manifest, rejects unsupported types before
+opening, verifies declared byte size, and always closes resource handles. Wrong MIME,
+corruption, oversized data or decoder failure produces alt text, not a source request
+or a reader crash. UI conversion failures also fall back safely.
 
 ## Security and budgets
 
-Only manifest-owned XHTML spine/nav resources are opened through EpubDocument.
+Only manifest-owned XHTML spine/nav and supported raster resources are opened through
+EpubDocument. XHTML is parsed, never executed; raster bytes enter only the bounded media
+adapter. No generic URL resolver exists.
 No browser, JS evaluator, URI handler, HTTP client or filesystem path enters the
 renderer. External/file/content/javascript/network-relative schemes, encoded aliases,
 queries, escaping traversal, undeclared targets and non-spine hyperlinks reject.
@@ -94,6 +211,12 @@ namespaces cannot reach Compose. CSS is never interpreted or fetched.
 
 | Budget | Ceiling |
 | --- | ---: |
+| Per-chapter image references | 64 |
+| Alt text | 256 UTF-16 units, surrogate-safe truncation |
+| Encoded image / read buffer | 2 MiB / 8 KiB |
+| Width/height / pixels / decoded ARGB per image | 2048 each / 1,048,576 / 4 MiB |
+| Retained decoded frames / UI images / simultaneous provider decode | 2 / 2 distinct / 1 |
+| Media deadline / JPEG scans | 10 seconds including serialized wait / 64 |
 | Acquisition/archive, expansion | Existing 32 MiB / 64 MiB |
 | Entries, per expanded entry, compression ratio | Existing 512 / 8 MiB / 100 |
 | Manifest, spine | Existing 256 / 128 |
@@ -104,7 +227,6 @@ namespaces cannot reach Compose. CSS is never interpreted or fetched.
 | Blocks / text-append events / links / anchors per chapter | 2,048 / 8,192 / 512 / 4,096 |
 | Retained parsed chapter models | 2 (current + one previously used); no whole-book DOM |
 | TOC entries / nested list depth / label | 256 / 16 / 512 UTF-16 units |
-| Decoded images | **0** |
 | Transient Compose text layouts | 12 |
 | Chapter navigation parse jobs | One serialized parse; latest generation wins |
 | Open/preparation / chapter navigation deadline | 60 seconds / 15 seconds |
@@ -151,7 +273,17 @@ closes EpubDocument idempotently. Navigation uses generation checks, a cancellab
 Mutex around parser work and a 15s deadline; non-cooperative late results cannot
 publish after a newer request or close. Document resources always close in finally
 via bounded readBytes. The parser checks cancellation during resource/XML/semantic
-work. No source/background/image jobs are launched per node.
+work. No source jobs or per-node/image-per-book jobs are launched. One media worker decodes
+only the first two distinct visible references. Chapter/layout tickets reject stale
+visibility/progress callbacks; cancellation and media generations reject late decode
+results. Provider calls themselves may finish after cancellation; results are discarded.
+Two owned pixel arrays (8 MiB), two UI bitmaps (8 MiB), one in-flight decoder
+bitmap/pixel array (up to 8 MiB), UI conversion scratch (up to 4 MiB), and bounded
+encoded read/assembly (up to 4 MiB) give a conservative ~32 MiB media payload budget
+before provider/object overhead and transient GC. This is a structural working-set
+estimate, not a measured process-heap guarantee. Repeated identical references in the current visible set share one decoded
+frame/UI bitmap; differently labelled references can occupy separate slots. Chapter navigation drops old media; close cancels worker and drops
+all presentation state. Decoded images are never persisted.
 
 Android's system Back and the visible reader Back button use the same
 `ApplicationSession.back()` command. The shared platform binding observes opening
@@ -165,7 +297,7 @@ document ownership or the progress flush path. Headless Compose regression tests
 reproduce the stale callback and verify the new binding; corrected-device confirmation
 remains a manual test, not a host-test claim.
 
-## Manual Android plan (not an automated/device-test claim)
+## Historical PR #15 manual plan (not an automated/device-test claim)
 
 1. Install debug APK over PR #14 without clearing data. Check historical Library,
    History and TEXT positions remain; existing IA acquisition still revalidates.
@@ -191,9 +323,59 @@ remains a manual test, not a host-test claim.
 10. Release builds do not advertise demo as production EPUB. No production EPUB test
     is claimed in this PR. No permission or telemetry change.
 
-## Manual Desktop plan
+## Historical PR #15 Desktop plan
 
 Start Gradle-run or packaged app with the explicit environment opt-in above. Repeat
 steps2–9 (close/relaunch process for persistence; remove only private cache for step8).
 Check resizing/layout and platform Back button. The existing niri/Wayland outer-window
 black-area issue is untouched. Build success does not claim graphical execution.
+
+## PR #16 Android acceptance checklist — user-reported verification
+
+The user reported successful physical acceptance of the initial reader, then
+successful leave/reopen and process-restart settings persistence on the follow-up
+HEAD above. This checklist remains a reference; automated host tests are separate
+and Codex did not perform Android device testing.
+
+1. Install over the merged PR #15 debug build **without clearing app data**.
+2. Check old Library/History and both TEXT/EPUB saved positions survive.
+3. Open large IA TEXT; scroll repeatedly down and up. PR #14 behavior must remain.
+4. Select **EPUB development demo**, search `original`, Open EPUB. Production sources
+   still cannot acquire EPUB through this build.
+5. Inspect heading/paragraph/emphasis/strong/list/quote presentation and real text.
+6. Follow **Visit the local presentation showcase** near the chapter beginning;
+   verify the ordered list reads **3, 4**, with h2/h3 distinction, separator and pre.
+7. Inspect the original PNG and JPEG panels and the caption; SVG is alt text only.
+8. Repeat steps4–7 in **airplane mode / network disabled**. Media must still work.
+9. There must be no source/network request caused by EPUB images (the selected demo
+   is entirely local); no browser/file/content navigation should occur.
+10. Change font size, line spacing, margins and system/light/dark reading theme.
+11. Deep in a chapter, change settings/orientation; approximately the same semantic
+    passage must remain. No jump to the beginning or spurious saved EOF.
+12. Use Previous/Next, Contents and internal anchors; verify current chapter/percent.
+13. Wait≥3s, use Android system Back, reopen; repeat with visible Back and no wait.
+14. Fully terminate/relaunch, reopen; chapter/passage and all four global EPUB settings restore.
+15. Open the demo from Library and History. Back returns to the respective origin;
+    another Back returns to Search. Root Search retains normal Android exit.
+16. Clear **cache only**; persistent user state stays. Reopen rebuilds prepared bytes
+    and restores progress. Normal IA null-revision acquisition checks still run.
+17. System Back during chapter/media work cancels/closes without exiting prematurely.
+18. Rapid chapter/settings/publication changes and Back must not show stale media or
+    old chapters, crash, or produce storage/progress/library/history errors.
+19. Release UI must not advertise development EPUB or production EPUB acquisition.
+20. Verify no new Android permission, telemetry, remote media or font request.
+
+## PR #16 Desktop acceptance checklist — graphical verification pending
+
+- Run `INFINILECT_EPUB_DEMO=1 ./gradlew :desktopApp:run`, then run the packaged
+  `desktopApp` launcher with the same opt-in. Both use the shared reader/wiring.
+- Select demo, search `original`, inspect the showcase/PNG/JPEG/alt fallback and
+  text/numbering. Repeat offline; no media network access is needed.
+- Resize repeatedly, change settings deep in a chapter, check passage retention,
+  readable bounded column, TOC/anchors/Previous/Next and whole percentages.
+- Back/reopen through Search, Library and History; close/relaunch the process and
+  verify semantic restoration. Delete only cache, repeat preparation/restore.
+- Check TEXT forward/backward scrolling and retained Search query/results.
+- Rapid navigation/settings/Back must not publish stale content. No graphical
+  execution is claimed by host codec tests or distributable construction. The known
+  unrelated niri/Wayland outer-window sizing issue remains outside this PR.

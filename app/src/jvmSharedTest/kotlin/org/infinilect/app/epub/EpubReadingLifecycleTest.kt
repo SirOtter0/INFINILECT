@@ -39,9 +39,10 @@ class EpubReadingLifecycleTest {
         val progress = ProgressPersistence(store, clock = ::progressTime)
         val database = SqlCollectionsStore({ JdbcSqliteDriver("jdbc:sqlite:${root.resolve("collections.db")}", collectionsJdbcProperties()).also(::initializeCollectionsSchema) })
         val collections = ApplicationCollections(database.library, database.history, release = database::close)
+        val settings = EpubSettingsPersistence(FileEpubReaderSettingsStore(root.resolve(EPUB_SETTINGS_DIRECTORY_NAME)), clock = ::epubPreferenceTime)
         val preparer = FileEpubPreparer(root.resolve("epub-preparation-v1"))
         val sources = ApplicationSources(listOf(SourceOption("EPUB development demo", source, epubReadingEnabled = true)),
-            createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, epubPreparer = preparer) { cache.close() }
+            createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, epubPreparer = preparer, epubSettings = settings) { cache.close() }
         val session = ApplicationSession(sources, scope)
         init { sources.attach(session) }
         suspend fun searchOpen(): OpenPublicationState.EpubReady {
@@ -266,6 +267,38 @@ class EpubReadingLifecycleTest {
             withTimeout(5000) { owner.session.opening.first { it is OpenPublicationState.Error } }
             owner.collections.flushHistory()
             assertTrue(assertIs<LocalStoreResult.Success<List<HistoryEntry>>>(owner.database.history.listRecent()).value.isEmpty())
+        } finally { owner.close() }
+        assertTrue(payloads(root).isEmpty())
+    }
+
+    @Test fun settingsThenBackAndFreshOwnerRestoreSemanticPassage() = runBlocking<Unit> {
+        val first = Owner(this)
+        val open = first.searchOpen(); val ready = open.reader.next(2)
+        val block = ready.chapter.blocks.indexOfFirst { it.text.startsWith("Passage 20 ") }
+        open.reader.report(ready.ticket, block, 12)
+        open.reader.presentationChanged(EpubReaderSettings(fontSize = 28, margin = 36, lineSpacingPercent = 180, theme = EpubReadingTheme.DARK))
+        assertEquals(block to 12, assertIs<EpubReaderState.Ready>(open.reader.state.value).initialPosition)
+        first.session.back(); first.close()
+        root.resolve("resource-cache-v1").toFile().deleteRecursively()
+        root.resolve("epub-preparation-v1").toFile().deleteRecursively()
+        val second = Owner(this)
+        try {
+            val restored = second.searchOpen(); val position = assertIs<EpubReaderState.Ready>(restored.reader.state.value)
+            assertEquals(2, position.spineIndex); assertEquals(block to 12, position.initialPosition)
+            assertEquals(EpubReaderSettings(fontSize = 28, margin = 36, lineSpacingPercent = 180, theme = EpubReadingTheme.DARK), restored.reader.settings.value)
+            assertEquals(1, second.source.details); assertEquals(1, second.source.loads)
+        } finally { second.close() }
+    }
+    @Test fun originalPreparedZipExposesOnlyLocalDeclaredRasterArtwork() = runBlocking<Unit> {
+        val owner = Owner(this)
+        try {
+            val open = owner.searchOpen(); val c = assertIs<EpubReaderState.Ready>(open.reader.state.value).chapter
+            assertEquals(listOf("image/png", "image/jpeg", "image/svg+xml"), c.blocks.mapNotNull { it.image?.mediaType })
+            for (image in c.blocks.mapNotNull { it.image }.filter { it.mediaType != "image/svg+xml" }) {
+                val bytes = open.reader.document.openResource(image.path).readBytes(2 * 1024 * 1024)
+                assertEquals(96 to 64, epubRasterDimensions(bytes, image.mediaType))
+            }
+            assertEquals(1, owner.source.loads) // media uses document handles, never another acquisition
         } finally { owner.close() }
         assertTrue(payloads(root).isEmpty())
     }

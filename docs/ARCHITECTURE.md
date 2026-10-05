@@ -371,3 +371,26 @@ No legacy XML, RDF, file-download or mirror fallback remains. Core/reader/progre
 cache/collections APIs and source security are unchanged. Existing Gutenberg user
 metadata/progress are kept, but unsupported opens create no successful History.
 [Policy/evidence](GUTENBERG.md), [ADR0018](adr/0018-gutenberg-catalog-acquisition.md).
+
+## Session EPUB presentation and media (Draft PR #16)
+
+The passive semantic model now carries heading levels, ordered/unordered list markers,
+preformatted/separator/caption blocks and EpubImage references. The parser has no
+Compose, native image objects or decode responsibility. A separate owned
+EpubRasterDecoder and EpubMediaController consume only matching manifest-owned
+EpubDocument handles with encoded/dimension bounds and serialized off-UI work.
+Platform BitmapFactory/ImageIO adapters return bounded ARGB data; framework image
+conversion belongs only to UI adapters. Two visible media frames/UI images are
+retained, not a full-book image map. Chapter/Back/close invalidate work and drop it.
+
+EpubReaderSettings are validated global user preferences behind the owned
+EpubReaderSettingsStore contract. Application-owned EpubSettingsPersistence coalesces
+choices, flushes on reader exit/stop, drains on close and rejects stale-reader edits.
+The FileEpubReaderSettingsStore adapter owns a bounded atomic checksummed record in
+private persistent app-data, separate from cache, progress and collections. Missing/
+invalid/future records use defaults; save failures remain visible. No new dependency,
+SQL schema or progress format. Layout changes keep the typed EPUB locator and generate a new ticket;
+old layout/media callbacks cannot replace current progress/content. No TEXT, source,
+SQL schema, progress encoding or acquisition-cache changes. Media bytes and decoded
+frames never enter Library/History/progress storage. [Policy/budgets/manual gates](EPUB_READER.md),
+[ADR 0022](adr/0022-bounded-epub-media-and-presentation.md).

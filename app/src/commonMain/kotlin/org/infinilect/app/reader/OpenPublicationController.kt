@@ -41,6 +41,7 @@ internal class OpenPublicationController(
     private val preparer: TextPreparer = defaultTextPreparer(),
     private val epubPreparer: EpubPreparer? = null,
     private val epubParser: EpubParser = defaultEpubParser(),
+    private val epubSettings: EpubSettingsPersistence? = null,
     private val onOpened: (Publication) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
@@ -81,7 +82,7 @@ internal class OpenPublicationController(
                         // Assign ownership before the next suspension; every unhanded document closes.
                         val reader = try {
                             check(epub.publicationId == details.id)
-                            EpubReaderController(epub, ReadingProgressId(details.id, epubResource.key, PublicationFormat.EPUB), scope, epubParser, progress)
+                            EpubReaderController(epub, ReadingProgressId(details.id, epubResource.key, PublicationFormat.EPUB), scope, epubParser, progress, epubSettings)
                         } catch (error: Throwable) { epub.close(); throw error }
                         epubReader = reader
                         reader.initialize(progress?.get(reader.progressId))

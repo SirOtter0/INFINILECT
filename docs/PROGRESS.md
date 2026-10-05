@@ -218,3 +218,21 @@ close flush pending state. Closed readers/old navigation tickets cannot submit l
 updates. Full restart tests discard all ProgressPersistence recent RAM, reopen the
 actual checksummed files, rebuild prepared EPUB and restore. Cache-only deletion
 never removes this user state. Production EPUB acquisition remains disabled.
+
+## EPUB presentation changes (Draft PR #16)
+
+Locator identity and binary schemas are unchanged. Session settings/width/font-scale
+changes restore the latest code-point/element-path locator under a new layout ticket;
+late callbacks from the previous layout are ignored. Initial/loading image presentation
+cannot report saved positions. Ready text reports semantic line starts only after user
+scrolling. Image references retain the historical bounded alt-placeholder code-point
+semantics and cumulative parent offset, so splitting inline images into display blocks
+does not itself invalidate an existing paragraph locator. A whole image restores to
+its semantic block, not an internal pixel. List numbering never enters locator text.
+The expanded development fixture appends its showcase after existing passages, keeping
+historical passage element ordinals; added content may change approximate percentages.
+The initial PR #16 session-reset policy was superseded after physical acceptance.
+Font/spacing/margin/theme now persist globally through a separate
+EpubReaderSettingsStore, never through ReadingProgressStore. They survive cache
+deletion/restart without changing locator identity or the TEXT/EPUB binary progress
+schemas. [Preference policy](EPUB_READER.md#durable-global-epub-preferences-pr-16-physical-test-follow-up).

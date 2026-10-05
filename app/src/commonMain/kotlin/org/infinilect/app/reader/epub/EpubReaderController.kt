@@ -25,12 +25,18 @@ internal class EpubReaderController(
     private val scope: CoroutineScope,
     private val parser: EpubParser = defaultEpubParser(),
     private val persistence: ProgressPersistence? = null,
+    private val preferences: EpubSettingsPersistence? = null,
 ) {
     private val paths = document.spine.map { spine -> document.manifest.single { it.id == spine.itemId }.path }
     private val mutableState = MutableStateFlow<EpubReaderState>(EpubReaderState.Loading)
     val state = mutableState.asStateFlow()
     private val mutableProgression = MutableStateFlow(0.0)
     val progression = mutableProgression.asStateFlow()
+    private val mutableSettings = MutableStateFlow(EpubReaderSettings())
+    val settings = mutableSettings.asStateFlow()
+    val settingsSaveFailed = preferences?.saveFailed ?: MutableStateFlow(false).asStateFlow()
+    private var settingsLease = 0L
+    val media = EpubMediaController(document, scope)
     var toc: List<EpubTocEntry> = emptyList(); private set
     private val parseMutex = Mutex()
     private val cache = linkedMapOf<EpubEntryPath, EpubChapter>()
@@ -44,6 +50,10 @@ internal class EpubReaderController(
     internal val retainedChapters get() = cache.size
 
     suspend fun initialize(restored: ReadingProgress?) {
+        preferences?.awaitLoaded()
+        currentCoroutineContext().ensureActive()
+        check(!closed)
+        preferences?.let { settingsLease = it.claimReader(); mutableSettings.value = it.settings.value }
         toc = parser.toc(document)
         currentCoroutineContext().ensureActive()
         check(!closed)
@@ -64,6 +74,7 @@ internal class EpubReaderController(
     fun navigate(target: EpubTarget) {
         if (closed || target.path !in paths) return
         flush()
+        media.reset()
         val ticket = ++generation
         request?.cancel()
         mutableState.value = EpubReaderState.Loading
@@ -98,22 +109,35 @@ internal class EpubReaderController(
         }
     }
     fun chapter(index: Int) { paths.getOrNull(index)?.let { navigate(EpubTarget(it)) } }
+    fun visibleMedia(ticket: Long, images: List<EpubImage>) {
+        val ready = state.value as? EpubReaderState.Ready ?: return
+        if (!closed && ready.ticket == ticket) media.visible(images)
+    }
     fun report(ticket: Long, block: Int, localOffset: Int) {
         val ready = state.value as? EpubReaderState.Ready ?: return
         if (closed || ready.ticket != ticket) return
         val locator = ready.chapter.locator(block, localOffset)
         val progression = ((ready.spineIndex + locator.chapterProgression) / paths.size).coerceIn(0.0, 1.0)
         mutableProgression.value = progression
-        if (persistence == null) return
         if (lastLocator == locator) return
         lastLocator = locator
+        if (persistence == null) return
         lastTimestamp = maxOf(persistence.clock().coerceAtLeast(0), if (lastTimestamp == Long.MAX_VALUE) lastTimestamp else lastTimestamp + 1)
         pending = ReadingProgress(progressId, locator, progression, lastTimestamp)
         if (timer?.isActive != true) timer = scope.launch { delay(PROGRESS_SAVE_INTERVAL_MILLIS); flush() }
     }
     fun flush() { timer?.cancel(); timer = null; pending?.let { persistence?.submit(it) }; pending = null }
+    /** Layout changes invalidate old callbacks and restore the latest semantic position. */
+    fun presentationChanged(settings: EpubReaderSettings = this.settings.value) {
+        if (closed) return
+        if (settings != mutableSettings.value) preferences?.submit(settingsLease, settings)
+        mutableSettings.value = settings
+        val ready = state.value as? EpubReaderState.Ready ?: return
+        flush()
+        mutableState.value = ready.copy(initialPosition = ready.chapter.locate(lastLocator), ticket = ++generation)
+    }
     fun close() {
         if (closed) return
-        closed = true; generation++; request?.cancel(); flush(); cache.clear(); toc = emptyList(); mutableState.value = EpubReaderState.Loading; document.close()
+        closed = true; generation++; request?.cancel(); flush(); preferences?.flush(); media.close(); cache.clear(); toc = emptyList(); mutableState.value = EpubReaderState.Loading; document.close()
     }
 }

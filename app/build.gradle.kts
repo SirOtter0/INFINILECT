@@ -58,7 +58,12 @@ kotlin {
                 implementation("app.cash.sqldelight:sqlite-driver:2.4.0")
             }
         }
-        getByName("desktopTest") { dependsOn(jvmSharedTest) }
+        getByName("desktopTest") {
+            dependsOn(jvmSharedTest)
+            // Exercise the real image presentation adapter with the same existing
+            // Compose/Skiko runtime as desktopApp, without a graphical display.
+            dependencies { implementation(compose.desktop.currentOs) }
+        }
         getByName("androidHostTest") {
             dependsOn(jvmSharedTest)
         }

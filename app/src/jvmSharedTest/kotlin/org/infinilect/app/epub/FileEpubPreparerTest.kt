@@ -427,4 +427,18 @@ class FileEpubPreparerTest {
     }
     private fun signature(bytes: ByteArray, value: ByteArray): Int =
         (0..bytes.size - value.size).first { bytes.copyOfRange(it, it + value.size).contentEquals(value) }
+    @Test fun concurrentDocumentCleanupAndOwnerCloseRemainIdempotent() = runBlocking<Unit> {
+        repeat(64) {
+            val base = Files.createTempDirectory("epub-close-race")
+            val owner = FileEpubPreparer(base)
+            try {
+                val doc = owner.prepare(epubPublication, epubResource, epubLoader(EpubBytes(EpubFixture().zip())))
+                doc.close() // schedules removal on the IO cleanup scope
+                withContext(Dispatchers.Default) { owner.close(); owner.close() }
+                owner.awaitClosed()
+                assertTrue(payloads(base).isEmpty())
+            } finally { owner.close(); owner.awaitClosed(); base.toFile().deleteRecursively() }
+        }
+    }
+
 }

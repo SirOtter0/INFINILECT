@@ -193,22 +193,24 @@ internal class FileEpubPreparer(private val directory: Path?, private val limits
     }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        jobs.toList().forEach {
+        jobs.forEach {
             it.cancel()
         }
-        contents.toList().forEach {
+        contents.forEach {
             try {
                 it.close()
             }
             catch (_: Exception) {
             }
         }
-        documents.toList().forEach {
+        // Weakly consistent iteration is safe during concurrent cleanup. Kotlin
+        // toList() has a size==1 fast path that can call next() after removal.
+        documents.forEach {
             it.close()
         }
         shutdown = cleanup.launch {
             mutex.withLock {
-                documents.toList().forEach {
+                documents.forEach {
                     doc ->
                     doc.close()
                     doc.release()
@@ -286,7 +288,7 @@ private class PreparedEpub(override val publicationId: PublicationId, pkg: EpubP
     }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        handles.toList().forEach {
+        handles.forEach {
             try {
                 it.close()
             }
