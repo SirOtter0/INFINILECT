@@ -5,8 +5,12 @@ Fetched and verified existing Draft PR #16 HEAD
 `feature/epub-reader-usability`, with unchanged main/base
 `3155c6965b32a58ec5d7284211013ebeab3767c5`. The user physically accepted the
 prior HEAD's presentation/media/navigation/Back/progress/large-TEXT behavior, but
-reported session-only settings resets. That is user-provided prior evidence;
-**this persistence follow-up has not been physically tested by Codex or the user yet**.
+reported session-only settings resets. At automated handoff, physical verification
+of the follow-up was pending. The user subsequently physically tested HEAD
+`d365e59d3868c674de062168fe88db5c007cad75` on Android and confirmed that
+**leaving/reopening preserves settings, process restart preserves settings, and the
+persistence fix works correctly**. This is user-reported physical evidence; Codex
+did not perform physical/device testing. Automated results below remain separate.
 
 Global font/spacing/margin/theme now use the owned EpubReaderSettingsStore boundary,
 application-owned coalesced writer and a fixed version1 atomic checksummed private
@@ -83,7 +87,11 @@ is committed. No live source request/check was run for this follow-up.
   not graphically run. adb lists no device/emulator; DISPLAY/WAYLAND_DISPLAY absent.
   Android host filesystem tests are not physical Android filesystem verification.
 
-## Short Android persistence retest — pending
+## Android persistence retest — user-reported success
+
+The user confirmed leave/reopen and process-restart persistence on the follow-up
+HEAD above. The checklist is retained as a reproducible reference; additional cache
+and distinct-publication steps are not claimed as newly physically verified here.
 
 1. Install over the current PR #16 APK without clearing app data. Open the original
    development EPUB (`EPUB development demo` → search `original`). Set font26,

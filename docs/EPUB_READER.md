@@ -153,7 +153,11 @@ save clears it. Saving choices does not change semantic locator/progress schemas
 
 As with progress, Android process death provides no guaranteed final callback:
 allow a short moment for the periodic save. Host tests exercise real files and fresh
-owners but do not establish Android-device correctness of this follow-up.
+owners but do not establish Android-device correctness by themselves. The user
+subsequently physically verified the follow-up at HEAD
+`d365e59d3868c674de062168fe88db5c007cad75`: leaving/reopening and process restart
+preserve settings, and the persistence fix works correctly. This is user-reported
+Android evidence, not Codex/device testing.
 
 ### Image boundary and upstream API evidence (2026-10-05)
 
@@ -326,7 +330,12 @@ steps2–9 (close/relaunch process for persistence; remove only private cache fo
 Check resizing/layout and platform Back button. The existing niri/Wayland outer-window
 black-area issue is untouched. Build success does not claim graphical execution.
 
-## PR #16 Android acceptance checklist — physical verification pending
+## PR #16 Android acceptance checklist — user-reported verification
+
+The user reported successful physical acceptance of the initial reader, then
+successful leave/reopen and process-restart settings persistence on the follow-up
+HEAD above. This checklist remains a reference; automated host tests are separate
+and Codex did not perform Android device testing.
 
 1. Install over the merged PR #15 debug build **without clearing app data**.
 2. Check old Library/History and both TEXT/EPUB saved positions survive.
