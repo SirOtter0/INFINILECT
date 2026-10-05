@@ -29,7 +29,7 @@ usa preparación temporal privada y ventanas acotadas;
 [política del lector](docs/TEXT_READER.md).
 
 Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
-entre reinicios, sin ajustes de lector, lector EPUB/PDF ni downloads persistentes. La caché de disco automática
+entre reinicios, sin ajustes de lector, lectura EPUB/PDF de producción ni downloads persistentes. La caché de disco automática
 y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
 de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
 Consulta la [política de caché](docs/CACHE.md).
@@ -173,3 +173,14 @@ posterior.
 La licencia del proyecto no cambia la licencia de las publicaciones de las fuentes.
 
 Copyright © 2026 SirOtter0 and INFINILECT contributors.
+
+## Lector EPUB experimental (PR #15 en borrador)
+
+El APK debug ofrece **EPUB development demo**: selecciónalo, busca `original` y
+pulsa Open EPUB. En Desktop: `INFINILECT_EPUB_DEMO=1 ./gradlew :desktopApp:run`.
+La publicación original de tres capítulos usa lectura Compose pasiva compartida,
+índice/enlaces internos, progreso semántico persistente y reapertura desde Library/
+History. **La adquisición EPUB de producción está deshabilitada.** No se afirma
+compatibilidad EPUB general, CSS del editor, imágenes ni scripts. TEXT conserva su
+comportamiento. [Alcance, seguridad, límites y pruebas manuales](docs/EPUB_READER.md).
+v0.0.1 sigue sin estar terminada.

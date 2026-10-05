@@ -4,7 +4,7 @@ package org.infinilect.app.reader
 
 import org.infinilect.core.*
 
-/** Parallel preparation seam; current OpenPublicationController/UI still selects TEXT only. */
+/** Parallel preparation seam; the neutral opener hands ownership to an enabled EPUB reader. */
 internal interface EpubPreparer {
     suspend fun prepare(publication: Publication, resource: PublicationResource, loader: ResourceLoader): EpubDocument
     fun close()

@@ -12,9 +12,15 @@ import org.xml.sax.*
 import org.xml.sax.ext.DefaultHandler2
 internal data class XmlName(val namespace: String, val local: String)
 
+internal sealed interface EpubXmlContent {
+    class Text(val value: StringBuilder) : EpubXmlContent
+    class Element(val value: EpubXmlNode) : EpubXmlContent
+}
+
 internal class EpubXmlNode(val name: XmlName, val attributes: Map<XmlName, String>) {
     val children = mutableListOf<EpubXmlNode>()
     val text = StringBuilder()
+    val content = mutableListOf<EpubXmlContent>()
     fun attr(name: String) = attributes[XmlName("", name)]
     fun children(namespace: String, local: String) = children.filter {
         it.name==XmlName(namespace, local)
@@ -65,7 +71,10 @@ internal fun parseEpubXml(bytes: ByteArray, limits: EpubLimits, job: Job?): Epub
                 requireEpub(root==null)
                 root = node
             }
-            else stack.last().children.add(node)
+            else {
+                stack.last().children.add(node)
+                stack.last().content.add(EpubXmlContent.Element(node))
+            }
             stack.add(node)
         }
         override fun endElement(uri: String, local: String, qName: String) {
@@ -81,6 +90,11 @@ internal fun parseEpubXml(bytes: ByteArray, limits: EpubLimits, job: Job?): Epub
                 val out = stack.last().text
                 if (out.length+length>8192) limit()
                 out.append(ch, start, length)
+                // Coalesce SAX character callbacks: bounded by element transitions, not bytes/events.
+                val ordered = stack.last().content
+                val part = (ordered.lastOrNull() as? EpubXmlContent.Text)
+                    ?: EpubXmlContent.Text(StringBuilder()).also(ordered::add)
+                part.value.append(ch, start, length)
             }
         }
         override fun processingInstruction(target: String, data: String) {

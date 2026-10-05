@@ -28,3 +28,6 @@ Amend superseded decisions with a new ADR explaining the concrete need and trade
 - [0018: Experimental Gutenberg OPDS2 catalog; acquisition deferred](0018-gutenberg-catalog-acquisition.md)
 
 - [0019: Bounded structural EPUB preparation, renderer deferred](0019-bounded-epub-foundation.md)
+
+- [0020: Stable bidirectional TEXT viewport](0020-stable-text-viewport.md)
+- [0021: Passive shared EPUB reader and semantic progress](0021-semantic-epub-reader.md)

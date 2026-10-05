@@ -1,3 +1,291 @@
+# PR #15 dependency-independence audit — 2026-10-05 UTC
+
+Fetched GitHub before inspection. Exact code/PR HEAD audited:
+`557fb6b43148879ee88f2d842c197f4072730d9f`; current main/base:
+`0968a36e3401a1ba86ef18a4098c2a7f69ce4e0c`. GitHub reported PR #15 Open,
+Draft and MERGEABLE; branch was clean and0 behind/4 ahead before this documentation
+follow-up. The user now reports physical Android testing passed, including corrected
+system Back inside EPUB. This supersedes the earlier pending-device finding below;
+it is user evidence, not a new physical test performed by Codex.
+
+The [independent audit](DEPENDENCY_BOUNDARIES.md) maps current imports/types,
+contracts, composition, replacement/migration implications and deliberate limits.
+No production boundary leak requiring correction was found. Only documentation
+changes: concise durable dependency-ownership rule, audit evidence and this record.
+No new interfaces, dependencies, schema, runtime files, behavior, source policy or
+reader changes. PR #15 remains Draft and unmerged; PR #16 was not created.
+
+Checks performed for this follow-up:
+
+- Classified imports across every production Kotlin source set and launchers, and
+  inspected build declarations, SQL generation/schema, infrastructure constructors,
+  factories, public/owned signatures and fake/real implementation tests.
+- Scanned both imports and fully qualified references in all29 core/commonMain
+  production Kotlin files: no SQLDelight/Ktor/JSON/NIO/SAX/ZIP/Android or concrete
+  infrastructure type reference. Core has no production library dependency. Compose
+  use is confined to the four intended common UI files and platform launchers.
+- Reviewed both contract test seams and implementation integration test coupling.
+  No runtime tests were removed, added or altered.
+- Local Markdown links and both `git diff --check` / full diff against main checks;
+  generated-artifact/secret scan and unchanged-production/configuration checks.
+
+**No Gradle tests, APK rebuild, source live check or device/graphical test were
+rerun for documentation-only changes.** The complete clean run for the unchanged
+code is recorded below:1,255 executions,651 unique cases,0 failures/errors/skipped,
+Android lint0 issues, APK/desktop artifacts built. This audit does not present those
+historical executions as newly run tests, nor claim a real dependency replacement.
+
+---
+
+# PR #15 Android system Back follow-up — 2026-10-05 UTC
+
+The user physically tested the initial PR #15 APK: the EPUB flow worked, but Android
+system Back exited the application from the EPUB reader; its visible Back button
+returned correctly. This is user-supplied device evidence. The corrected APK below
+has **not** been physically tested by Codex. PR #15 remains **Draft and unmerged**.
+
+## Root cause and narrow correction
+
+Android MainActivity's existing `BackHandler(enabled, onBack)` at lines25–26 already
+uses the shared application's callback. Both the session policy and the opening-state
+policy already include `EpubReady`, just like TEXT Ready, Loading and Error.
+However, App.kt previously installed the callback using `application.handlesBack()`
+(line71), which reads StateFlow.value without a Compose snapshot observation. The
+opening state was observed only when read in the child Surface/reader composition.
+That child can recompose to show EPUB without recomposing the parent binding, leaving
+its previously false enabled value. Incidental parent recomposition can mask this.
+
+`ApplicationBackHandler` now collects and reads opening/destination snapshot state
+in the composition that invokes the platform handler. App.kt delegates to it with
+unchanged `application.back()`. Android's existing thin BackHandler integration is
+unchanged. Idle/Search stays disabled, allowing normal Android exit. Loading, Error,
+TEXT Ready and EPUB Ready enable it; Library/History retain internal navigation.
+No global interception, new dependency, navigation redesign, source, TEXT, renderer,
+progress format, SQL schema, cache, permission or lifecycle-policy change.
+
+The shared session command cancels acquisition/chapter navigation, invalidates late
+results, flushes pending semantic progress, closes the prepared document and returns
+to the previous Search/Library/History destination. Search query/results are retained.
+New lifecycle tests leave before the two-second interval, drain the application
+owner and read committed progress with a completely new file store. Closed-reader
+callbacks cannot overwrite that record or reopen the reader.
+
+## Focused verification
+
+First, `:app:desktopTest --tests '*ApplicationBackHandlerTest'` with the wrapper flags
+below passed **5 real headless Compose tests**. One independently reproduces the old
+reader-only recomposition and stale disabled binding; the others exercise the actual
+new binding, EPUB/TEXT/Loading/Error, collection/root navigation and rapid replacement.
+No graphical applier or device dispatcher is simulated as physical evidence.
+
+An initial attempt to run these new runtime tests in Android host tests failed on
+Android's unmocked `android.os.Trace.beginSection`, not on navigation. Those tests
+now live in desktopTest, where the real Compose runtime runs headlessly. Existing
+Android host behavior was not mocked globally and no test dependency was added.
+The shared session/ownership/progress tests continue running on both host targets.
+
+```sh
+./gradlew :app:desktopTest \
+  --tests '*ApplicationBackHandlerTest' --tests '*ApplicationSessionTest' \
+  --tests '*ApplicationSourcesTest' --tests '*EpubReadingLifecycleTest' \
+  --tests '*EpubReaderControllerTest' --tests '*OpenEpubControllerTest' \
+  :app:testAndroidHostTest \
+  --tests '*ApplicationSessionTest' --tests '*ApplicationSourcesTest' \
+  --tests '*EpubReadingLifecycleTest' --tests '*EpubReaderControllerTest' \
+  --tests '*OpenEpubControllerTest' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Focused session/navigation run: **BUILD SUCCESSFUL in 22s**, 27 actionable tasks
+(8 executed,19 up-to-date), **64 tests per target,128 executions,0 failures/errors/
+skipped**. The focused session reports contain64 cases per target; the separate five-case
+binding run and final unfiltered clean run include ApplicationBackHandlerTest. No existing tests were removed or weakened.
+
+## Complete clean verification
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m37s;150 actionable tasks:142 executed,8 up-to-date.**
+
+| Task | Executions | Failures / errors / skipped |
+| --- | ---: | --- |
+| `:core:jvmTest` | 48 | 0 / 0 / 0 |
+| `:app:desktopTest` | 589 | 0 / 0 / 0 |
+| `:core:testAndroidHostTest` | 48 | 0 / 0 / 0 |
+| `:app:testAndroidHostTest` | 570 | 0 / 0 / 0 |
+| **Total** | **1,255** | **0 / 0 / 0** |
+
+**651 unique cases;9 added in this follow-up** (5 Compose binding,4 real EPUB
+session/Back lifecycle). The original PR #15 had642 unique cases. Android launcher
+unit task remains NO-SOURCE, not a device-test execution. Android lint: **0 issues**.
+No compiler/Gradle warnings or new actionable warnings. Existing JDBC SLF4J
+no-provider messages remain in test reports. All TEXT/PR #14 bidirectional viewport,
+source security, cache, progress and collections regressions remain green.
+
+## Corrected artifacts and required device confirmation
+
+- APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+- Exact size: **11,749,545 bytes**.
+- SHA-256: `1be4b1060797242dca147b9b737cde891686daa1ebf8c1a2bb0865d605661553`.
+- Same package `org.infinilect.app`, version `0.0.1-SNAPSHOT`/code1,
+  minSdk26, target/compileSdk37; permissions unchanged (INTERNET plus AndroidX
+  signature receiver guard), no storage permissions.
+- apksigner verifies v2, one signer; debug certificate SHA-256 unchanged:
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+  Updating over the prior PR #15 debug build is intended to preserve app data;
+  installation/update behavior still requires the user's device.
+- Desktop distributable rebuilt at `desktopApp/build/compose/binaries/main/app/desktopApp`;
+  not graphically executed. No new live source requests or physical-device/emulator
+  tests were performed for this follow-up.
+
+Install without clearing data. Open demo EPUB from Search, scroll, press **Android
+system Back**, verify retained query/results, reopen and verify progress. Repeat
+from Library and History; Back returns to the respective list, then another Back
+to Search. Verify normal system exit at Idle/Search. Repeat during acquisition and
+chapter loading, immediately after scrolling (pending save), and after full process
+restart. TEXT Back must remain unchanged. The [manual plan](EPUB_READER.md#manual-android-plan-not-an-automateddevice-test-claim)
+now explicitly includes these system/in-app Back checks. Physical acceptance of the
+corrected APK remains pending; host coverage does not prove the Android dispatcher.
+
+`git diff --check`, the complete diff against current main, local Markdown links,
+SPDX/core/dependency/security invariants and generated-artifact/credential audits
+were checked. No APK, database, prepared publication or runtime state is committed.
+Existing original PR #15 verification and artifact evidence is retained below.
+
+---
+
+# PR #15 passive EPUB reader verification — 2026-10-04 UTC
+
+Verified PR #14 was merged before creating `feature/epub-reader`. Exact base/main:
+`0968a36e3401a1ba86ef18a4098c2a7f69ce4e0c`. A fresh fetch on 2026-10-05 confirmed
+main still had that SHA. **PR #15 is Draft; no merge.**
+[Supported subset/research/budgets/manual plans](EPUB_READER.md),
+[ADR 0021](adr/0021-semantic-epub-reader.md).
+
+## Implementation and honest acquisition status
+
+The real ResourceLoader/ResourceContent/ZIP preparation path now leads to bounded
+semantic XHTML blocks/runs, passive shared Compose reading, chapter/TOC/internal
+navigation and typed persistent EPUB progress. An original development source
+exercises UI/source-resolved Library/History reopen on debug Android and opted-in
+Desktop. **No production EPUB acquisition is enabled or claimed.** Archive's CC0,
+fresh metadata/redirect/null-revision policy and Gutenberg catalog-only behavior
+remain unchanged. No TEXT viewport change, new dependency, SQL schema, manifest,
+permission, Downloads or cache/progress conflation.
+
+Independent self-review identified a handoff/deadline race in the initial new
+implementation: publishing Ready/History inside withTimeout could race cancellation
+at its return boundary. Handoff now occurs only after successfully leaving the
+deadline and checking cancellation/generation. A dedicated regression verifies
+successful History handoff is outside the preparation deadline; timeout/cancel/
+parser failure/foreign prepared identity close the document without History.
+Review also bounded/serialized navigation parser work and protected supplementary
+Unicode at the bounded image-alt cutoff. No browser/image decoder is present.
+
+## Commands actually executed
+
+Focused iterations ran `:core:jvmTest :app:desktopTest` with the same wrapper flags.
+The last focused pass before the final review additions passed 48 core +573 app
+cases, BUILD SUCCESSFUL in 53s, 17 tasks (11 executed, 6 up-to-date). Earlier
+compile/test failures were corrected: Int resource bound, shared collection label
+scope, newline preservation, legacy TEXT timeout wording, JUnit Unit-return and
+an integration-test search synchronization assumption. No failing tests were
+removed/weakened. The complete clean pass below includes all final production/test
+changes, including the six deadline/ownership cases and supplementary-alt case.
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m31s; 150 actionable tasks:142 executed,8 up-to-date.**
+
+| Task | Executions | Failures / errors / skipped |
+| --- | ---: | --- |
+| `:core:jvmTest` | 48 | 0 / 0 / 0 |
+| `:app:desktopTest` | 580 | 0 / 0 / 0 |
+| `:core:testAndroidHostTest` | 48 | 0 / 0 / 0 |
+| `:app:testAndroidHostTest` | 566 | 0 / 0 / 0 |
+| **Total** | **1,242** | **0 / 0 / 0** |
+
+**642 unique class/method cases,87 new** (6 core +81 app), each new case runs on
+both corresponding host targets. Android launcher unit task is NO-SOURCE, not
+counted as device/launcher tests. Android lint XML: **0 issues**. No compiler/Gradle
+warnings or new actionable warnings; existing SLF4J no-provider/NOP JDBC messages
+remain. Toolchain/repositories were unchanged; no Maven429 workaround was needed.
+
+Coverage includes the real bounded parser/mixed order/Unicode/styles/lists/quotes/
+links/TOC, malformed and active/foreign/remote/file/content/javascript input,
+traversal/encoded aliases, resource closure, XML/model bounds, cancellation,
+serialized navigation/stale generations, two-chapter cache, typed semantic progress,
+two-second saves/idempotent close, full owner/store restart after preparation/cache
+deletion, actual committed .progress records, TEXT v1 +EPUB v2 coexistence, original
+ZIP/source ownership, successful-only History, source-resolved Library/History and
+failed acquisition/resolution preserving metadata. All existing source authorization,
+redirect/cache/TEXT UTF8/BOM/size/progress/SQLite PRAGMA/catalog tests remain green.
+Host simulations do not prove Android's actual SAX/filesystem provider or Compose
+layout/gesture behavior.
+
+## Artifacts inspected
+
+- APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`
+- Exact size: **11,749,545 bytes** (65,536 bytes above the inspected PR #14 APK).
+- SHA-256: `7090873bb6a4ce594520f4d3efb22767163145e215d144c8084661882e3e8cb8`
+- Package: `org.infinilect.app`; version `0.0.1-SNAPSHOT`, versionCode1.
+- minSdk26, targetSdk37, compileSdk37; visible app name INFINILECT.
+- Permissions unchanged: INTERNET plus AndroidX's application-specific
+  `org.infinilect.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (signature guard).
+  No storage permission or cleartext relaxation.
+- `apksigner verify --verbose --print-certs`: verifies, v2 true, one RSA2048 signer.
+- Debug certificate SHA-256:
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+  Direct comparison with the PR #14 artifact matches package/version/certificate;
+  update installation is intended to retain data, **not physically tested here**.
+- Desktop app image: `desktopApp/build/compose/binaries/main/app/desktopApp`.
+  **Built, not graphically executed.** Its bundled runtime release explicitly
+  contains java.xml alongside the existing HTTP/SQL/Desktop modules.
+
+Inspected with standard SDK aapt2/apksigner, runtime release metadata and hashes.
+No APK/runtime/ZIP/database/cache/progress files are committed.
+
+## Live evidence and environment limitations
+
+One official Archive MDAPI request on 2026-10-04T21:27:07Z checked
+`https://archive.org/metadata/gmb-2015-93040`: HTTP200,1 request,5,359 bytes,
+no redirect, licenseurl CC0, no EPUB files. No book acquisition or additional
+source/page request; no429/503/retry. This is bounded metadata evidence, not an
+EPUB production-source proof. Upstream renderer documentation was also read; tests
+remain fully offline. No Gutenberg/OAPEN live checks were repeated.
+
+DISPLAY/WAYLAND_DISPLAY are unset. `adb devices` on 2026-10-05 reported an empty
+list after starting the permitted local daemon. **No Android device/emulator test,
+Desktop graphical smoke test or physical performance measurement was performed.**
+The exact Android/Desktop review plans are in EPUB_READER.md. They cover existing
+persistent state and bidirectional TEXT, EPUB development chapters/TOC/internal
+links, Back and full process restart, Library/History, cache-only deletion,
+cancellation/rapid switching. Actual production EPUB remains a future verified gate.
+
+## Repository audits
+
+`git diff --check` and diff against current origin/main passed. Local Markdown
+links, original-code SPDX, pure-core imports/dependencies, dependency/license
+inventory, SQL schema/manifest/source/TEXT-policy invariance, complete diff,
+credential patterns and generated/runtime artifact paths were reviewed. The final
+committed branch is checked clean before publication. No merge/rebase/squash or
+force push. Draft status and physical/provider/production-source limitations remain
+explicit; no v0.0.1 completion claim.
+
+---
+
 # PR #14 TEXT viewport hardening verification — 2026-10-04 UTC
 
 Fetched PR #13 and verified it was merged before starting. Exact starting/current

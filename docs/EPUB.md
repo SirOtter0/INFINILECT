@@ -1,8 +1,9 @@
 # Bounded EPUB foundation — PR #13
 
-This is **structural EPUB3 preparation, not an EPUB reader**. No EPUB action,
-rendering screen, XHTML source dump, script execution or acquisition fallback is
-enabled. The existing 16 MiB indexed TEXT reader remains the only reading UI.
+PR #13 introduced **structural EPUB3 preparation, not a renderer**. These validation
+and resource-ownership guarantees remain unchanged. Draft PR #15 adds a separate
+[passive semantic reader](EPUB_READER.md) and original development route; production
+EPUB acquisition remains disabled. No script execution or acquisition fallback.
 
 ## Boundary
 
@@ -16,7 +17,7 @@ PublicationSource → ResourceLoader → ResourceContent
                            core EpubDocument contract
                                        │ manifest-owned local ResourceContent
                                        ▼
-                           future platform EPUB renderer
+                           bounded semantic chapter parser / Compose reader
 ```
 
 `core` adds only pure Kotlin EPUB metadata, manifest, spine, canonical internal
@@ -29,10 +30,10 @@ or becomes a cache revision. Identifier/title/language/modified metadata are req
 supported package subset; optional creators/rights are retained without inferring
 permissions.
 
-`app/commonMain` has a small parallel `EpubPreparer` seam. The existing TEXT-only
-opener does not need a generic engine registry or navigation redesign. Application
-ownership provides the seam on Desktop and Android, but no UI invokes it. A future
-reader must deliberately add preparation/Ready handoff and a rendering adapter.
+`app/commonMain` has a small parallel `EpubPreparer` seam, owned on both platforms.
+The opener now deliberately hands off an EPUB document to the separate semantic
+reader for enabled source options; TEXT remains preferred and no generic engine
+registry is added. A structurally valid document still needs renderer checks.
 
 ## Finite policy
 
@@ -153,14 +154,13 @@ Official sources inspected on 2026-10-04:
   and [SAX XMLReader](https://docs.oracle.com/en/java/javase/21/docs/api/java.xml/org/xml/sax/XMLReader.html).
 
 Existing JDK/Android ZIP, SAX, NIO and coroutines suffice; no new dependency,
-license, database schema, manifest/permission or runtime-module change. Host tests
-on both Gradle targets do **not** prove a real Android SAX/filesystem provider.
-Physical provider/lifecycle tests and representative permitted EPUB compatibility
-checks remain necessary before exposing a renderer. Readium is not installed or
-evaluated as a Desktop engine; any future Kotlin integration belongs behind an
-Android-specific adapter. Desktop may need a different engine behind the same
-document boundary. EPUB progress requires its own resource/fragment/position
-locator; never reuse persisted `ReadingLocator.Text(codePointOffset)`.
+license, database schema or manifest/permission change. PR #15 explicitly includes
+java.xml in the bundled Desktop runtime and adds a separately bounded passive
+[renderer](EPUB_READER.md) and typed EPUB locator. Host tests on both Gradle targets
+do **not** prove a real Android SAX/filesystem provider. Physical provider/lifecycle
+and representative permitted production EPUB checks remain review gates. Readium
+is not installed or treated as a Desktop engine; any future Kotlin integration
+belongs behind an Android-specific adapter, never in core.
 
 See [ADR 0019](adr/0019-bounded-epub-foundation.md) and
 [verification](VERIFICATION.md). No v0.0.1 completion is claimed.

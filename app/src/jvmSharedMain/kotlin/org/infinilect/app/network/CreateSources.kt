@@ -21,6 +21,7 @@ internal fun createSources(
     progressDiagnostics: (ProgressStorageFailure) -> Unit = {},
     collections: ApplicationCollections? = null,
     textDirectory: Path? = org.infinilect.app.reader.desktopTextDirectory(),
+    developmentEpubEnabled: Boolean = false,
     epubDirectory: Path? = org.infinilect.app.epub.desktopEpubDirectory(),
 ): ApplicationSources {
     val gutenberg = try { GutenbergSource() } catch (error: Throwable) { collections?.close(); cache.close(); throw error }
@@ -34,7 +35,7 @@ internal fun createSources(
     return ApplicationSources(listOf(
         SourceOption("Internet Archive", archive, textReadingEnabled = true),
         SourceOption("Project Gutenberg (experimental)", gutenberg, textReadingEnabled = false),
-    ), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer) {
+    ) + (if (developmentEpubEnabled) listOf(SourceOption("EPUB development demo", org.infinilect.app.epub.DevelopmentEpubSource(), epubReadingEnabled = true)) else emptyList()), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer) {
         try { cache.close() } finally { try { gutenberg.close() } finally { archive.close() } }
     }
 }

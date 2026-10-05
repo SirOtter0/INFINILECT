@@ -12,5 +12,6 @@ fun createApplicationSources(): ApplicationSources {
     val progress = desktopProgressDirectory()
     val store = SqlCollectionsStore({ desktopCollectionsDriver(desktopCollectionsFile(progress)) })
     return createSources(DiskResourceCache(desktopCacheDirectory()), progress,
-        collections = ApplicationCollections(store.library,store.history,release = store::close))
+        collections = ApplicationCollections(store.library,store.history,release = store::close),
+        developmentEpubEnabled = System.getProperty("infinilect.epubDemo") == "true" || System.getenv("INFINILECT_EPUB_DEMO") == "1")
 }
