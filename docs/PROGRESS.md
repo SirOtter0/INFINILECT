@@ -231,4 +231,8 @@ does not itself invalidate an existing paragraph locator. A whole image restores
 its semantic block, not an internal pixel. List numbering never enters locator text.
 The expanded development fixture appends its showcase after existing passages, keeping
 historical passage element ordinals; added content may change approximate percentages.
-Font/spacing/margin/theme values reset on reader close by design; progress does not.
+The initial PR #16 session-reset policy was superseded after physical acceptance.
+Font/spacing/margin/theme now persist globally through a separate
+EpubReaderSettingsStore, never through ReadingProgressStore. They survive cache
+deletion/restart without changing locator identity or the TEXT/EPUB binary progress
+schemas. [Preference policy](EPUB_READER.md#durable-global-epub-preferences-pr-16-physical-test-follow-up).

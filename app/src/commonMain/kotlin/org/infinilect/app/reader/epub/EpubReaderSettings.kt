@@ -2,7 +2,7 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.reader.epub
 
-/** Session-local presentation, never a locator or publisher style. No disk/UI types. */
+/** Global EPUB presentation preferences, never a locator or publisher style. No disk/UI types. */
 internal enum class EpubReadingTheme { SYSTEM, LIGHT, DARK }
 internal data class EpubReaderSettings(
     val fontSize: Int = 18,

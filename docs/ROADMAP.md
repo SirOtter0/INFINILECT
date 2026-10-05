@@ -70,7 +70,7 @@ Open INFINILECT → search for a book → get real results → open one → read
    search public CC0 items, open a TEXT resource through ResourceLoader/
    ResourceContent, incrementally validate/index UTF-8 up to 16 MiB, display TextReader,
    and Back to retained query/results. Gutenberg remains experimental catalog-only. Production EPUB/PDF and
-   TEXT reader settings remain deferred; EPUB session settings are in Draft PR #16. Codex graphical Desktop verification is pending;
+   TEXT reader settings remain deferred; global persistent EPUB settings are in Draft PR #16. Codex graphical Desktop verification is pending;
    PR #10 Android large-TEXT success was human-reported.
 5. **First disk tier implemented:** bounded automatic resource cache with restart
    reuse only for trustworthy revisions, recency eviction and corruption checks.

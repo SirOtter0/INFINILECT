@@ -54,3 +54,14 @@ is platform-managed, not an exact process-heap promise. Android decoder/performa
 and device layout remain manual gates; headless Desktop decoder tests are not GUI
 execution. Production EPUB acquisition remains disabled. Details and budgets in
 [EPUB_READER.md](../EPUB_READER.md).
+
+## PR #16 physical-acceptance follow-up: global preferences
+
+Physical acceptance of the initial PR #16 reader passed, but session-only settings
+were found to reset unexpectedly after reader exit. That part of this decision is
+superseded within the same Draft PR: settings become global persistent EPUB user
+preferences behind EpubReaderSettingsStore. Application-owned coalesced IO and a
+small versioned atomic file adapter keep preferences separate from progress/cache/
+collections. This does not change the rendering/media decision or locator formats.
+Defaults remain for missing/corrupt/future data; failed saves remain visible.
+See [exact persistence/lifecycle policy](../EPUB_READER.md#durable-global-epub-preferences-pr-16-physical-test-follow-up).

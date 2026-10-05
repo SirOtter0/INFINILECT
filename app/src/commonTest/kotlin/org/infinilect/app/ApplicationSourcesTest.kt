@@ -12,6 +12,21 @@ import org.infinilect.core.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ApplicationSourcesTest {
+    @Test fun ownerCloseDrainsFinalEpubSettingsWithoutDependingOnReaderScope() = runTest {
+        var saved: org.infinilect.app.reader.epub.EpubReaderPreferences? = null
+        val store = object : org.infinilect.app.reader.epub.EpubReaderSettingsStore {
+            override suspend fun load() = org.infinilect.app.reader.epub.EpubReaderPreferences()
+            override suspend fun save(preferences: org.infinilect.app.reader.epub.EpubReaderPreferences): Boolean { saved = preferences; return true }
+        }
+        val preferences = org.infinilect.app.reader.epub.EpubSettingsPersistence(store, StandardTestDispatcher(testScheduler))
+        preferences.awaitLoaded()
+        val owner = ApplicationSources(emptyList(), epubSettings = preferences) {}
+        val expected = org.infinilect.app.reader.epub.EpubReaderSettings(fontSize = 30)
+        preferences.submit(preferences.claimReader(), expected)
+        owner.close(); owner.close(); owner.awaitProgressClosed()
+        assertEquals(expected, assertNotNull(saved).settings)
+        assertFalse(preferences.saveFailed.value)
+    }
     private class Source : PublicationSource {
         override val id = SourceId("fixture")
         val resource = PublicationResource(PublicationId(id, "1"), "text", PublicationFormat.TEXT, "text/plain")

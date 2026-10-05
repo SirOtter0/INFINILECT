@@ -383,8 +383,13 @@ Platform BitmapFactory/ImageIO adapters return bounded ARGB data; framework imag
 conversion belongs only to UI adapters. Two visible media frames/UI images are
 retained, not a full-book image map. Chapter/Back/close invalidate work and drop it.
 
-EpubReaderSettings are session-local validated presentation values, not persisted
-user state. Layout changes keep the typed EPUB locator and generate a new ticket;
+EpubReaderSettings are validated global user preferences behind the owned
+EpubReaderSettingsStore contract. Application-owned EpubSettingsPersistence coalesces
+choices, flushes on reader exit/stop, drains on close and rejects stale-reader edits.
+The FileEpubReaderSettingsStore adapter owns a bounded atomic checksummed record in
+private persistent app-data, separate from cache, progress and collections. Missing/
+invalid/future records use defaults; save failures remain visible. No new dependency,
+SQL schema or progress format. Layout changes keep the typed EPUB locator and generate a new ticket;
 old layout/media callbacks cannot replace current progress/content. No TEXT, source,
 SQL schema, progress encoding or acquisition-cache changes. Media bytes and decoded
 frames never enter Library/History/progress storage. [Policy/budgets/manual gates](EPUB_READER.md),

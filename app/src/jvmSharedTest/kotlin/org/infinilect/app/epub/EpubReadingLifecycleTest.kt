@@ -39,9 +39,10 @@ class EpubReadingLifecycleTest {
         val progress = ProgressPersistence(store, clock = ::progressTime)
         val database = SqlCollectionsStore({ JdbcSqliteDriver("jdbc:sqlite:${root.resolve("collections.db")}", collectionsJdbcProperties()).also(::initializeCollectionsSchema) })
         val collections = ApplicationCollections(database.library, database.history, release = database::close)
+        val settings = EpubSettingsPersistence(FileEpubReaderSettingsStore(root.resolve(EPUB_SETTINGS_DIRECTORY_NAME)), clock = ::epubPreferenceTime)
         val preparer = FileEpubPreparer(root.resolve("epub-preparation-v1"))
         val sources = ApplicationSources(listOf(SourceOption("EPUB development demo", source, epubReadingEnabled = true)),
-            createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, epubPreparer = preparer) { cache.close() }
+            createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, epubPreparer = preparer, epubSettings = settings) { cache.close() }
         val session = ApplicationSession(sources, scope)
         init { sources.attach(session) }
         suspend fun searchOpen(): OpenPublicationState.EpubReady {
@@ -284,7 +285,7 @@ class EpubReadingLifecycleTest {
         try {
             val restored = second.searchOpen(); val position = assertIs<EpubReaderState.Ready>(restored.reader.state.value)
             assertEquals(2, position.spineIndex); assertEquals(block to 12, position.initialPosition)
-            assertEquals(EpubReaderSettings(), restored.reader.settings.value) // settings deliberately session-only
+            assertEquals(EpubReaderSettings(fontSize = 28, margin = 36, lineSpacingPercent = 180, theme = EpubReadingTheme.DARK), restored.reader.settings.value)
             assertEquals(1, second.source.details); assertEquals(1, second.source.loads)
         } finally { second.close() }
     }

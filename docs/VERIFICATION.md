@@ -1,3 +1,106 @@
+# PR #16 follow-up: durable global EPUB settings — 2026-10-05 UTC
+
+Fetched and verified existing Draft PR #16 HEAD
+`b661dc9f7134c21903344d690194cfac7b90dfa0`, branch
+`feature/epub-reader-usability`, with unchanged main/base
+`3155c6965b32a58ec5d7284211013ebeab3767c5`. The user physically accepted the
+prior HEAD's presentation/media/navigation/Back/progress/large-TEXT behavior, but
+reported session-only settings resets. That is user-provided prior evidence;
+**this persistence follow-up has not been physically tested by Codex or the user yet**.
+
+Global font/spacing/margin/theme now use the owned EpubReaderSettingsStore boundary,
+application-owned coalesced writer and a fixed version1 atomic checksummed private
+file. [Exact format, paths, concurrency, failure and lifecycle policy](EPUB_READER.md#durable-global-epub-preferences-pr-16-physical-test-follow-up).
+No new dependency, SQL migration, source policy, progress encoding, TEXT algorithm,
+Android permission, network behavior or settings-in-cache storage. A failed save
+is explicitly reported; RAM is not claimed as durable persistence.
+
+## Focused tests
+
+```sh
+./gradlew :app:desktopTest --tests '*Epub*' --tests '*ApplicationSourcesTest*' \
+  :app:testAndroidHostTest --tests '*Epub*' --tests '*ApplicationSourcesTest*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+BUILD SUCCESSFUL,1m11s,27 actionable tasks (8 executed/19 up-to-date),
+Desktop235 + Android host228 = **463 executions,235 unique**,0 failures/errors/skips.
+The final clean suite below also checks the small Desktop exit/drain wiring change.
+
+29 new unique regressions relative to the physically accepted PR #16 HEAD cover:
+actual committed record/new store/new owner restore, all four settings, repeated
+recreation/cache deletion, corrupt/truncated/oversized/future/checksum-valid invalid
+values, failed/cancelled atomic commit preserving the last record, failure not masked
+by RAM, older-owner protection, unrelated files/symlinks, private Android/Desktop
+path policies, bounded coalescing, immediate Back/stop/close drain, failure clearing,
+new EPUB global settings and independent semantic progress/viewport callbacks.
+Existing real ZIP/SQLite/progress/source/cache/TEXT integrations remain.
+
+## Final clean verification
+
+```sh
+./gradlew clean \
+  :core:jvmTest :app:desktopTest :core:build :app:build :desktopApp:build \
+  :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL,2m49s,150 actionable tasks:142 executed/8 up-to-date**.
+
+| Task | Executions | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| :core:jvmTest |48|0|0|0|
+| :app:desktopTest |680|0|0|0|
+| :core:testAndroidHostTest |48|0|0|0|
+| :app:testAndroidHostTest |654|0|0|0|
+| Total |**1430**|**0**|**0**|**0**|
+
+**743 unique cases;29 new** versus714 in the original PR #16 run. Android launcher
+unit task remains NO-SOURCE, not device testing. Expected generated-resource tasks
+are SKIPPED/NO-SOURCE, not skipped test cases. Android lintDebug: **No issues found**.
+No compiler/Gradle/new actionable warnings; existing JDBC SLF4J no-provider/NOP
+messages are unchanged. Diff checks, complete diff/boundary review, local Markdown
+links, SPDX, unchanged dependency/license/schema/manifest inventory and generated/
+secret-pattern scans pass. No APK/runtime/cache/preferences/progress/database file
+is committed. No live source request/check was run for this follow-up.
+
+## Artifacts and environment limitations
+
+- APK: `/workspace/INFINILECT/androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+  Review copy: `/workspace/artifacts/INFINILECT-PR16-persistent-settings-debug.apk`.
+- Exact bytes: **11,815,081**.
+- APK SHA-256: `0dbc9b8eacc4bd97409a6223481966379f2508b6788df5dfc799a21cc68f3073`.
+- Package org.infinilect.app, versionName0.0.1-SNAPSHOT/versionCode1;
+  min26/target37/compile37. INTERNET and the existing AndroidX app-scoped signature
+  receiver permission only; no new/storage permission.
+- apksigner: **Verifies**, v2, one RSA2048 debug signer. Certificate SHA-256
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`,
+  matches the retained trusted PR #16 APK and PR #15 identity. Update-compatible
+  identity is verified; installation is not claimed.
+- Desktop image: `desktopApp/build/compose/binaries/main/app/desktopApp`, **BUILT**,
+  not graphically run. adb lists no device/emulator; DISPLAY/WAYLAND_DISPLAY absent.
+  Android host filesystem tests are not physical Android filesystem verification.
+
+## Short Android persistence retest — pending
+
+1. Install over the current PR #16 APK without clearing app data. Open the original
+   development EPUB (`EPUB development demo` → search `original`). Set font26,
+   spacing180%, margins32 and Dark. Use system Back immediately, reopen: all four
+   choices remain, with no settings-save error and sensible semantic position.
+2. Wait at least3s after a change, fully terminate/relaunch; reopen and check all four
+   choices and the prior passage. Repeat visible Back and opening via Library/History.
+3. Clear **cache only**, relaunch/reopen: settings, Library/History and progress
+   remain; preparation can rebuild. Do not clear application data/storage.
+4. If another supported development EPUB is available, open it and verify the same
+   global settings. Current demo has one publication; distinct-publication global
+   behavior is also covered by offline controller tests. Check TEXT remains unchanged.
+
+PR #16 remains **Draft and unmerged**. No PR #17 is started.
+
+---
+
 # PR #16 EPUB usability and bounded media — 2026-10-05 UTC
 
 Verified before implementation and again before publication: PR #15 MERGED with

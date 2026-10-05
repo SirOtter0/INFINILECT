@@ -182,7 +182,7 @@ La publicación original de tres capítulos usa lectura Compose pasiva compartid
 índice/enlaces internos, progreso semántico persistente y reapertura desde Library/
 History. **La adquisición EPUB de producción está deshabilitada.** No se afirma
 compatibilidad EPUB general, CSS del editor ni scripts. PR #16 añade ajustes de
-presentación por sesión, listas numeradas e imágenes PNG/JPEG locales acotadas; SVG
+presentación EPUB globales persistentes, listas numeradas e imágenes PNG/JPEG locales acotadas; SVG
 sigue como texto alternativo y la adquisición de producción sigue deshabilitada. TEXT conserva su
 comportamiento. [Alcance, seguridad, límites y pruebas manuales](docs/EPUB_READER.md).
 v0.0.1 sigue sin estar terminada.

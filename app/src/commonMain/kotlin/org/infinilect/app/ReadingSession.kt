@@ -31,10 +31,11 @@ internal class ReadingSession(
     preparer: org.infinilect.app.reader.TextPreparer = org.infinilect.app.reader.defaultTextPreparer(),
     val epubReadingEnabled: Boolean = false,
     epubPreparer: org.infinilect.app.reader.EpubPreparer? = null,
+    epubSettings: org.infinilect.app.reader.epub.EpubSettingsPersistence? = null,
     onOpened: (Publication) -> Unit = {},
 ) : ApplicationSessionLifetime {
     val search = SearchController(source)
-    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, preparer, epubPreparer = if (epubReadingEnabled) epubPreparer else null, onOpened = onOpened)
+    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, preparer, epubPreparer = if (epubReadingEnabled) epubPreparer else null, epubSettings = epubSettings, onOpened = onOpened)
     private val mutableQuery = MutableStateFlow("")
     val query: StateFlow<String> = mutableQuery.asStateFlow()
     private var searchJob: Job? = null

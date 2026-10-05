@@ -36,6 +36,7 @@ internal fun EpubReader(reader: EpubReaderController, saveFailed: Boolean, onBac
     val state by reader.state.collectAsState()
     val progression by reader.progression.collectAsState()
     val settings by reader.settings.collectAsState()
+    val settingsSaveFailed by reader.settingsSaveFailed.collectAsState()
     val dark = when (settings.theme) { EpubReadingTheme.SYSTEM -> isSystemInDarkTheme(); EpubReadingTheme.LIGHT -> false; EpubReadingTheme.DARK -> true }
     var showToc by remember(reader) { mutableStateOf(false) }
     var showSettings by remember(reader) { mutableStateOf(false) }
@@ -62,6 +63,7 @@ internal fun EpubReader(reader: EpubReaderController, saveFailed: Boolean, onBac
                     Button(onClick = { showSettings = true }, modifier = Modifier.weight(1f)) { Text("Settings") }
                 }
                 if (saveFailed) Text("Reading position could not be saved on this device.", color = MaterialTheme.colors.error)
+                if (settingsSaveFailed) Text("Reading settings could not be saved on this device.", color = MaterialTheme.colors.error)
                 when (val current = state) {
                     EpubReaderState.Loading -> CircularProgressIndicator()
                     is EpubReaderState.Error -> {

@@ -13,8 +13,41 @@ class EpubReaderControllerTest {
     private val publicationId = PublicationId(SourceId("fixture"), "epub")
     private val id = ReadingProgressId(publicationId, "book", PublicationFormat.EPUB)
     private val paths = (1..3).map { EpubEntryPath("OPS/chapter$it.xhtml") }
-    private inner class Doc : EpubDocument {
-        override val publicationId = this@EpubReaderControllerTest.publicationId
+    private class SettingsStore : EpubReaderSettingsStore {
+        var record = EpubReaderPreferences()
+        var saves = 0
+        override suspend fun load() = record
+        override suspend fun save(preferences: EpubReaderPreferences): Boolean { saves++; record = preferences; return true }
+    }
+    @Test fun immediateReaderBackPersistsGlobalPreferencesForAnotherEpubAndPreservesLocator() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val settingsStore = SettingsStore()
+        val preferences = EpubSettingsPersistence(settingsStore, dispatcher)
+        val progressStore = Store(); val progress = ProgressPersistence(progressStore, dispatcher) { 5 }
+        val first = EpubReaderController(Doc(), id, this, Parser(), progress, preferences)
+        val settings = EpubReaderSettings(26, 190, 36, EpubReadingTheme.DARK)
+        try {
+            first.initialize(null)
+            val original = assertIs<EpubReaderState.Ready>(first.state.value)
+            first.report(original.ticket, 0, 2)
+            first.presentationChanged(settings)
+            assertEquals(0 to 2, assertIs<EpubReaderState.Ready>(first.state.value).initialPosition)
+            first.close(); runCurrent()
+            assertEquals(settings, settingsStore.record.settings)
+            val otherId = ReadingProgressId(PublicationId(SourceId("fixture"), "another"), "another-book", PublicationFormat.EPUB)
+            val second = EpubReaderController(Doc(otherId.publicationId), otherId, this, Parser(), preferences = preferences)
+            try {
+                second.initialize(null); assertEquals(settings, second.settings.value)
+                first.presentationChanged(EpubReaderSettings()) // old reader is closed
+                assertEquals(settings, preferences.settings.value)
+                assertEquals(1, settingsStore.saves)
+                second.presentationChanged() // viewport/layout event, not a preference edit
+                second.close(); runCurrent(); assertEquals(1, settingsStore.saves)
+            } finally { second.close() }
+            assertEquals(2L, (assertNotNull(progressStore.values[id]).locator as ReadingLocator.Epub).codePointOffset)
+        } finally { first.close(); preferences.close(); preferences.awaitClosed(); progress.close(); progress.awaitClosed() }
+    }
+    private inner class Doc(override val publicationId: PublicationId = this@EpubReaderControllerTest.publicationId) : EpubDocument {
         override val packagePath = EpubEntryPath("OPS/package.opf")
         override val metadata = EpubMetadata("fixture", "Title", listOf("en"), "2026-10-04T00:00:00Z")
         override val manifest = paths.mapIndexed { i, path -> EpubManifestItem("c$i", path, "application/xhtml+xml") }

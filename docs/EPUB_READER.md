@@ -93,8 +93,8 @@ No generic EPUB compatibility or production acquisition claim.
 
 A compact, height-bounded scrollable Settings dialog controls font size (14–30sp), line spacing (120–200%),
 horizontal margins (8–40dp) and system/light/dark reading theme. Settings affect only
-the current EPUB reader session and reset on close/restart. This avoids premature
-storage/settings infrastructure and leaves TEXT unchanged. Reading text remains real
+EPUB presentation. They are global user preferences, restored across reader exit,
+other EPUBs, process restart and cache deletion; TEXT remains unchanged. Reading text remains real
 accessible text; image alt labels, theme controls and navigation are labelled.
 
 Changes in settings, width, density or font scale preserve the latest semantic
@@ -103,6 +103,57 @@ using the new layout. They never persist pixels/indices, reparse the chapter or 
 loading layouts. Theme/style changes do not mutate chapter content. Restoration is
 approximate within a passage; stable 200dp image space prevents delayed decoding from
 moving the viewport. Whole percentages remain chapter-weighted approximations.
+
+### Durable global EPUB preferences (PR #16 physical-test follow-up)
+
+The initial PR #16 implementation kept settings in each reader; physical acceptance
+passed its media/navigation/progress behavior but identified unwanted resets. The
+follow-up adds `EpubReaderSettingsStore` behind the application-owned
+`EpubSettingsPersistence`; no filesystem, database or Compose persistence types
+enter the controller. `FileEpubReaderSettingsStore` is the current replaceable adapter.
+Settings are user preferences, **not ReadingProgress, ResourceCache or Library/History**.
+There is no publication identifier/content, telemetry, network or schema migration.
+
+One fixed **68-byte** big-endian record (`settings.preferences`) contains an 8-byte
+magic, version1, four Int fields (font/spacing/margin/theme), a Long choice timestamp,
+and SHA-256 of the first36 bytes. The loader reads only this exact length, validates
+checksum/version/ranges/theme/nonnegative ordering timestamp, and otherwise uses
+current defaults:18sp/150%/16dp/SYSTEM. All invalid/out-of-range values are rejected
+as a record, never trusted as layout values. Missing/future records also use defaults.
+The checksum detects corruption, not authenticity against an attacker with app-data access.
+
+Android selects `applicationContext.filesDir/epub-reader-preferences-v1` (not cacheDir);
+only the path is retained. Desktop uses a sibling of reading-progress-v1 in the
+existing absolute per-user persistent app-data root: Linux XDG_DATA_HOME or
+~/.local/share, macOS Application Support, Windows LOCALAPPDATA or AppData/Local,
+under org.infinilect.app. Relative/unsafe paths never fall back to cwd. Cache deletion
+cannot remove preferences; application data deletion can.
+
+IO is off the UI thread. A process monitor and short OS file lock serialize recreated
+owners; NOFOLLOW_LINKS rejects root/record/lock symlinks. The fixed record is written
+to a same-directory unique temp, forced, then atomically replaces the target. Failed,
+unsupported or cancelled pre-commit operations leave the previous committed record;
+no destructive fallback. Only exact owned stale temp names are cleaned under lock;
+unrelated files survive. POSIX attributes use the Android-compatible path view,
+never getFileStore. Successful rename provides atomic visibility and normal-restart
+durability, not a power-loss guarantee for unsynced directory metadata.
+
+The application writer owns one latest pending record and serializes saves with a
+**300ms coalescing interval** (continuous adjustments cannot postpone saving forever).
+Back/reader close/onStop request an immediate flush; application close drains its
+independent worker; Desktop joins it before intentional process exit, and
+awaitProgressClosed also joins it. Each storage operation has a5s
+coroutine deadline; non-cooperative OS IO can delay cancellation. No write occurs for
+viewport-only changes. A current-reader lease rejects old-reader edits; immutable
+record timestamps use a process-monotonic clock and store comparisons reject older
+draining-owner writes. The latest in-memory choice is useful for the next reader,
+but only committed file bytes prove restart persistence. A failed save shows the
+fixed message “Reading settings could not be saved on this device.”; a later successful
+save clears it. Saving choices does not change semantic locator/progress schemas.
+
+As with progress, Android process death provides no guaranteed final callback:
+allow a short moment for the periodic save. Host tests exercise real files and fresh
+owners but do not establish Android-device correctness of this follow-up.
 
 ### Image boundary and upstream API evidence (2026-10-05)
 
@@ -294,7 +345,7 @@ black-area issue is untouched. Build success does not claim graphical execution.
     passage must remain. No jump to the beginning or spurious saved EOF.
 12. Use Previous/Next, Contents and internal anchors; verify current chapter/percent.
 13. Wait≥3s, use Android system Back, reopen; repeat with visible Back and no wait.
-14. Fully terminate/relaunch, reopen; chapter/passage restores, session settings reset.
+14. Fully terminate/relaunch, reopen; chapter/passage and all four global EPUB settings restore.
 15. Open the demo from Library and History. Back returns to the respective origin;
     another Back returns to Search. Root Search retains normal Android exit.
 16. Clear **cache only**; persistent user state stays. Reopen rebuilds prepared bytes

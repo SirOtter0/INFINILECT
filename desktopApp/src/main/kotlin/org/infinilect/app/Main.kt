@@ -17,6 +17,8 @@ fun main() = application {
     Window(onCloseRequest = {
         sources.close()
         scope.launch {
+            // A quick close must drain the final global preference choice before process exit.
+            sources.awaitPreferencesClosed()
             withTimeoutOrNull(3_000) { sources.awaitProgressClosed() }
             exitApplication()
         }
