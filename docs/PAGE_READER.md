@@ -169,41 +169,37 @@ never masquerades as a comic; only low-level raster presentation may be shared.
 None is implemented here. No OCR, covers, library redesign, double spreads, arbitrary
 image import, extreme full-resolution scans, zoom persistence or production comics.
 
-## Android physical acceptance — pending PR #17
+## Android physical acceptance — user-reported partial acceptance for PR #17
 
-Automated host tests are not device tests. User-reported PR #16 verification covers
-existing EPUB/settings/media/TEXT, not this page reader. Install the new debug APK
-over that build without clearing app data, then:
+Automated host tests are not device tests. The user has now physically tested PR #17
+on Android and reports the following successful checks: existing TEXT and EPUB
+reading; opening the development comic; PAGED_RTL forward/back; PAGED_LTR direction;
+zoom/pan; VERTICAL fast forward/reverse scrolling without catastrophic jumps;
+WEBTOON fast scrolling; sensible logical position after mode changes; progress after
+leaving/reopening; page-reader mode after leaving/reopening; and both progress and
+mode after terminating and relaunching INFINILECT. This is user-reported device
+verification, not an automated or Codex-performed test.
+
+The following acceptance items remain pending because they were not included in the
+user's report:
 
 1. Existing Library/History still work.
-2. Existing large TEXT reader still works.
-3. Existing EPUB reader still works.
-4. Select Comic development demo, search `original`, Open pages (repeat offline).
-5. Verify first page and page counter.
-6. Swipe several pages in PAGED_RTL (right advances).
-7. Go backward.
-8. Controls → PAGED_LTR; verify reversed swipe direction.
-9. Zoom/pan a page using pinch or Controls zoom buttons.
-10. Verify zoom/pan does not accidentally skip pages; Reset zoom.
-11. Switch to VERTICAL.
-12. Scroll quickly forward and backward.
-13. Verify no catastrophic jumps as images load.
-14. Switch to WEBTOON.
-15. Fast-scroll enough pages to exercise lazy loading.
-16. Return to PAGED_RTL.
-17. Verify logical reading position remains near the same page.
-18. Back out and reopen.
-19. Verify progress restoration (repeat after waiting ≥3s and with quick Back).
-20. Change reading mode, leave, reopen.
-21. Verify reader mode persistence and apply it to another comic when one is available.
-22. Terminate/relaunch application.
-23. Verify progress and reader mode again.
-24. Clear application **CACHE only**, not app data.
-25. Verify progress/settings/Library/History remain; re-search/open demo.
-26. Test Android system Back from Search/Library/History-opened comic and during loading;
+2. Verify the initial page and page counter.
+3. Repeat the development comic with network disabled to verify local-only media.
+4. Explicitly verify zoom/pan cannot accidentally change pages and reset behavior.
+5. Verify Android system Back from Search/Library/History-opened comic and during loading;
     root Search retains normal system exit.
-27. Exercise rapid navigation and rapid mode switching.
-28. Confirm no crash, obvious memory runaway, stale page flash or storage error.
+6. Clear application **CACHE only**, not app data, then verify progress, reader mode,
+   Library and History remain and the comic can be reopened.
+7. Perform extended memory/performance observation under sustained rapid navigation;
+   the reported successful scrolling is not a memory profile or stress result.
+8. Verify the first-page indicator and other unreported controls/accessibility details.
+
+These remaining checks are not inferred from the reported passes. The user also
+identified future, non-blocking UX improvements: center tap to toggle reader
+controls/settings; left/right tap zones to navigate according to reading direction;
+and a paged presentation that visually drags/snaps adjacent pages instead of abruptly
+replacing the current page. These are future UX work, not PR #17 defects or blockers.
 
 ## Desktop graphical acceptance — pending
 

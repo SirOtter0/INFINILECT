@@ -3056,11 +3056,21 @@ Gradle dependency resolution are distinct from publication-source network traffi
 
 ### Human acceptance status
 
-No authorized device/emulator (`adb devices` empty), no display/Wayland session.
-No physical Android or graphical Desktop PR #17 execution claimed. User-reported
-physical PR #16 acceptance covers the previous reader/media/preferences/TEXT build,
-not the new page reader. The exact 28-step Android checklist and separate Desktop
-Gradle/packaged-app/offline/resize/restart plan are in [PAGE_READER](PAGE_READER.md).
-They remain mandatory human gates for gestures, zoom/pan, stable reverse scrolling,
-rapid mode/publication changes, Back, restart/cache-only restoration and device memory.
-Production comic/CBZ/PDF/manga-site/Mihon compatibility remains out of scope.
+At build time there was no authorized device/emulator (`adb devices` empty) and no
+display/Wayland session, so Codex did not perform physical Android or graphical
+Desktop testing. Since then, the user reports testing PR #17 on a physical Android
+device and confirms: existing TEXT and EPUB reading; opening the development comic;
+PAGED_RTL forward/back and PAGED_LTR direction; zoom/pan; VERTICAL fast forward and
+reverse without catastrophic jumps; WEBTOON fast scrolling; sensible logical position
+after mode changes; progress restored after leaving/reopening; page-reader mode
+persisted after leaving/reopening; and progress plus mode restored after full app
+termination/relaunch. This is user-reported physical evidence, separate from the
+automated host results above; Codex did not independently reproduce it.
+
+Not reported and therefore still pending: Library/History behavior for the comic,
+cache-only deletion, explicit offline verification, extended stress/memory profiling,
+and graphical Desktop verification. The checklist and separate Desktop plan are in
+[PAGE_READER](PAGE_READER.md). User-identified center-tap controls, direction-aware
+left/right tap zones and drag/snap page transitions are future UX work, not reported
+defects or PR #17 blockers. Production comic/CBZ/PDF/manga-site/Mihon compatibility
+remains out of scope.
