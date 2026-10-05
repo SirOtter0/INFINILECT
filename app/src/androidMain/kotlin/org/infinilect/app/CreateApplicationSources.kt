@@ -20,6 +20,7 @@ fun createApplicationSources(context: Context): ApplicationSources {
     val directory = try { androidCacheDirectory(context.applicationContext.cacheDir) } catch (_: Exception) { null }
     val progressDirectory = try { androidProgressDirectory(context.applicationContext.filesDir) } catch (_: Exception) { null }
     val settingsDirectory = try { androidEpubSettingsDirectory(appContext.filesDir) } catch (_: Exception) { null }
+    val pageSettingsDirectory = try { androidPageSettingsDirectory(appContext.filesDir) } catch (_: Exception) { null }
     val debuggable = context.applicationContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     val store = SqlCollectionsStore({ androidCollectionsDriver(appContext) },
         onFailure = androidCollectionsDiagnostics(debuggable))
@@ -30,7 +31,7 @@ fun createApplicationSources(context: Context): ApplicationSources {
         developmentEpubEnabled = debuggable,
         epubDirectory = org.infinilect.app.epub.androidEpubDirectory(appContext.cacheDir.toPath()),
         epubSettingsDirectory = settingsDirectory, developmentComicEnabled = debuggable,
-        pageSettingsDirectory = androidPageSettingsDirectory(appContext.filesDir))
+        pageSettingsDirectory = pageSettingsDirectory)
 }
 
 internal fun androidCacheDirectory(privateCacheDir: File): Path = privateCacheDir.toPath().resolve(CACHE_DIRECTORY_NAME)
