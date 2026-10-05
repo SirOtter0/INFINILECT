@@ -12,6 +12,7 @@ import androidx.compose.ui.window.application
 
 fun main() = application {
     val sources = remember { createApplicationSources() }
+    val picker = remember { org.infinilect.app.imports.DesktopLocalFilePicker() }
     DisposableEffect(sources) { onDispose { sources.close() } }
     val scope = rememberCoroutineScope()
     Window(onCloseRequest = {
@@ -23,6 +24,6 @@ fun main() = application {
             exitApplication()
         }
     }, title = "INFINILECT") {
-        App(sources)
+        App(sources,localFilePicker=picker)
     }
 }
