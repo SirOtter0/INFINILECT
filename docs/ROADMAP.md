@@ -171,3 +171,13 @@ recommendation. IA remains the verified reader path; user stores are unaffected.
 [Evidence/limits/manual plan](GUTENBERG.md). Human Android verification now passed
 including the final pagination correction; Desktop graphical verification is still
 pending. v0.0.1 is not declared complete.
+
+## First bounded comic/page foundation (Draft PR #17)
+
+A controlled original 24-page development comic now exercises PageDocument → bounded
+raster decode → shared PageReader on Android/Desktop, with RTL/LTR paging, zoom/pan,
+lazy vertical/webtoon, durable semantic progress and separately persisted global mode.
+No production comic source, CBZ, PDF, manga-site compatibility or Mihon integration.
+Physical Android and graphical Desktop acceptance remain explicit review gates.
+Future CBZ/web/download adapters may reuse PageDocument; PDF needs a separate reader.
+This does not complete v0.0.1. [Limits/manual checklist](PAGE_READER.md).

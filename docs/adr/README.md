@@ -33,3 +33,5 @@ Amend superseded decisions with a new ADR explaining the concrete need and trade
 - [0021: Passive shared EPUB reader and semantic progress](0021-semantic-epub-reader.md)
 
 - [0022: Session EPUB presentation and bounded local raster media](0022-bounded-epub-media-and-presentation.md)
+
+- [0023: Bounded source-independent page reader](0023-bounded-page-reader.md)

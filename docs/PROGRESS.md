@@ -33,11 +33,10 @@ Progress restoration happens **after** full successful bounded acquisition/decod
 It cannot authorize content, bypass permissions, or enable offline reading.
 
 ReadingLocator.Text(codePointOffset, documentCodePoints) remains the compatible TEXT
-variant. Draft PR #15 adds ReadingLocator.Epub(spinePath, elementPath, codePointOffset,
+variant. PR #15 adds ReadingLocator.Epub(spinePath, elementPath, codePointOffset,
 chapterProgression): canonical ZIP spine identity, bounded element-child ordinals
 (rooted at body with a synthetic ordinal0), and Unicode position within the semantic
-block. No pixels/lazy indices or engine/platform object. PDF/PAGES variants remain
-future work. [Exact EPUB semantics/security/development status](EPUB_READER.md). Progression must be finite in [0,1]; timestamps are
+block. No pixels/lazy indices or engine/platform object. PAGE now uses the separate typed locator below; PDF remains future work. [Exact EPUB semantics/security/development status](EPUB_READER.md). Progression must be finite in [0,1]; timestamps are
 nonnegative and older saves cannot replace newer committed state.
 
 ## TEXT location and approximation
@@ -236,3 +235,24 @@ Font/spacing/margin/theme now persist globally through a separate
 EpubReaderSettingsStore, never through ReadingProgressStore. They survive cache
 deletion/restart without changing locator identity or the TEXT/EPUB binary progress
 schemas. [Preference policy](EPUB_READER.md#durable-global-epub-preferences-pr-16-physical-test-follow-up).
+
+## Comic page locator (Draft PR #17)
+
+ReadingLocator.Page(pageKey, pageIndex, pageProgression) uses a stable declared page
+resource key, logical ordered-document index fallback and finite intra-page fraction
+[0,1]. Index range is 0–99999; key is nonblank and ≤512 UTF-16 units. The current
+adapter caps actual sequences at 512 and identifies user state by structured
+(PublicationId, "page-sequence", PAGES). No revision, pixel, URL or LazyListState is
+persisted. Stable keys win on reorder; removed keys fall back to a clamped ordinal.
+
+Paged navigation records page start; vertical/webtoon approximate the fraction within
+the first visible page. Initial restoration never overwrites it. Mode/viewport changes
+retire old tickets and retain semantic page/fraction; closed readers reject callbacks.
+The existing fixed 2s throttle and Back/close flush use ProgressPersistence. Cache
+removal, normal restart and mode preference changes do not invalidate progress.
+
+PAGE records use schema3/tag3; **TEXT v1 and EPUB v2 encoding remains byte-for-byte
+unchanged**, independently tested against their historical serializers. No SQL
+migration or schema change to Library/History. Corrupt/future/malformed locators remain
+absent progress. Global page reading mode persists in its own preferences record,
+not ReadingProgressStore. [Page policy/restoration limits](PAGE_READER.md).

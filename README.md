@@ -179,3 +179,13 @@ TOC/internal navigation, durable semantic progress and Library/History reopen.
 theme controls, semantic numbered lists and bounded local PNG/JPEG presentation. SVG
 remains alt text; publisher CSS/scripts and generic EPUB compatibility are not claimed. Existing TEXT behavior is retained. [Subset,
 security, limits and manual test plans](docs/EPUB_READER.md). v0.0.1 remains unfinished.
+
+## Experimental comic page reader
+
+Android debug builds offer **Comic development demo**: select it, search `original`,
+and **Open pages**. Desktop opt-in: `INFINILECT_COMIC_DEMO=1 ./gradlew :desktopApp:run`.
+The original 24-page comic exercises paged RTL/LTR, zoom/pan, lazy vertical/webtoon,
+durable semantic page progress and global reading-mode preferences. PNG/JPEG only,
+with a bounded three-page working set. **No production comic acquisition, CBZ or PDF**.
+[Policy, limits and pending physical acceptance](docs/PAGE_READER.md). This is the
+first bounded page-reader foundation, not generic manga or Mihon compatibility.
