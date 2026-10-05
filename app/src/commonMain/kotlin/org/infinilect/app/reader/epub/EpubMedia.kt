@@ -15,12 +15,10 @@ internal object EpubImagePolicy {
     const val RETAINED = 2
     fun dimensions(width: Int, height: Int) = width in 1..DIMENSION && height in 1..DIMENSION && width.toLong() * height <= PIXELS
 }
-/** Owned decoded presentation data, not part of chapter/parser/domain models. ARGB sRGB. */
-internal class EpubRaster(val width: Int, val height: Int, val argb: IntArray) {
-    init { require(EpubImagePolicy.dimensions(width, height) && argb.size == width * height) }
-}
-internal interface EpubRasterDecoder { suspend fun decode(bytes: ByteArray, mediaType: String): EpubRaster }
-internal expect fun defaultEpubRasterDecoder(): EpubRasterDecoder
+// Compatibility aliases keep EPUB contracts/test behavior while the actual decoder is neutral.
+internal typealias EpubRaster = org.infinilect.app.media.Raster
+internal typealias EpubRasterDecoder = org.infinilect.app.media.RasterDecoder
+internal fun defaultEpubRasterDecoder(): EpubRasterDecoder = org.infinilect.app.media.defaultRasterDecoder()
 internal sealed interface EpubMediaState {
     data object Unavailable : EpubMediaState
     data class Ready(val raster: EpubRaster) : EpubMediaState

@@ -23,11 +23,15 @@ data class PublicationResource(
     val mediaType: String,
     /** Source-owned version that must change whenever the bytes change; null means unknown. */
     val revision: String? = null,
+    /** Source-declared geometry for an individual PAGES image; never trusted for decoding.
+     * Stable layout can reserve its aspect ratio before bytes arrive. */
+    val pageDimensions: PageDimensions? = null,
 ) {
     init {
         require(key.isNotBlank()) { "Resource key must not be blank" }
         require(mediaType.isNotBlank()) { "Media type must not be blank" }
         require(revision == null || revision.isNotBlank()) { "Revision must be absent or nonblank" }
+        require(pageDimensions == null || format == PublicationFormat.PAGES)
     }
 
     /** Unknown revisions have no key for unconditional cache reuse. */

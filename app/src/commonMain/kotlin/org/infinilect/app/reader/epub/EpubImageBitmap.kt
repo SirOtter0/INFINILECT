@@ -5,4 +5,4 @@ package org.infinilect.app.reader.epub
 import androidx.compose.ui.graphics.ImageBitmap
 
 /** UI-only platform conversion. No framework type enters semantic/parser/application contracts. */
-internal expect suspend fun epubImageBitmap(raster: EpubRaster): ImageBitmap
+internal suspend fun epubImageBitmap(raster: EpubRaster): ImageBitmap = org.infinilect.app.media.rasterImageBitmap(raster)
