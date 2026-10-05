@@ -216,26 +216,38 @@ private fun encodeIdentity(id: ReadingProgressId): ByteArray = ByteArrayOutputSt
 }.toByteArray()
 
 private fun encodeRecord(progress: ReadingProgress, identity: ByteArray): ByteArray {
-    val locator = progress.locator as? ReadingLocator.Text ?: error("Unsupported locator")
+    val locator = progress.locator
     val body = ByteArrayOutputStream().also { output ->
         DataOutputStream(output).use {
             it.write(identity)
-            it.writeInt(1) // Typed TEXT locator tag; future formats get their own schema/tag.
-            it.writeLong(locator.codePointOffset); it.writeLong(locator.documentCodePoints)
+            when (locator) {
+                is ReadingLocator.Text -> {
+                    it.writeInt(1); it.writeLong(locator.codePointOffset); it.writeLong(locator.documentCodePoints)
+                }
+                is ReadingLocator.Epub -> {
+                    it.writeInt(2)
+                    val path = locator.spinePath.value.encodeToByteArray()
+                    it.writeInt(path.size); it.write(path)
+                    it.writeInt(locator.elementPath.size); locator.elementPath.forEach(it::writeInt)
+                    it.writeLong(locator.codePointOffset); it.writeDouble(locator.chapterProgression)
+                }
+            }
             it.writeDouble(progress.progression); it.writeLong(progress.updatedAtEpochMillis)
         }
     }.toByteArray()
     return ByteArrayOutputStream().also { output ->
         DataOutputStream(output).use {
             it.writeLong(0x494e4650524f4752L) // INFPROGR
-            it.writeInt(1); it.writeInt(body.size); it.write(body); it.write(digest(body))
+            it.writeInt(if (locator is ReadingLocator.Text) 1 else 2); it.writeInt(body.size); it.write(body); it.write(digest(body))
         }
     }.toByteArray().also { require(it.size <= MAX_PROGRESS_RECORD_BYTES) }
 }
 
 private fun decodeRecord(bytes: ByteArray): ReadingProgress {
     val input = DataInputStream(ByteArrayInputStream(bytes))
-    require(input.readLong() == 0x494e4650524f4752L && input.readInt() == 1)
+    require(input.readLong() == 0x494e4650524f4752L)
+    val version = input.readInt()
+    require(version in 1..2)
     val length = input.readInt()
     require(length > 0 && length == bytes.size - 48)
     val body = ByteArray(length).also(input::readFully)
@@ -248,8 +260,16 @@ private fun decodeRecord(bytes: ByteArray): ReadingProgress {
         return ByteArray(size).also(fields::readFully).decodeToString(throwOnInvalidSequence = true)
     }
     val id = ReadingProgressId(PublicationId(SourceId(field()), field()), field(), PublicationFormat.valueOf(field()))
-    require(fields.readInt() == 1)
-    val locator = ReadingLocator.Text(fields.readLong(), fields.readLong())
+    val tag = fields.readInt()
+    val locator = when {
+        version == 1 && tag == 1 -> ReadingLocator.Text(fields.readLong(), fields.readLong())
+        version == 2 && tag == 2 -> {
+            val path = EpubEntryPath(field())
+            val count = fields.readInt().also { require(it in 1..32) }
+            ReadingLocator.Epub(path, List(count) { fields.readInt() }, fields.readLong(), fields.readDouble())
+        }
+        else -> error("Unsupported locator schema")
+    }
     val result = ReadingProgress(id, locator, fields.readDouble(), fields.readLong())
     require(fields.available() == 0)
     return result

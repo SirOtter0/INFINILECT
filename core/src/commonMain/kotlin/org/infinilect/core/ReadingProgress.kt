@@ -13,6 +13,22 @@ data class ReadingProgressId(
 
 /** Logical reader locations. Add format-specific typed variants when their readers exist. */
 sealed interface ReadingLocator {
+    /** Canonical spine path + XHTML element-child ordinals from body + Unicode offset
+     * within that semantic block. Layout-independent; chapterProgression is a fallback
+     * when publication structure changes, never an authorization or byte revision. */
+    data class Epub(
+        val spinePath: EpubEntryPath,
+        val elementPath: List<Int>,
+        val codePointOffset: Long,
+        val chapterProgression: Double,
+    ) : ReadingLocator {
+        init {
+            require(elementPath.size in 1..32 && elementPath.all { it in 0..19_999 })
+            require(codePointOffset >= 0)
+            require(chapterProgression.isFinite() && chapterProgression in 0.0..1.0)
+        }
+    }
+
     /** Unicode code points from the beginning of decoded text, after leading BOM removal.
      * documentCodePoints records the observed length, allowing approximate restoration
      * by progression if text changes. EOF is offset == length; empty text is (0, 0).
@@ -32,6 +48,7 @@ data class ReadingProgress(
     init {
         require(progression.isFinite() && progression in 0.0..1.0)
         require(updatedAtEpochMillis >= 0)
+        require(locator !is ReadingLocator.Epub || id.format == PublicationFormat.EPUB)
         require(locator !is ReadingLocator.Text || id.format == PublicationFormat.TEXT)
     }
 }
