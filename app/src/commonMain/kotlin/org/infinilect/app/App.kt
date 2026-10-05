@@ -40,7 +40,7 @@ import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.collections.LibraryActionState
 import org.infinilect.core.PublicationSource
 
-internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false)
+internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false)
 
 @Composable
 fun App(
@@ -85,7 +85,7 @@ fun App(
                             application.collections,application::openSearch)
                     } else CollectionScreen(destination,application)
                 }
-                is OpenPublicationState.Ready, is OpenPublicationState.EpubReady -> Column(Modifier.fillMaxSize()) {
+                is OpenPublicationState.Ready, is OpenPublicationState.EpubReady, is OpenPublicationState.PageReady -> Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         LibraryAction(LibraryActionState(membership.inLibrary,membership.busy,membership.unavailable),
                             application.collections::toggleLibrary)
@@ -99,6 +99,7 @@ fun App(
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                         when (current) {
                             is OpenPublicationState.Ready -> TextReader(current.document,current.reading,saveFailed,application::back,backLabel)
+                            is OpenPublicationState.PageReady -> key(current.reader) { org.infinilect.app.reader.page.PageReader(current.reader,saveFailed,application::back,backLabel) }
                             is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(current.reader,saveFailed,application::back,backLabel)
                         }
                     }
@@ -200,6 +201,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         }
         Text("Source: ${sources[selected].name}")
         Text(if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
+            else if (session.pageReadingEnabled) "Original development comic. No production comic acquisition is enabled."
             else if (session.epubReadingEnabled) "Original development EPUB. No production EPUB acquisition is enabled."
             else "Experimental catalog only. TEXT opening is unavailable for this source.")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -247,8 +249,8 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                         if (publication.languages.isNotEmpty()) Text("Language: ${publication.languages.joinToString(", ")}")
                         publication.rights?.let { Text(it, style = MaterialTheme.typography.caption) }
                         FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            if (session.textReadingEnabled || session.epubReadingEnabled) {
-                                Button(enabled = !loading, onClick = { onOpen(publication) }) { Text(if (session.epubReadingEnabled && !session.textReadingEnabled) "Open EPUB" else "Open text") }
+                            if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled) {
+                                Button(enabled = !loading, onClick = { onOpen(publication) }) { Text(if (session.pageReadingEnabled) "Open pages" else if (session.epubReadingEnabled && !session.textReadingEnabled) "Open EPUB" else "Open text") }
                             }
                             LibraryAction(membership.forPublication(publication.id),
                                 onToggle={ collections.toggleCatalogLibrary(publication) })

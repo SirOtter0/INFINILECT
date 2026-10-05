@@ -15,6 +15,7 @@ import org.infinilect.app.progress.ProgressStorageFailure
 import java.nio.file.Path
 import org.infinilect.app.collections.ApplicationCollections
 import org.infinilect.app.reader.epub.*
+import org.infinilect.app.reader.page.*
 
 internal fun createSources(
     cache: DiskResourceCache,
@@ -25,6 +26,8 @@ internal fun createSources(
     developmentEpubEnabled: Boolean = false,
     epubDirectory: Path? = org.infinilect.app.epub.desktopEpubDirectory(),
     epubSettingsDirectory: Path? = progressDirectory?.parent?.resolve(EPUB_SETTINGS_DIRECTORY_NAME),
+    developmentComicEnabled: Boolean = false,
+    pageSettingsDirectory: Path? = progressDirectory?.parent?.resolve(PAGE_SETTINGS_DIRECTORY_NAME),
 ): ApplicationSources {
     val gutenberg = try { GutenbergSource() } catch (error: Throwable) { collections?.close(); cache.close(); throw error }
     val archive = try { InternetArchiveSource() }
@@ -35,10 +38,11 @@ internal fun createSources(
     val textPreparer = org.infinilect.app.reader.FileTextPreparer(textDirectory)
     val epubPreparer = org.infinilect.app.epub.FileEpubPreparer(epubDirectory)
     val epubSettings = EpubSettingsPersistence(FileEpubReaderSettingsStore(epubSettingsDirectory), clock = ::epubPreferenceTime)
+    val pageSettings = PageSettingsPersistence(FilePageReaderSettingsStore(pageSettingsDirectory), clock = ::pagePreferenceTime)
     return ApplicationSources(listOf(
         SourceOption("Internet Archive", archive, textReadingEnabled = true),
         SourceOption("Project Gutenberg (experimental)", gutenberg, textReadingEnabled = false),
-    ) + (if (developmentEpubEnabled) listOf(SourceOption("EPUB development demo", org.infinilect.app.epub.DevelopmentEpubSource(), epubReadingEnabled = true)) else emptyList()), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer, epubSettings = epubSettings) {
+    ) + (if (developmentEpubEnabled) listOf(SourceOption("EPUB development demo", org.infinilect.app.epub.DevelopmentEpubSource(), epubReadingEnabled = true)) else emptyList()) + (if (developmentComicEnabled) listOf(SourceOption("Comic development demo", org.infinilect.app.page.DevelopmentComicSource(), pageReadingEnabled = true)) else emptyList()), createLoader = { cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer, epubSettings = epubSettings, pagePreparer = defaultPagePreparer(), pageSettings = pageSettings) {
         try { cache.close() } finally { try { gutenberg.close() } finally { archive.close() } }
     }
 }
