@@ -153,6 +153,18 @@ publish after a newer request or close. Document resources always close in final
 via bounded readBytes. The parser checks cancellation during resource/XML/semantic
 work. No source/background/image jobs are launched per node.
 
+Android's system Back and the visible reader Back button use the same
+`ApplicationSession.back()` command. The shared platform binding observes opening
+and destination StateFlows as Compose snapshot state in its own composition scope;
+EPUB Ready, TEXT Ready, Loading and Error enable it. Library/History also enable it,
+but Idle/Search leaves Android's normal system exit behavior intact. A user-reported
+physical finding on the initial PR #15 APK exposed an unobserved StateFlow read:
+the reader child recomposed while the parent callback could remain disabled.
+The follow-up corrects that observation boundary without changing session navigation,
+document ownership or the progress flush path. Headless Compose regression tests
+reproduce the stale callback and verify the new binding; corrected-device confirmation
+remains a manual test, not a host-test claim.
+
 ## Manual Android plan (not an automated/device-test claim)
 
 1. Install debug APK over PR #14 without clearing data. Check historical Library,
@@ -163,13 +175,18 @@ work. No source/background/image jobs are launched per node.
    emphasis, Unicode, list items and quotes; no raw XHTML.
 4. Scroll chapter1, follow the internal chapter link, use Previous/Next and Contents
    to visit all three chapters. Check target anchors/current chapter/percentage.
-5. Scroll well into chapter3, wait≥3s, Back/reopen. Verify approximate same passage.
+5. Scroll well into chapter3, wait≥3s, use **Android system Back** and reopen. Verify
+   return to results without exiting, preserved query/results and approximately the
+   same passage. Repeat using the visible Back button and without waiting for the
+   save interval, to exercise the pending-progress flush.
 6. Terminate/relaunch, select demo/search/open again. Verify chapter/passage restores.
 7. Add demo to Library, reopen via Library; reopen via History and verify one updated
-   successful-open record. Verify normal metadata resolution still occurs.
+   successful-open record. Verify normal metadata resolution still occurs. System
+   Back from each EPUB returns to its respective Library/History list; another Back
+   returns to Search. At Idle/Search, system Back retains normal Activity exit.
 8. Clear **cache only**, not app data. Library/History/progress remain. Reopen demo;
    preparation rebuilds and restores. Repeat existing IA TEXT reopen.
-9. Back quickly during opening/chapter transition; switch source/publication rapidly.
+9. Use system Back quickly during opening/chapter transition; switch source/publication rapidly.
    No late old chapter, crash, storage failure, or leaked reading state.
 10. Release builds do not advertise demo as production EPUB. No production EPUB test
     is claimed in this PR. No permission or telemetry change.

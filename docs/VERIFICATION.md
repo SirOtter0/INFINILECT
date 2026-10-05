@@ -1,3 +1,126 @@
+# PR #15 Android system Back follow-up — 2026-10-05 UTC
+
+The user physically tested the initial PR #15 APK: the EPUB flow worked, but Android
+system Back exited the application from the EPUB reader; its visible Back button
+returned correctly. This is user-supplied device evidence. The corrected APK below
+has **not** been physically tested by Codex. PR #15 remains **Draft and unmerged**.
+
+## Root cause and narrow correction
+
+Android MainActivity's existing `BackHandler(enabled, onBack)` at lines25–26 already
+uses the shared application's callback. Both the session policy and the opening-state
+policy already include `EpubReady`, just like TEXT Ready, Loading and Error.
+However, App.kt previously installed the callback using `application.handlesBack()`
+(line71), which reads StateFlow.value without a Compose snapshot observation. The
+opening state was observed only when read in the child Surface/reader composition.
+That child can recompose to show EPUB without recomposing the parent binding, leaving
+its previously false enabled value. Incidental parent recomposition can mask this.
+
+`ApplicationBackHandler` now collects and reads opening/destination snapshot state
+in the composition that invokes the platform handler. App.kt delegates to it with
+unchanged `application.back()`. Android's existing thin BackHandler integration is
+unchanged. Idle/Search stays disabled, allowing normal Android exit. Loading, Error,
+TEXT Ready and EPUB Ready enable it; Library/History retain internal navigation.
+No global interception, new dependency, navigation redesign, source, TEXT, renderer,
+progress format, SQL schema, cache, permission or lifecycle-policy change.
+
+The shared session command cancels acquisition/chapter navigation, invalidates late
+results, flushes pending semantic progress, closes the prepared document and returns
+to the previous Search/Library/History destination. Search query/results are retained.
+New lifecycle tests leave before the two-second interval, drain the application
+owner and read committed progress with a completely new file store. Closed-reader
+callbacks cannot overwrite that record or reopen the reader.
+
+## Focused verification
+
+First, `:app:desktopTest --tests '*ApplicationBackHandlerTest'` with the wrapper flags
+below passed **5 real headless Compose tests**. One independently reproduces the old
+reader-only recomposition and stale disabled binding; the others exercise the actual
+new binding, EPUB/TEXT/Loading/Error, collection/root navigation and rapid replacement.
+No graphical applier or device dispatcher is simulated as physical evidence.
+
+An initial attempt to run these new runtime tests in Android host tests failed on
+Android's unmocked `android.os.Trace.beginSection`, not on navigation. Those tests
+now live in desktopTest, where the real Compose runtime runs headlessly. Existing
+Android host behavior was not mocked globally and no test dependency was added.
+The shared session/ownership/progress tests continue running on both host targets.
+
+```sh
+./gradlew :app:desktopTest \
+  --tests '*ApplicationBackHandlerTest' --tests '*ApplicationSessionTest' \
+  --tests '*ApplicationSourcesTest' --tests '*EpubReadingLifecycleTest' \
+  --tests '*EpubReaderControllerTest' --tests '*OpenEpubControllerTest' \
+  :app:testAndroidHostTest \
+  --tests '*ApplicationSessionTest' --tests '*ApplicationSourcesTest' \
+  --tests '*EpubReadingLifecycleTest' --tests '*EpubReaderControllerTest' \
+  --tests '*OpenEpubControllerTest' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Focused session/navigation run: **BUILD SUCCESSFUL in 22s**, 27 actionable tasks
+(8 executed,19 up-to-date), **64 tests per target,128 executions,0 failures/errors/
+skipped**. The focused session reports contain64 cases per target; the separate five-case
+binding run and final unfiltered clean run include ApplicationBackHandlerTest. No existing tests were removed or weakened.
+
+## Complete clean verification
+
+```sh
+./gradlew clean :core:jvmTest :app:desktopTest :core:build :app:build \
+  :desktopApp:build :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL in 2m37s;150 actionable tasks:142 executed,8 up-to-date.**
+
+| Task | Executions | Failures / errors / skipped |
+| --- | ---: | --- |
+| `:core:jvmTest` | 48 | 0 / 0 / 0 |
+| `:app:desktopTest` | 589 | 0 / 0 / 0 |
+| `:core:testAndroidHostTest` | 48 | 0 / 0 / 0 |
+| `:app:testAndroidHostTest` | 570 | 0 / 0 / 0 |
+| **Total** | **1,255** | **0 / 0 / 0** |
+
+**651 unique cases;9 added in this follow-up** (5 Compose binding,4 real EPUB
+session/Back lifecycle). The original PR #15 had642 unique cases. Android launcher
+unit task remains NO-SOURCE, not a device-test execution. Android lint: **0 issues**.
+No compiler/Gradle warnings or new actionable warnings. Existing JDBC SLF4J
+no-provider messages remain in test reports. All TEXT/PR #14 bidirectional viewport,
+source security, cache, progress and collections regressions remain green.
+
+## Corrected artifacts and required device confirmation
+
+- APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+- Exact size: **11,749,545 bytes**.
+- SHA-256: `1be4b1060797242dca147b9b737cde891686daa1ebf8c1a2bb0865d605661553`.
+- Same package `org.infinilect.app`, version `0.0.1-SNAPSHOT`/code1,
+  minSdk26, target/compileSdk37; permissions unchanged (INTERNET plus AndroidX
+  signature receiver guard), no storage permissions.
+- apksigner verifies v2, one signer; debug certificate SHA-256 unchanged:
+  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+  Updating over the prior PR #15 debug build is intended to preserve app data;
+  installation/update behavior still requires the user's device.
+- Desktop distributable rebuilt at `desktopApp/build/compose/binaries/main/app/desktopApp`;
+  not graphically executed. No new live source requests or physical-device/emulator
+  tests were performed for this follow-up.
+
+Install without clearing data. Open demo EPUB from Search, scroll, press **Android
+system Back**, verify retained query/results, reopen and verify progress. Repeat
+from Library and History; Back returns to the respective list, then another Back
+to Search. Verify normal system exit at Idle/Search. Repeat during acquisition and
+chapter loading, immediately after scrolling (pending save), and after full process
+restart. TEXT Back must remain unchanged. The [manual plan](EPUB_READER.md#manual-android-plan-not-an-automateddevice-test-claim)
+now explicitly includes these system/in-app Back checks. Physical acceptance of the
+corrected APK remains pending; host coverage does not prove the Android dispatcher.
+
+`git diff --check`, the complete diff against current main, local Markdown links,
+SPDX/core/dependency/security invariants and generated-artifact/credential audits
+were checked. No APK, database, prepared publication or runtime state is committed.
+Existing original PR #15 verification and artifact evidence is retained below.
+
+---
+
 # PR #15 passive EPUB reader verification — 2026-10-04 UTC
 
 Verified PR #14 was merged before creating `feature/epub-reader`. Exact base/main:

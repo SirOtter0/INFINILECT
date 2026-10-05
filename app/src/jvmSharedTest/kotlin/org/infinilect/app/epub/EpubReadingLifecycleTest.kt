@@ -83,6 +83,71 @@ class EpubReadingLifecycleTest {
         } finally { owner.close() }
         assertTrue(payloads(root).isEmpty())
     }
+    @Test fun readerBackFromSearchFlushesPendingProgressAndIgnoresClosedReaderCallbacks() = runBlocking<Unit> {
+        verifyReaderBack(Destination.SEARCH)
+    }
+    @Test fun readerBackFromLibraryFlushesPendingProgressAndKeepsPreviousDestination() = runBlocking<Unit> {
+        verifyReaderBack(Destination.LIBRARY)
+    }
+    @Test fun readerBackFromHistoryFlushesPendingProgressAndKeepsPreviousDestination() = runBlocking<Unit> {
+        verifyReaderBack(Destination.HISTORY)
+    }
+    private suspend fun CoroutineScope.verifyReaderBack(destination: Destination) {
+        val owner = Owner(this)
+        val id: ReadingProgressId
+        val expected: ReadingLocator.Epub
+        try {
+            var open = owner.searchOpen()
+            val search = owner.session.searchSession.value
+            val results = search.search.state.value
+            if (destination != Destination.SEARCH) {
+                val snapshot = PublicationSnapshot.from(open.publication)
+                assertIs<LocalStoreResult.Success<LibraryEntry>>(owner.database.library.put(snapshot, 1))
+                owner.collections.flushHistory()
+                owner.session.back(); owner.session.navigate(destination); owner.session.openSaved(snapshot)
+                open = owner.ready()
+            }
+            val chapter = open.reader.next(2)
+            open.reader.report(chapter.ticket, 15, 5)
+            expected = chapter.chapter.locator(15, 5)
+            id = open.reader.progressId
+            assertTrue(owner.session.handlesBack())
+            // Same command installed in Android's system callback and the visible Back button.
+            // No two-second wait: leaving must flush the latest pending semantic position.
+            owner.session.back()
+            assertIs<OpenPublicationState.Idle>(owner.session.opening.value)
+            assertEquals(destination, owner.session.destination.value)
+            assertSame(search, owner.session.searchSession.value)
+            assertEquals("original", search.query.value); assertSame(results, search.search.state.value)
+            assertFails { open.reader.document.openResource(chapter.chapter.path) }
+            assertEquals(0, open.reader.retainedChapters)
+            open.reader.report(chapter.ticket, 0, 0); open.reader.chapter(0)
+            assertIs<EpubReaderState.Loading>(open.reader.state.value)
+            if (destination != Destination.SEARCH) {
+                assertTrue(owner.session.handlesBack()); owner.session.back()
+            }
+            assertFalse(owner.session.handlesBack())
+        } finally { owner.close() }
+        // Entire owner/writer is drained; a brand-new store must read committed bytes, not RAM.
+        assertEquals(expected, FileReadingProgressStore(root.resolve(PROGRESS_DIRECTORY_NAME)).get(id)?.locator)
+        assertTrue(payloads(root).isEmpty())
+    }
+    @Test fun readerBackDuringChapterLoadingCancelsNavigationAndCannotReopenReader() = runBlocking<Unit> {
+        val owner = Owner(this)
+        try {
+            val open = owner.searchOpen()
+            open.reader.chapter(2)
+            assertIs<EpubReaderState.Loading>(open.reader.state.value)
+            owner.session.back()
+            delay(100)
+            assertIs<OpenPublicationState.Idle>(owner.session.opening.value)
+            assertEquals(Destination.SEARCH, owner.session.destination.value)
+            assertFalse(owner.session.handlesBack()); assertEquals(0, open.reader.retainedChapters)
+            assertIs<EpubReaderState.Loading>(open.reader.state.value)
+            assertFails { open.reader.document.openResource(open.reader.document.manifest.first().path) }
+        } finally { owner.close() }
+        assertTrue(payloads(root).isEmpty())
+    }
     @Test fun fullOwnerRestartAndCacheDeletionRestoreEpubFromCommittedRecord() = runBlocking<Unit> {
         val first = Owner(this)
         val open = first.searchOpen()

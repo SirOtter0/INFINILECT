@@ -68,7 +68,7 @@ fun App(
     val saveFailed by (applicationSources.progress?.saveFailed
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
     val backLabel=when(destination) { Destination.LIBRARY -> "Back to Library"; Destination.HISTORY -> "Back to History"; else -> "Back to results" }
-    backHandler(application.handlesBack(),application::back)
+    ApplicationBackHandler(application.opening,application.destination,application::back,backHandler)
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             when(val current=opening) {
