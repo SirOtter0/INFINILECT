@@ -3,9 +3,11 @@
 package org.infinilect.app.page
 
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.zip.ZipInputStream
 import java.util.zip.CRC32
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -242,6 +244,20 @@ class CbzPagePreparerTest {
     }
 
     @Test fun developmentSourceFeedsTheSameArchivePageReaderAdapter() = runBlocking<Unit> {
+        val expectedPaths = listOf("pages/1.png", "pages/2.png", "pages/03.jpg", "pages/04/nested.png",
+            "pages/5.png", "pages/6.png", "pages/7.png", "pages/8.jpg", "pages/9.png", "pages/10.jpg")
+        val archivePages = ZipInputStream(ByteArrayInputStream(developmentCbzBytes())).use { zip ->
+            buildList {
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    add(entry.name to zip.readBytes())
+                    zip.closeEntry()
+                }
+            }
+        }
+        assertNotEquals(expectedPaths, archivePages.map { it.first })
+        assertEquals(expectedPaths, archivePages.map { it.first }.sortedWith(::compareNaturalPath))
+        val expectedBytes = archivePages.toMap()
         val source = DevelopmentCbzSource(); val publication = source.search("original", null).publications.single()
         assertEquals(PublicationType.COMIC, publication.type); assertEquals(PublicationFormat.CBZ, publication.resources.single().format)
         val owner = CbzPagePreparer(Files.createTempDirectory("cbz-development"))
@@ -249,7 +265,11 @@ class CbzPagePreparerTest {
             val doc = owner.prepare(publication, org.infinilect.app.acquisition.DirectResourceLoader(source))
             assertEquals(10, doc.pages.size)
             assertEquals("cbz-page-0000", doc.pages.first().key)
-            assertContentEquals(comicPng(3, PageDimensions(640, 640)), doc.openPage(doc.pages.first()).readBytes(RasterPolicy.ENCODED_BYTES))
+            for ((page, path) in doc.pages.zip(expectedPaths)) {
+                val handle = doc.openPage(page)
+                try { assertContentEquals(expectedBytes.getValue(path), handle.readBytes(RasterPolicy.ENCODED_BYTES), path) }
+                finally { handle.close() }
+            }
             doc.close()
         } finally { owner.close(); owner.awaitClosed() }
     }

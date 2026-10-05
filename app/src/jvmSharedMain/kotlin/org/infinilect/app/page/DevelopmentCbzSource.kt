@@ -55,7 +55,7 @@ internal suspend fun developmentCbzBytes(): ByteArray {
         "pages/10.jpg" to (9 to PageDimensions(768, 512)),
         "pages/2.png" to (1 to PageDimensions(512, 768)),
         "pages/1.png" to (0 to PageDimensions(512, 768)),
-        "extras/nested/page4.png" to (3 to PageDimensions(640, 640)),
+        "pages/04/nested.png" to (3 to PageDimensions(640, 640)),
         "pages/03.jpg" to (2 to PageDimensions(768, 512)),
         "pages/5.png" to (4 to PageDimensions(320, 1536)),
         "pages/6.png" to (5 to PageDimensions(512, 768)),
