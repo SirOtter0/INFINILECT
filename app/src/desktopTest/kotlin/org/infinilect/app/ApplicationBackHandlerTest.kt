@@ -50,6 +50,8 @@ class ApplicationBackHandlerTest {
         }
         private val reader = EpubReaderController(doc, ReadingProgressId(publication.id, "epub", PublicationFormat.EPUB), scope.backgroundScope)
         val epub = OpenPublicationState.EpubReady(reader, publication)
+        private val pageReader = org.infinilect.app.reader.page.PageReaderController(org.infinilect.app.reader.page.TestPageDocument(), scope.backgroundScope)
+        val page = OpenPublicationState.PageReady(pageReader, publication)
         @Composable fun Handler(isEnabled: Boolean, onBack: () -> Unit) {
             SideEffect { enabled = isEnabled; callback = onBack }
         }
@@ -70,7 +72,7 @@ class ApplicationBackHandlerTest {
             }
         }
         suspend fun close() {
-            composition.dispose(); recomposer.cancel(); runner.cancelAndJoin(); reader.close()
+            composition.dispose(); recomposer.cancel(); runner.cancelAndJoin(); reader.close(); pageReader.close()
         }
     }
     @Composable private fun OldBindingWithReader(
@@ -101,6 +103,12 @@ class ApplicationBackHandlerTest {
     @Test fun epubReadyEnablesPlatformBackAndReturningToRootDisablesIt() = runTest { use {
         install(); settle(); assertEquals(false, enabled)
         opening.value = epub; settle(); assertEquals(true, enabled)
+        callback(); assertEquals(1, backCalls)
+        opening.value = OpenPublicationState.Idle; settle(); assertEquals(false, enabled)
+    } }
+    @Test fun pageReadyEnablesReactiveAndroidBackAndRootStillExits() = runTest { use {
+        install(); settle(); assertEquals(false, enabled)
+        opening.value = page; settle(); assertEquals(true, enabled)
         callback(); assertEquals(1, backCalls)
         opening.value = OpenPublicationState.Idle; settle(); assertEquals(false, enabled)
     } }

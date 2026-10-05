@@ -28,7 +28,7 @@ internal class ApplicationSession(
     val destination=mutableDestination.asStateFlow()
     val collections=CollectionsController(sources.collections,this.scope,clock)
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
-        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings) { publication ->
+        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings) { publication ->
         collections.enteredReader(publication)
         sources.collections?.recordOpened(publication,clock())
     }
@@ -60,7 +60,7 @@ internal class ApplicationSession(
         val option=sources.options.firstOrNull { it.source.id==snapshot.id.sourceId }
         // Resources are deliberately absent. Even valid stored rights never authorize bytes.
         val placeholder=Publication(snapshot.id,snapshot.title,snapshot.type,snapshot.authors,languages=snapshot.languages)
-        if(option==null || !(option.textReadingEnabled || option.epubReadingEnabled)) {
+        if(option==null || !(option.textReadingEnabled || option.epubReadingEnabled || option.pageReadingEnabled)) {
             mutableOpening.value=OpenPublicationState.Error(placeholder,"This publication cannot be opened from its source.")
             return
         }
@@ -72,7 +72,7 @@ internal class ApplicationSession(
         if(closed || destination.value!=Destination.SEARCH) return
         searchSession.value.open(publication); mutableOpening.value=searchSession.value.opening.state.value
     }
-    fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && (it.textReadingEnabled || it.epubReadingEnabled) }
+    fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && (it.textReadingEnabled || it.epubReadingEnabled || it.pageReadingEnabled) }
     fun sourceName(id: SourceId)=sources.options.firstOrNull { it.source.id==id }?.name ?: id.value
     fun retry(publication: Publication) {
         if(closed || !canRetry(publication)) return

@@ -394,3 +394,24 @@ old layout/media callbacks cannot replace current progress/content. No TEXT, sou
 SQL schema, progress encoding or acquisition-cache changes. Media bytes and decoded
 frames never enter Library/History/progress storage. [Policy/budgets/manual gates](EPUB_READER.md),
 [ADR 0022](adr/0022-bounded-epub-media-and-presentation.md).
+
+## Bounded page-reader foundation (Draft PR #17)
+
+Core adds PageDocument/PageEntry/PageDimensions and ReadingLocator.Page. An individual
+PAGES-resource adapter preserves publication order and uses only ResourceLoader;
+source-declared geometry stabilizes lazy slots but is checked against bounded image
+headers before decoding. PageReaderController owns bounded acquisition/raster work,
+semantic progress and mode changes; shared Compose PageReader owns presentation only.
+It has no EPUB, transport, filesystem, native bitmap or database coupling.
+
+PR #16 raster policy/provider decoding is extracted into neutral RasterDecoder and
+UI-only bitmap conversion; EPUB keeps its separate semantic document/media lifetime.
+ApplicationSources selects PagePreparer and owns independent PageSettingsPersistence
+through PageReaderSettingsStore. Private per-user/filesDir preferences survive cache
+removal; progress retains its separate versioned store. ApplicationSession/Back close
+and flush the reader, return to its origin and retain Search state. Android binds the
+same reactive shared Back state including PageReady; root Search keeps system exit.
+
+No production comic source, permission, dependency or SQL migration. Future CBZ/web
+adapters feed PageDocument; PDF needs a separate semantic PdfReader. [PAGE_READER](PAGE_READER.md)
+and [ADR 0023](adr/0023-bounded-page-reader.md) define budgets/limitations/manual gates.

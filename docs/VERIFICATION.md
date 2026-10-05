@@ -2956,3 +2956,121 @@ with JDK 21; retry normal repository resolution outside this rate-limited sessio
 
 The earlier foundation passed 4 tests with Gradle 9.7.0; that historical result is
 superseded by this pass's final 23-test/9.7.1 verification.
+
+## PR #17 — bounded comic/page reader (2026-10-05)
+
+Base verified from GitHub/origin/main: `b09f3405358bd608927165b8ad9991207b015862`,
+merged PR #16 (approved head `5f977368da1f0fdcf62f44374b16f1fc13d4ad04`). Fresh
+`feature/comic-page-reader`; no previous feature branch rewritten. Final tested
+production commit: `2c25171` (subsequent documentation-only handoff records this evidence).
+Draft, unmerged. No new dependency/plugin, Library/History SQL schema or manifest change.
+
+The shared page slice uses original local development content, owned PageDocument /
+RasterDecoder contracts, one serialized page decode across replacement readers,
+three decoded slots, stable lazy geometry, semantic PAGE progress and independent
+global mode preferences. [Policy/budgets/limitations and exact physical checklist](PAGE_READER.md).
+Full diff/self-review checked URI/ownership boundaries, stale decodes/presentation,
+progress identity, private storage, existing TEXT/EPUB behavior and source policy.
+The Android path factory also safely degrades if its private preferences path is unavailable.
+
+Focused runs during development:
+
+```sh
+./gradlew :core:jvmTest :app:desktopTest --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew :app:desktopTest :app:testAndroidHostTest --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew :core:jvmTest :app:desktopTest :app:testAndroidHostTest --no-daemon --console=plain --max-workers=2 --warning-mode=all
+./gradlew :app:desktopTest --tests '*Page*' --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Initial development failures were a missing Compose clipToBounds import, a missing
+ResourceContent readBytes test import and JUnit tests inferred to return exception
+objects instead of Unit. Fixed; no ignored/deleted tests. An unnecessary non-null
+assertion warning was removed. Focused runs then passed. Self-review added shared
+cross-reader decode serialization, stamp-checked UI frames, viewport ticket retirement
+and corresponding publication/viewport/stale-callback tests before final clean verification.
+
+Final exact clean command (configured existing JDK/SDK/Gradle caches):
+
+```sh
+./gradlew clean \
+  :core:jvmTest :app:desktopTest :core:build :app:build :desktopApp:build \
+  :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+**BUILD SUCCESSFUL**, 3m05s, 150 actionable tasks: 142 executed, 8 up-to-date.
+
+| Test task | Executions | Failures | Errors | Skipped cases |
+| --- | ---: | ---: | ---: | ---: |
+| core:jvmTest | 53 | 0 | 0 | 0 |
+| app:desktopTest | 749 | 0 | 0 | 0 |
+| core:testAndroidHostTest | 53 | 0 | 0 | 0 |
+| app:testAndroidHostTest | 718 | 0 | 0 | 0 |
+| androidApp:testDebugUnitTest | 0 (NO-SOURCE) | 0 | 0 | 0 |
+| Total | 1573 | 0 | 0 | 0 |
+
+818 unique class/method cases after stripping target suffixes; 75 new unique cases
+(143 additional platform executions) versus merged PR #16's 743/1430 baseline.
+Coverage: pure page/identity constraints (5), controller/navigation/cancellation/
+progress/mode/working-set behavior (22), preference writer (7), real preferences files/
+restart/failure/atomicity (15), resource document/ownership/original artwork (9), real
+progress persistence and historical TEXT/EPUB serializer compatibility (5), application
+source re-resolution/History/Back (5), real Desktop PNG/JPEG/ImageIO/Skia (3), Desktop
+persistent-path policy (2), Android host new-owner/cache-deletion/private-path (1),
+and reactive Compose platform-Back binding (1). Existing Archive redirects/authorization,
+Gutenberg catalog-only, resource cache, SQLite PRAGMA correction, TEXT/BOM/UTF-8/
+bidirectional scrolling, EPUB/progress/preferences/collections tests remain green.
+
+Android lintDebug: **No issues found**. No compiler/Gradle deprecation warnings in
+final clean log. Existing JDBC tests retain their known SLF4J no-provider diagnostics
+in test XML; no new warning mechanism or production logging. Host tests are not
+BitmapFactory/device, Activity recreation, gesture or graphical UI verification.
+
+### Artifacts and inspection
+
+- APK task: `:androidApp:assembleDebug`.
+- Path: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
+- Review copy outside repository: `/workspace/artifacts/INFINILECT-PR17-debug.apk`.
+- Exact size: **11,897,060 bytes**.
+- SHA-256: `04203c5c8ca62ea5c61453ee4a54b8a37c54a7b88570277d09506cba5acfe477`.
+- aapt2: package `org.infinilect.app`, visible name INFINILECT,
+  versionName `0.0.1-SNAPSHOT`, versionCode **1**, minSdk **26**, target/compileSdk **37**.
+- Permissions: INTERNET and the existing app-scoped AndroidX signature receiver
+  permission `org.infinilect.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` only;
+  identical to inspected trusted PR #16 APK. No storage permission.
+- apksigner: **Verifies**, APK v2, one RSA2048 Android Debug signer.
+- Certificate SHA-256: `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`;
+  matches `/workspace/artifacts/INFINILECT-PR16-persistent-settings-debug.apk` exactly.
+  Package/version/certificate retain update compatibility; installation not performed.
+- Desktop task: `:desktopApp:createDistributable`; image at
+  `desktopApp/build/compose/binaries/main/app/desktopApp`, **BUILT**, not graphically run.
+  Directory size measured 162,108,594 bytes (du -sb); no artifact committed.
+
+`git diff --check` and `git diff origin/main...HEAD --check` pass. Local Markdown links
+pass. SPDX/import/dependency/secret/generated-runtime scans pass; pure core stays
+Kotlin-only. No APK/database/cache/preferences/progress/runtime/build output is tracked.
+No live source check or live source request occurred. GitHub fetch/PR operations and
+Gradle dependency resolution are distinct from publication-source network traffic.
+
+### Human acceptance status
+
+At build time there was no authorized device/emulator (`adb devices` empty) and no
+display/Wayland session, so Codex did not perform physical Android or graphical
+Desktop testing. Since then, the user reports testing PR #17 on a physical Android
+device and confirms: existing TEXT and EPUB reading; opening the development comic;
+PAGED_RTL forward/back and PAGED_LTR direction; zoom/pan; VERTICAL fast forward and
+reverse without catastrophic jumps; WEBTOON fast scrolling; sensible logical position
+after mode changes; progress restored after leaving/reopening; page-reader mode
+persisted after leaving/reopening; and progress plus mode restored after full app
+termination/relaunch. This is user-reported physical evidence, separate from the
+automated host results above; Codex did not independently reproduce it.
+
+Not reported and therefore still pending: Library/History behavior for the comic,
+cache-only deletion, explicit offline verification, extended stress/memory profiling,
+and graphical Desktop verification. The checklist and separate Desktop plan are in
+[PAGE_READER](PAGE_READER.md). User-identified center-tap controls, direction-aware
+left/right tap zones and drag/snap page transitions are future UX work, not reported
+defects or PR #17 blockers. Production comic/CBZ/PDF/manga-site/Mihon compatibility
+remains out of scope.

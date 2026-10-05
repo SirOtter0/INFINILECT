@@ -13,6 +13,15 @@ data class ReadingProgressId(
 
 /** Logical reader locations. Add format-specific typed variants when their readers exist. */
 sealed interface ReadingLocator {
+    /** Stable page resource key, ordered-page fallback and normalized intra-page fraction.
+     * No UI list index/pixels. Key wins on reorder; removed keys fall back to pageIndex. */
+    data class Page(val pageKey: String, val pageIndex: Int, val pageProgression: Double) : ReadingLocator {
+        init {
+            require(pageKey.isNotBlank() && pageKey.length <= 512)
+            require(pageIndex in 0..99_999)
+            require(pageProgression.isFinite() && pageProgression in 0.0..1.0)
+        }
+    }
     /** Canonical spine path + XHTML element-child ordinals from body + Unicode offset
      * within that semantic block. Layout-independent; chapterProgression is a fallback
      * when publication structure changes, never an authorization or byte revision. */
@@ -50,6 +59,7 @@ data class ReadingProgress(
         require(updatedAtEpochMillis >= 0)
         require(locator !is ReadingLocator.Epub || id.format == PublicationFormat.EPUB)
         require(locator !is ReadingLocator.Text || id.format == PublicationFormat.TEXT)
+        require(locator !is ReadingLocator.Page || id.format == PublicationFormat.PAGES)
     }
 }
 

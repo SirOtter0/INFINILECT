@@ -221,6 +221,11 @@ private fun encodeRecord(progress: ReadingProgress, identity: ByteArray): ByteAr
         DataOutputStream(output).use {
             it.write(identity)
             when (locator) {
+                is ReadingLocator.Page -> {
+                    it.writeInt(3)
+                    val key = locator.pageKey.encodeToByteArray()
+                    it.writeInt(key.size); it.write(key); it.writeInt(locator.pageIndex); it.writeDouble(locator.pageProgression)
+                }
                 is ReadingLocator.Text -> {
                     it.writeInt(1); it.writeLong(locator.codePointOffset); it.writeLong(locator.documentCodePoints)
                 }
@@ -238,7 +243,7 @@ private fun encodeRecord(progress: ReadingProgress, identity: ByteArray): ByteAr
     return ByteArrayOutputStream().also { output ->
         DataOutputStream(output).use {
             it.writeLong(0x494e4650524f4752L) // INFPROGR
-            it.writeInt(if (locator is ReadingLocator.Text) 1 else 2); it.writeInt(body.size); it.write(body); it.write(digest(body))
+            it.writeInt(when (locator) { is ReadingLocator.Text -> 1; is ReadingLocator.Epub -> 2; is ReadingLocator.Page -> 3 }); it.writeInt(body.size); it.write(body); it.write(digest(body))
         }
     }.toByteArray().also { require(it.size <= MAX_PROGRESS_RECORD_BYTES) }
 }
@@ -247,7 +252,7 @@ private fun decodeRecord(bytes: ByteArray): ReadingProgress {
     val input = DataInputStream(ByteArrayInputStream(bytes))
     require(input.readLong() == 0x494e4650524f4752L)
     val version = input.readInt()
-    require(version in 1..2)
+    require(version in 1..3)
     val length = input.readInt()
     require(length > 0 && length == bytes.size - 48)
     val body = ByteArray(length).also(input::readFully)
@@ -268,6 +273,7 @@ private fun decodeRecord(bytes: ByteArray): ReadingProgress {
             val count = fields.readInt().also { require(it in 1..32) }
             ReadingLocator.Epub(path, List(count) { fields.readInt() }, fields.readLong(), fields.readDouble())
         }
+        version == 3 && tag == 3 -> ReadingLocator.Page(field(), fields.readInt(), fields.readDouble())
         else -> error("Unsupported locator schema")
     }
     val result = ReadingProgress(id, locator, fields.readDouble(), fields.readLong())

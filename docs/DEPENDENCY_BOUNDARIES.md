@@ -130,3 +130,20 @@ progress identity, repositories or chapter parsing. No new dependency is introdu
 Desktop tests reuse desktopApp's existing Compose/Skiko runtime to exercise the real
 conversion headlessly; java.desktop is explicitly bundled for ImageIO. Coroutines
 and ordinary pixel arrays are not mechanically wrapped in hypothetical abstractions.
+
+## Page reading and neutral raster adapters (Draft PR #17)
+
+PagePreparer returns pure PageDocument/ordered PageEntry; the current individual-page
+adapter uses ResourceLoader, never an acquisition URL. PageReaderController consumes
+only those owned values and RasterDecoder. Raster owns validated ARGB pixels, not
+Bitmap/Skia/ImageBitmap; UI-only conversion supplies Compose images. PR #16's hardened
+PNG/JPEG preflight/providers are shared low-level adapters, while EPUB/Page semantic
+models and controllers stay separate. No EPUB manifest/spine concepts enter pages.
+
+PageReaderSettingsStore is a separate replaceable global-mode contract; the file
+adapter/composition contain all NIO/private-path/version/checksum concerns. Changing
+page acquisition, raster decoder or settings backend changes the corresponding
+adapter/wiring/tests and (for user preferences) migration, not Library/History,
+source identity, semantic progress or other reader business logic. Future CBZ/web
+sources feed the same PageDocument. No PDF engine is hidden behind comic semantics.
+No new third-party library or framework wrapper is introduced.

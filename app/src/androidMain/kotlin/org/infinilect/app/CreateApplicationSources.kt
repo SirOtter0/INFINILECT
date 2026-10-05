@@ -20,6 +20,7 @@ fun createApplicationSources(context: Context): ApplicationSources {
     val directory = try { androidCacheDirectory(context.applicationContext.cacheDir) } catch (_: Exception) { null }
     val progressDirectory = try { androidProgressDirectory(context.applicationContext.filesDir) } catch (_: Exception) { null }
     val settingsDirectory = try { androidEpubSettingsDirectory(appContext.filesDir) } catch (_: Exception) { null }
+    val pageSettingsDirectory = try { androidPageSettingsDirectory(appContext.filesDir) } catch (_: Exception) { null }
     val debuggable = context.applicationContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     val store = SqlCollectionsStore({ androidCollectionsDriver(appContext) },
         onFailure = androidCollectionsDiagnostics(debuggable))
@@ -29,7 +30,8 @@ fun createApplicationSources(context: Context): ApplicationSources {
         textDirectory = org.infinilect.app.reader.androidTextDirectory(appContext.cacheDir.toPath()),
         developmentEpubEnabled = debuggable,
         epubDirectory = org.infinilect.app.epub.androidEpubDirectory(appContext.cacheDir.toPath()),
-        epubSettingsDirectory = settingsDirectory)
+        epubSettingsDirectory = settingsDirectory, developmentComicEnabled = debuggable,
+        pageSettingsDirectory = pageSettingsDirectory)
 }
 
 internal fun androidCacheDirectory(privateCacheDir: File): Path = privateCacheDir.toPath().resolve(CACHE_DIRECTORY_NAME)
@@ -43,6 +45,7 @@ internal fun createApplicationSources(
     textDirectory = org.infinilect.app.reader.androidTextDirectory(privateCacheDir.toPath()),
     epubDirectory = org.infinilect.app.epub.androidEpubDirectory(privateCacheDir.toPath()),
     epubSettingsDirectory = privateFilesDir?.let(::androidEpubSettingsDirectory),
+    pageSettingsDirectory = privateFilesDir?.let(::androidPageSettingsDirectory),
 )
 
 internal fun androidProgressDirectory(privateFilesDir: File): Path =
@@ -50,3 +53,6 @@ internal fun androidProgressDirectory(privateFilesDir: File): Path =
 
 internal fun androidEpubSettingsDirectory(privateFilesDir: File): Path =
     privateFilesDir.toPath().resolve(org.infinilect.app.reader.epub.EPUB_SETTINGS_DIRECTORY_NAME)
+
+internal fun androidPageSettingsDirectory(privateFilesDir: File): Path =
+    privateFilesDir.toPath().resolve(org.infinilect.app.reader.page.PAGE_SETTINGS_DIRECTORY_NAME)

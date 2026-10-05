@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.infinilect.core.*
 import org.infinilect.app.reader.epub.*
+import org.infinilect.app.reader.page.*
 import org.infinilect.core.PublicationFormat
 import org.infinilect.core.PublicationSource
 import org.infinilect.core.ResourceLoader
@@ -28,6 +29,7 @@ internal sealed interface OpenPublicationState {
     data class Loading(val publication: Publication) : OpenPublicationState
     data class Ready(val document: TextDocument, val reading: TextReadingProgress? = null, val publication: Publication? = null) : OpenPublicationState
     data class EpubReady(val reader: EpubReaderController, val publication: Publication) : OpenPublicationState
+    data class PageReady(val reader: PageReaderController, val publication: Publication) : OpenPublicationState
     data class Error(val publication: Publication, val userMessage: String) : OpenPublicationState
 }
 
@@ -42,6 +44,8 @@ internal class OpenPublicationController(
     private val epubPreparer: EpubPreparer? = null,
     private val epubParser: EpubParser = defaultEpubParser(),
     private val epubSettings: EpubSettingsPersistence? = null,
+    private val pagePreparer: PagePreparer? = null,
+    private val pageSettings: PageSettingsPersistence? = null,
     private val onOpened: (Publication) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
@@ -63,6 +67,8 @@ internal class OpenPublicationController(
         request = scope.launch {
             var prepared: TextDocument? = null
             var epubReader: EpubReaderController? = null
+            var pageReader: PageReaderController? = null
+            var openingPages = false
             var openingEpub = false
             var handedOff = false
             try {
@@ -74,7 +80,7 @@ internal class OpenPublicationController(
                     }
                     check(details.id == publication.id)
                     val textResource = selectResource(details, PublicationFormat.TEXT)
-                    if (textResource == null && epubPreparer != null) {
+                    if (textResource == null && epubPreparer != null && selectResource(details, PublicationFormat.EPUB) != null) {
                         val epubResource = selectResource(details, PublicationFormat.EPUB)
                             ?: throw OpeningException("No supported reading format is available for this publication.")
                         openingEpub = true
@@ -88,6 +94,18 @@ internal class OpenPublicationController(
                         reader.initialize(progress?.get(reader.progressId))
                         currentCoroutineContext().ensureActive()
                         return@withTimeout OpenPublicationState.EpubReady(reader, details)
+                    }
+                    if (textResource == null && pagePreparer != null && details.resources.any { it.format == PublicationFormat.PAGES }) {
+                        openingPages = true
+                        val document = pagePreparer.prepare(details, loader)
+                        val reader = try {
+                            check(document.publicationId == details.id)
+                            PageReaderController(document, scope, progress, pageSettings)
+                        } catch (error: Throwable) { document.close(); throw error }
+                        pageReader = reader
+                        reader.initialize(progress?.get(reader.progressId))
+                        currentCoroutineContext().ensureActive()
+                        return@withTimeout OpenPublicationState.PageReady(reader, details)
                     }
                     val resource = textResource
                         ?: throw OpeningException("No readable text format is available for this publication.")
@@ -104,6 +122,7 @@ internal class OpenPublicationController(
                     val details = when (loadedState) {
                         is OpenPublicationState.Ready -> checkNotNull(loadedState.publication)
                         is OpenPublicationState.EpubReady -> loadedState.publication
+                        is OpenPublicationState.PageReady -> loadedState.publication
                         else -> error("Unexpected prepared state")
                     }
                     onOpened(details)
@@ -112,7 +131,7 @@ internal class OpenPublicationController(
             } catch (error: TimeoutCancellationException) {
                 currentCoroutineContext().ensureActive()
                 if (generation == ticket) mutableState.value = OpenPublicationState.Error(publication,
-                    if (openingEpub) "Opening this EPUB timed out. Please try again." else "Opening this text timed out. Please try again.")
+                    if (openingPages) "Opening these pages timed out. Please try again." else if (openingEpub) "Opening this EPUB timed out. Please try again." else "Opening this text timed out. Please try again.")
             } catch (error: CancellationException) {
                 if (generation == ticket) mutableState.value = OpenPublicationState.Idle
                 throw error
@@ -122,12 +141,13 @@ internal class OpenPublicationController(
                     is EpubException -> error.failure.userMessage
                     is TextDocumentException -> error.failure.userMessage
                     is OpeningException -> error.message!!
-                    else -> if (openingEpub) "Could not acquire this EPUB. The source may be unavailable. Please try again."
+                    else -> if (openingPages) "Could not open these pages. The page sequence or its storage may be unavailable."
+                        else if (openingEpub) "Could not acquire this EPUB. The source may be unavailable. Please try again."
                         else "Could not acquire this text. The source may be unavailable. Please try again."
                 }
                 if (generation == ticket) mutableState.value = OpenPublicationState.Error(publication, message)
             } finally {
-                if (!handedOff) { prepared?.close(); epubReader?.close() }
+                if (!handedOff) { prepared?.close(); epubReader?.close(); pageReader?.close() }
             }
         }.also { job ->
             job.invokeOnCompletion {
@@ -139,7 +159,7 @@ internal class OpenPublicationController(
     }
 
     /** Back cancels work and invalidates even a noncooperative late result. */
-    fun flushProgress() { (state.value as? OpenPublicationState.Ready)?.reading?.flush(); (state.value as? OpenPublicationState.EpubReady)?.reader?.flush() }
+    fun flushProgress() { (state.value as? OpenPublicationState.Ready)?.reading?.flush(); (state.value as? OpenPublicationState.EpubReady)?.reader?.flush(); (state.value as? OpenPublicationState.PageReady)?.reader?.flush() }
 
     fun cancel() {
         closeReady()
@@ -150,6 +170,7 @@ internal class OpenPublicationController(
     }
 
     private fun closeReady() {
+        (state.value as? OpenPublicationState.PageReady)?.reader?.close()
         (state.value as? OpenPublicationState.EpubReady)?.reader?.close()
         (state.value as? OpenPublicationState.Ready)?.let { it.reading?.close(); it.document.close() }
     }

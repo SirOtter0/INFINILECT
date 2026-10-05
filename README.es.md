@@ -186,3 +186,14 @@ presentación EPUB globales persistentes, listas numeradas e imágenes PNG/JPEG 
 sigue como texto alternativo y la adquisición de producción sigue deshabilitada. TEXT conserva su
 comportamiento. [Alcance, seguridad, límites y pruebas manuales](docs/EPUB_READER.md).
 v0.0.1 sigue sin estar terminada.
+
+## Lector de páginas de cómic experimental
+
+Android debug ofrece **Comic development demo**: selecciónalo, busca `original` y
+pulsa **Open pages**. En Desktop: `INFINILECT_COMIC_DEMO=1 ./gradlew :desktopApp:run`.
+El cómic original de 24 páginas permite modos RTL/LTR, zoom/pan y lectura vertical/
+webtoon acotada, con progreso semántico y modo global persistentes. Solo PNG/JPEG,
+con un conjunto de trabajo de tres páginas. **Sin adquisición de cómics de producción,
+CBZ ni PDF**. [Política, límites y aceptación física pendiente](docs/PAGE_READER.md).
+Es la primera base acotada de lectura por páginas; no se afirma compatibilidad manga
+ni Mihon. v0.0.1 sigue sin estar terminada.
