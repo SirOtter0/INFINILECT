@@ -1,3 +1,122 @@
+# PR #16 EPUB usability and bounded media — 2026-10-05 UTC
+
+Verified before implementation and again before publication: PR #15 MERGED with
+approved HEAD `0437d6a76fa4a6e87b839b00cd4584fc5cfe72ca`, exact origin/main/base
+`3155c6965b32a58ec5d7284211013ebeab3767c5`. No main discrepancy or intervening commit.
+New branch `feature/epub-reader-usability`; no old branch reused/history rewritten.
+Implementation commits: `6cd9dbf0471b59d3b41af2348a0e8c55aa288452` and
+`d57c517c093e036d247054cc4f0cdd77f78ac013`. PR #16 is delivered Draft, unmerged.
+The user's PR #15 physical success is prior evidence, not a PR #16 device claim.
+
+Implemented session EPUB controls/semantic typography/numbering/pre/captions/separators,
+manifest-owned bounded PNG/JPEG, and generation-safe layout/media restoration.
+[Exact policy, research, all budgets and Android/Desktop acceptance plans](EPUB_READER.md).
+[ADR 0022](adr/0022-bounded-epub-media-and-presentation.md). Production EPUB acquisition,
+TEXT, source policies, ResourceCache, progress encoding and SQL schema are unchanged.
+No new third-party library/plugin/version; Desktop tests reuse the launcher runtime.
+
+## Focused development and independent review
+
+```sh
+./gradlew :app:desktopTest --tests '*Epub*' \
+  :app:testAndroidHostTest --tests '*Epub*' \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+Final focused run: BUILD SUCCESSFUL, 1m21s, 27 actionable tasks (13 executed/14
+up-to-date); Desktop202 + Android host196 =398 executions,202 unique,0 failure/error/
+skipped. Real Desktop ImageIO PNG/baseline/progressive JPEG and Skia conversion tests
+run headlessly. Android host coverage uses shared preflight/controller logic;
+BitmapFactory and graphical presentation still require physical acceptance.
+
+Review/development found and corrected:
+
+- Desktop conversion tests initially lacked the native test runtime. Added the same
+  existing Compose/Skiko runtime as desktopApp; no fake decoder or new engine.
+- An existing close-failure regression exposed a genuine race at FileEpubPreparer.close:
+  Kotlin toList's size==1 fast path can call next on an emptied concurrent key set.
+  Direct weakly consistent iteration replaces those snapshots for owner jobs/contents/
+  documents and entry handles. Existing assertion preserved, plus64-cycle concurrent
+  cleanup/close regression. No preparation/security policy relaxed.
+- JPEG preflight checks all bounded scans, so extensions between entropy scans cannot
+  bypass the stated no-EXIF/ICC policy. Added adversarial and real progressive tests.
+- Image placeholder loading cannot save progress; old layout/media tickets cannot
+  write after settings/navigation/Back. Density changes are handled even with unchanged
+  outer pixel dimensions. Compact labelled controls and bounded settings scrolling
+  avoid relying on a large phone viewport. These UI details need manual acceptance.
+
+## Definitive clean verification
+
+Executed after the complete reviewed source, finished around07:00 UTC:
+
+```sh
+./gradlew clean \
+  :core:jvmTest :app:desktopTest :core:build :app:build :desktopApp:build \
+  :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
+
+BUILD SUCCESSFUL, **2m48s**, **150 actionable tasks:142 executed/8 up-to-date**.
+
+| Task | Executed tests | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| :core:jvmTest |48|0|0|0|
+| :app:desktopTest |652|0|0|0|
+| :core:testAndroidHostTest |48|0|0|0|
+| :app:testAndroidHostTest |627|0|0|0|
+| Total |**1375**|**0**|**0**|**0**|
+
+**714 unique cases,63 new** relative to PR #15's651. Target suffixes are removed
+when deduplicating XML class/method names. The same case running on two targets is
+counted twice as executions. The stress loop is one case, not64 cases.
+androidApp:testDebugUnitTest remains NO-SOURCE; it is not launcher/device coverage.
+Expected resource-generation SKIPPED/NO-SOURCE tasks are not skipped tests.
+Android lintDebug: **No issues found**. No compiler/Gradle warnings or new actionable
+warnings; existing JDBC SLF4J no-provider/NOP messages remain in test diagnostics.
+No source live check was run. Upstream API research and GitHub operations were network
+requests; normal tests use no live Internet. Core/domain, source adapters, SQL schema,
+progress records, Android manifest and TEXT production files have no diff.
+
+## Final Android and Desktop artifacts
+
+- APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk` (absolute root
+  `/workspace/INFINILECT`); **11,798,697 bytes**.
+- SHA-256: `3353e8656142f17225bd3a01bae56f940c9e3008fe7325ed1d28453ae16c477b`.
+- Human-review copy outside the repository: `/workspace/artifacts/INFINILECT-PR16-debug.apk`.
+- Package/name: `org.infinilect.app` / INFINILECT; versionName `0.0.1-SNAPSHOT`,
+  versionCode1; minSdk26, targetSdk37, compileSdk37.
+- aapt2 badging and binary manifest inspection: only INTERNET and the existing
+  app-scoped DYNAMIC_RECEIVER_NOT_EXPORTED signature permission requested. DUMP is
+  a receiver caller guard, not a requested permission. No storage permission,
+  cleartext disabled, backup disabled; no manifest-source change.
+- apksigner: **Verifies**, v2=true, one RSA2048 Android Debug signer. Certificate
+  SHA-256 `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`,
+  identical to the trusted PR #15 debug certificate. Package/version identity also
+  unchanged: signature-compatible update, not a claim of successful installation.
+- Desktop: `desktopApp/build/compose/binaries/main/app/desktopApp` **BUILT** with
+  java.desktop/java.xml/java.net.http/java.sql runtime modules, not graphically
+  executed. Both Gradle-run and packaged launcher retain explicit demo opt-in.
+
+adb devices returned an empty attached-device list. DISPLAY/WAYLAND_DISPLAY absent.
+**No physical Android/emulator or graphical Desktop test performed.** Codec/provider,
+phone layout/accessibility, responsiveness, orientation/settings, offline illustrations
+and the full acceptance checklists remain human gates. Prepared/decoded media is
+session/cache infrastructure; cache-only deletion cannot remove Library/History/
+progress. Unsupported formats/extensions remain alt text, not claimed compatibility.
+
+## Handoff checks
+
+Complete source/diff review includes renderer dependencies/URI escape/dimension
+bounds/concurrency/lifecycle/progress and source/TEXT regressions. Local Markdown
+links, new SPDX headers, dependency/license inventory, core import purity and generated/
+secret patterns inspected. git diff --check and full base/branch diff checks pass.
+No APK, runtime database/progress/cache/prepared EPUB, credential or build output is
+committed. APK/distributable are local review artifacts. No merge or PR #17 work.
+
+---
+
 # PR #15 dependency-independence audit — 2026-10-05 UTC
 
 Fetched GitHub before inspection. Exact code/PR HEAD audited:

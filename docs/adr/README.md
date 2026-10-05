@@ -31,3 +31,5 @@ Amend superseded decisions with a new ADR explaining the concrete need and trade
 
 - [0020: Stable bidirectional TEXT viewport](0020-stable-text-viewport.md)
 - [0021: Passive shared EPUB reader and semantic progress](0021-semantic-epub-reader.md)
+
+- [0022: Session EPUB presentation and bounded local raster media](0022-bounded-epub-media-and-presentation.md)

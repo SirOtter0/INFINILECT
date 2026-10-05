@@ -1,12 +1,22 @@
 # Roadmap
 
-## First semantic EPUB reader — Draft PR #15
+## EPUB usability and local media — Draft PR #16
+
+Session font/spacing/margin/theme controls, semantic heading/list distinctions, captions/
+preformatted/separators and bounded local PNG/JPEG presentation are implemented for
+the original development route. Passive-only, no CSS/browser/production acquisition.
+Layout changes preserve typed progress; TEXT remains untouched. Device codec/layout/
+accessibility and graphical Desktop acceptance remain pending. [Budgets and plans](EPUB_READER.md),
+[ADR 0022](adr/0022-bounded-epub-media-and-presentation.md). No v0.0.1 completion claim.
+
+## First semantic EPUB reader — merged PR #15
 
 A narrow shared Compose EPUB3 subset now reads original development publications
 through real preparation, chapter/TOC/internal navigation, typed persisted semantic
 progress and source-resolved Library/History reopen. Production EPUB acquisition
-is not enabled, CSS/images/active content are unsupported, and physical/manual
-verification is pending. [Exact subset and plans](EPUB_READER.md). No release or
+is not enabled. At that stage CSS/images/active content were unsupported.
+The user reported physical Android verification including corrected system Back;
+PR #16 expands passive presentation only, with new manual verification pending. [Exact subset and plans](EPUB_READER.md). No release or
 v0.0.1 completion claim. The large TEXT behavior from merged, approved PR #14 is
 preserved; its Android improvement was reported by the reviewer.
 
@@ -60,7 +70,7 @@ Open INFINILECT → search for a book → get real results → open one → read
    search public CC0 items, open a TEXT resource through ResourceLoader/
    ResourceContent, incrementally validate/index UTF-8 up to 16 MiB, display TextReader,
    and Back to retained query/results. Gutenberg remains experimental catalog-only. Production EPUB/PDF and
-   reader settings remain deferred. Codex graphical Desktop verification is pending;
+   TEXT reader settings remain deferred; EPUB session settings are in Draft PR #16. Codex graphical Desktop verification is pending;
    PR #10 Android large-TEXT success was human-reported.
 5. **First disk tier implemented:** bounded automatic resource cache with restart
    reuse only for trustworthy revisions, recency eviction and corruption checks.

@@ -113,3 +113,19 @@ implementation. This follow-up adds documentation only. No substitution, runtime
 data migration, dependency change, new source request, APK rebuild or new device
 test was performed. Documentation/import/type/diff checks are recorded in
 [VERIFICATION](VERIFICATION.md); preceding clean build evidence remains historical.
+
+## PR #16 media boundary (2026-10-05)
+
+The earlier PR #15 audit above is historical evidence. PR #16 adds one justified
+owned adapter boundary: EpubRasterDecoder accepts bounded local bytes/MIME and returns
+EpubRaster (dimensions/ARGB array), never Android Bitmap, ImageIO/Skia or Compose types.
+Semantic EpubImage has only canonical manifest path, media type and bounded alt text.
+EpubMediaController owns validation, visibility/retention/generations and document
+handles. Android/desktop actual factories select BitmapFactory/ImageIO implementations.
+The expect/actual ImageBitmap conversion is explicitly UI-only, not a semantic or
+application contract. Replacing a decoder changes its adapter and implementation
+integration tests; changing UI technology changes presentation, not source permission,
+progress identity, repositories or chapter parsing. No new dependency is introduced:
+Desktop tests reuse desktopApp's existing Compose/Skiko runtime to exercise the real
+conversion headlessly; java.desktop is explicitly bundled for ImageIO. Coroutines
+and ordinary pixel arrays are not mechanically wrapped in hypothetical abstractions.

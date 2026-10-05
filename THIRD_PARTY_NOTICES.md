@@ -154,3 +154,11 @@ The JDBC driver/native binaries and host tests are absent from the Android APK;
 Android uses its OS SQLite through AndroidX. Redistributors must retain included
 native/driver notices. SQL compiler/plugin transitives are build tooling only.
 No new permission, telemetry or network behavior is introduced by this database.
+
+## EPUB local media — PR #16
+
+No new library or license. Standard Android BitmapFactory and JDK21 ImageIO decode
+bounded original/local PNG/JPEG; the packaged JDK explicitly includes java.desktop
+with its existing upstream legal directory. Desktop host image tests reuse existing
+Compose Multiplatform 1.12.1 / Skiko/Skia runtime components already used by desktopApp.
+Original project geometric artwork is GPL-3.0-or-later, not third-party artwork.

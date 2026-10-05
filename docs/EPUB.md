@@ -1,8 +1,9 @@
 # Bounded EPUB foundation — PR #13
 
 PR #13 introduced **structural EPUB3 preparation, not a renderer**. These validation
-and resource-ownership guarantees remain unchanged. Draft PR #15 adds a separate
-[passive semantic reader](EPUB_READER.md) and original development route; production
+and resource-ownership guarantees remain unchanged. Merged PR #15 added a separate
+[passive semantic reader](EPUB_READER.md) and original development route; Draft PR #16 extends its bounded semantic
+presentation/local raster boundary; production
 EPUB acquisition remains disabled. No script execution or acquisition fallback.
 
 ## Boundary
@@ -95,9 +96,9 @@ to 8 KiB even when a caller supplies a larger buffer.
   deliberately narrower subset rejects; this is not a full conformance validator.
 - Validate all manifest XHTML for basic root/head/body structure, local
   manifest-owned references, duplicate IDs and navigation `toc`. Reject remote
-  references, scripts/event handlers and embedded active elements. No XHTML is
-  rendered. CSS/SVG/images/fonts remain **opaque inert bytes**, not sanitized
-  browser content; a future renderer must independently forbid network/script
+  references, scripts/event handlers and embedded active elements. At the structural-preparation boundary XHTML is not rendered and
+  CSS/SVG/images/fonts remain **opaque inert bytes**, not sanitized browser content.
+  The separate current semantic reader renders bounded text/local PNG/JPEG; any renderer must independently forbid network/script
   execution and impose its own content sandbox. Fragment existence and full
   navigation semantics are deferred.
 - Reject encryption/signature descriptors, including font obfuscation, rather
