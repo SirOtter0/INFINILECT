@@ -53,6 +53,11 @@ common reader/controller or the owned preparation interface. Android rendering u
 only the API-21 PdfRenderer surface available on API 26. Existing mixed-format TEXT
 deadline behavior is now covered by the original passing regression case.
 
+A subsequent presentation review captured the request ticket as an immutable value
+before suspending image conversion. Reading the delegated current state afterward
+could otherwise stamp an obsolete bitmap with a newer request's ticket. The final
+matrix is repeated on this correction; the earlier frozen artifact is superseded.
+
 Modified-document local Markdown links: 140 checked, zero missing at this review.
 `git diff --check` passed. Android physical and Desktop graphical checks remain pending.
 

@@ -22,16 +22,17 @@ import org.infinilect.app.media.rasterImageBitmap
 internal fun PdfReader(reader: PdfReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String, onPosition: (Int) -> Unit = {}) {
     val state by reader.state.collectAsState()
     SideEffect { onPosition(state.index) }
-    var presentationFailed by remember(reader,state.ticket) { mutableStateOf(false) }
+    val ticket = state.ticket // Capture this generation before a suspending UI conversion.
+    var presentationFailed by remember(reader,ticket) { mutableStateOf(false) }
     val frame = state.frame as? PdfFrame.Ready
-    val presented by produceState<Pair<Long,ImageBitmap>?>(null,reader,state.ticket,frame) {
+    val presented by produceState<Pair<Long,ImageBitmap>?>(null,reader,ticket,frame) {
         value = null
         if (frame != null) {
             val bitmap = try { rasterImageBitmap(Raster(frame.raster.size.width,frame.raster.size.height,frame.raster.argb)) }
             catch (error: CancellationException) { throw error }
             catch (_: Exception) { presentationFailed=true;return@produceState }
             currentCoroutineContext().ensureActive()
-            value = state.ticket to bitmap
+            value = ticket to bitmap
         }
     }
     Column(Modifier.fillMaxSize()) {
