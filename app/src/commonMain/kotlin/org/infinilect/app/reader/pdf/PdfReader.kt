@@ -21,7 +21,7 @@ import org.infinilect.app.media.rasterImageBitmap
 @Composable
 internal fun PdfReader(reader: PdfReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String, onPosition: (Int) -> Unit = {}) {
     val state by reader.state.collectAsState()
-    SideEffect { onPosition(state.index) }
+    SideEffect { state.presentedIndex?.let(onPosition) }
     val ticket = state.ticket // Capture this generation before a suspending UI conversion.
     var presentationFailed by remember(reader,ticket) { mutableStateOf(false) }
     val frame = state.frame as? PdfFrame.Ready

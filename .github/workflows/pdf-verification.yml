@@ -34,54 +34,38 @@ jobs:
               }
           }
           EOF
-      - name: Focused contracts and adapters
+      # Temporary review evidence only; removed from the branch after focused verification.
+      - name: Focused PDF progress and session tests
         run: |
-          ./gradlew -I /tmp/pdf20-unsigned.gradle :core:jvmTest --tests '*PdfDocumentTest' --no-daemon --console=plain --max-workers=2
-          ./gradlew -I /tmp/pdf20-unsigned.gradle :app:desktopTest --tests '*DesktopPdfEngineTest' --tests '*FilePdfPreparerTest' --no-daemon --console=plain --max-workers=2
-      - name: Focused import, reader and progress
-        run: ./gradlew -I /tmp/pdf20-unsigned.gradle :app:desktopTest --tests '*DesktopPdfImportTest' --tests '*PdfReaderControllerTest' --tests '*PdfSessionTest' --tests '*FileLocalPublicationSourceTest' --tests '*LocalImportSessionTest' --tests '*OpenPublicationControllerTest' --no-daemon --console=plain --max-workers=2
-      - name: Clean verification matrix
-        if: contains(github.event.head_commit.message, '[verify matrix]')
+          ./gradlew -I /tmp/pdf20-unsigned.gradle :app:desktopTest --tests '*PdfReaderControllerTest' --tests '*PdfSessionTest' --tests '*ApplicationSessionTest' --tests '*OpenPublicationControllerTest' --tests '*ProgressLifecycleTest' --tests '*DesktopPdfImportTest' --no-daemon --console=plain --max-workers=2
+          ./gradlew -I /tmp/pdf20-unsigned.gradle :app:testAndroidHostTest --tests '*PdfReaderControllerTest' --tests '*PdfSessionTest' --tests '*ApplicationSessionTest' --tests '*OpenPublicationControllerTest' --tests '*ProgressLifecycleTest' --no-daemon --console=plain --max-workers=2
+      - name: Rebuild updated unsigned test APK after focused tests
+        run: ./gradlew -I /tmp/pdf20-unsigned.gradle :androidApp:assembleDebug --no-daemon --console=plain --max-workers=2
+      - name: Collect public local signing tool and exact results
         run: |
-          ./gradlew -I /tmp/pdf20-unsigned.gradle clean \
-            :core:jvmTest :app:desktopTest :core:build :app:build :desktopApp:build \
-            :core:testAndroidHostTest :app:testAndroidHostTest \
-            :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
-            :desktopApp:createDistributable \
-            --no-daemon --console=plain --max-workers=2 --warning-mode=all
-      - name: Record exact test counts and unsigned APK identity
-        if: contains(github.event.head_commit.message, '[verify matrix]')
-        run: |
-          python3 - <<'PY'
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" pdf20-apksigner.jar
+          python3 - <<'PYCODE'
           from pathlib import Path
-          import hashlib, json, xml.etree.ElementTree as ET
-          report = {}
-          for root in [Path('core/build/test-results'), Path('app/build/test-results'), Path('androidApp/build/test-results')]:
-              for folder in sorted(root.glob('*')):
-                  files = list(folder.glob('TEST-*.xml'))
-                  if not files:
-                      continue
-                  counts = {k: 0 for k in ['tests', 'failures', 'errors', 'skipped']}
-                  for file in files:
-                      tree = ET.parse(file).getroot()
-                      for key in counts:
-                          counts[key] += int(tree.attrib.get(key, 0))
-                  report[str(folder)] = counts
-          apks = list(Path('androidApp/build/outputs/apk/debug').glob('*unsigned.apk'))
-          assert len(apks) == 1, 'Expected one unsigned APK; never generate a substitute signing identity'
-          apk = apks[0]
-          report['apk'] = {'path': str(apk), 'bytes': apk.stat().st_size, 'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(), 'signing': 'unsigned; compatible external keystore unavailable'}
-          Path('pdf-verification.json').write_text(json.dumps(report, indent=2)+'\n')
-          print(json.dumps(report, indent=2))
-          PY
+          import hashlib,json,xml.etree.ElementTree as ET
+          report={}
+          for task in ['desktopTest','testAndroidHostTest']:
+              counts={k:0 for k in ['tests','failures','errors','skipped']}
+              for file in Path('app/build/test-results',task).glob('TEST-*.xml'):
+                  root=ET.parse(file).getroot()
+                  for key in counts: counts[key]+=int(root.attrib.get(key,0))
+              report[task]=counts
+          for name in ['androidApp/build/outputs/apk/debug/androidApp-debug-unsigned.apk','pdf20-apksigner.jar']:
+              p=Path(name);report[name]={'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+          Path('pdf20-followup-verification.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PYCODE
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: pdf-verification
+          name: pdf20-review-evidence
           path: |
-            pdf-verification.json
-            core/build/test-results/
+            pdf20-followup-verification.json
             app/build/test-results/
-            androidApp/build/test-results/
             androidApp/build/outputs/apk/debug/*unsigned.apk
+            pdf20-apksigner.jar
           retention-days: 7

@@ -4,6 +4,7 @@ package org.infinilect.app.imports
 
 import java.nio.file.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.app.epub.FileEpubPreparer
 import org.infinilect.app.reader.FileTextPreparer
@@ -43,7 +44,8 @@ class DesktopPdfImportTest {
             val document=owner.pdf.prepare(imported,imported.resources.single(),DirectResourceLoader(owner.source))
             reader=PdfReaderController(document,this,writer)
             reader.initialize(null);reader.next()
-            // Navigation submits immediately; close does not depend on completing page rendering.
+            // Only a successfully rendered target becomes durable reading progress.
+            reader.state.first { it.index == 1 && it.frame is PdfFrame.Ready }
             reader.close();reader=null;writer.close();writer.awaitClosed();writer=null
             owner.close()
             base.resolve("cache").toFile().deleteRecursively()
