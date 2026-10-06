@@ -24,8 +24,8 @@ tests. Its clean matrix found one existing mixed-format TEXT timeout regression
 on Desktop and Android host. The new PDF decision incorrectly bypassed the deadline
 when any PDF representation existed. The correction exempts only the selected,
 enabled PDF route and keeps non-PDF acquisition/preparation inside the original
-deadline. Final results will be recorded below after the corrected focused run
-and frozen-code clean matrix; initial failures are not claimed as passes.
+deadline. Corrected focused and frozen-code results are recorded below;
+initial failures are not claimed as passes.
 
 [Corrected focused run](https://github.com/SirOtter0/INFINILECT/actions/runs/37531087082)
 on `63e9e2d9a84ac8330522f1c55f8133f17596a7fc` passed all three Gradle invocations:
@@ -88,7 +88,7 @@ installation/update acceptance. The expected existing certificate remains
 The frozen-code matrix is gated by a `[verify matrix]` commit after focused tests
 and the ownership/bounds/boundary review stabilize. It includes the existing
 core/app Desktop and Android host checks, build, Android unit/lint/unsigned APK,
-and Desktop distributable. Artifact identity and exact XML counts remain pending.
+and Desktop distributable. Exact final results and artifact identity follow.
 
 Exact frozen-code command (the external init script only disables CI signing):
 
@@ -100,3 +100,46 @@ Exact frozen-code command (the external init script only disables CI signing):
   :desktopApp:createDistributable \
   --no-daemon --console=plain --max-workers=2 --warning-mode=all
 ```
+
+## Final automated result and artifact
+
+[Final frozen-code run](https://github.com/SirOtter0/INFINILECT/actions/runs/37532146147)
+completed successfully on `dfc4d34feb29cf2c356763a07d41552756f6fd6f`.
+All three focused Gradle invocations passed, followed by the clean matrix:
+`BUILD SUCCESSFUL in 4m 12s`; 149 actionable tasks, 145 executed and 4 up-to-date.
+The subsequent evidence commit changes only this verification document; the
+production code, tests, dependencies and workflow remain exactly those verified.
+
+| XML suite | Tests | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| core / jvmTest | 58 | 0 | 0 | 0 |
+| core / testAndroidHostTest | 58 | 0 | 0 | 0 |
+| app / desktopTest | 815 | 0 | 0 | 0 |
+| app / testAndroidHostTest | 782 | 0 | 0 | 0 |
+| Total executions | 1,713 | 0 | 0 | 0 |
+
+These include 25 unique new PDF cases / 42 platform test executions. XML counts
+were independently checked from the downloaded artifact. Existing TXT/EPUB/CBZ
+and mixed-format timeout suites passed. Android lint, core/app/Desktop builds,
+Android debug assembly and Linux Desktop distributable completed successfully.
+`androidApp:testDebugUnitTest` and `desktopApp:test` are NO-SOURCE, not additional
+executed tests. There are no device/instrumentation or graphical acceptance results.
+Non-fatal warnings remain: two unnecessary non-null assertions in FilePdfPreparer
+(reported on both compilation targets) and SDK Manager CLI deprecation.
+
+Artifact `pdf-verification`, ID `11445132774`, contains exact XML results,
+`pdf-verification.json` and the unsigned debug APK (seven-day retention):
+
+- APK: `androidApp/build/outputs/apk/debug/androidApp-debug-unsigned.apk`.
+- Workspace copy: `/workspace/INFINILECT/androidApp/build/outputs/apk/debug/androidApp-debug-unsigned.apk`.
+- Size: **12,040,538 bytes** (11.48 MiB).
+- SHA-256: `915a90e68513e881469e069058d8e7e3221a3332571b240759b5dcc6525f4d95`.
+- Signing certificate SHA-256: **unavailable — APK is unsigned**. Downloaded APK
+  has no v1 signature entries or APK signing block. The compatible private key is
+  unavailable; no replacement identity was generated. Rebuild with the established
+  external key before physical installation/update acceptance.
+- Artifact ZIP SHA-256: `e29b810633d299d413f4af35e9c306864f45966302597b841e9a70e38a4b1638`.
+
+Artifact ZIP digest, APK byte count and APK digest were verified after download.
+Android physical acceptance and Windows/Linux/Wayland/niri graphical acceptance
+remain pending against the [documented checklists](PDF_READER.md).
