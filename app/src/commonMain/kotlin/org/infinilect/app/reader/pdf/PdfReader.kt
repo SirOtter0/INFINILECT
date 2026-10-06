@@ -19,8 +19,9 @@ import org.infinilect.app.media.rasterImageBitmap
 
 /** Fit-page presentation. Recomposition/resizing never changes semantic page position. */
 @Composable
-internal fun PdfReader(reader: PdfReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String) {
+internal fun PdfReader(reader: PdfReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String, onPosition: (Int) -> Unit = {}) {
     val state by reader.state.collectAsState()
+    SideEffect { onPosition(state.index) }
     var presentationFailed by remember(reader,state.ticket) { mutableStateOf(false) }
     val frame = state.frame as? PdfFrame.Ready
     val presented by produceState<Pair<Long,ImageBitmap>?>(null,reader,state.ticket,frame) {

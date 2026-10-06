@@ -29,7 +29,7 @@ private temporary storage and displayed through bounded lazy windows;
 [reader policy](docs/TEXT_READER.md).
 
 This is a conservative remote reading path, with local approximate TEXT progress across restarts,
-without production EPUB acquisition, PDF reading or explicit downloads. Automatic bounded disk caching
+without remote EPUB/PDF acquisition or explicit downloads. Automatic bounded disk caching
 only reuses resources with trustworthy revisions; current Archive resources have
 no revision and reopening still acquires again. See [cache policy](docs/CACHE.md).
 Library saves publication metadata locally; History records successful opens.
@@ -38,7 +38,7 @@ with normal acquisition and reading-progress restoration. History Clear requires
 confirmation and keeps Library/progress. [Local storage policy](docs/LIBRARY_HISTORY.md).
 **v0.0.1 is not complete**. [Acquisition scope](docs/INTERNET_ARCHIVE.md).
 
-**Import local file** copies a selected UTF-8 TEXT, supported EPUB3 or PNG/JPEG CBZ
+**Import local file** copies a selected UTF-8 TEXT, supported EPUB3, PNG/JPEG CBZ or bounded PDF
 into private durable application storage, adds it to Library and opens it through
 the existing readers. Library/History reopen and progress survive restart, cache
 clearing and removal of the original file. Imports are bounded to 32 MiB (TEXT:
@@ -48,7 +48,9 @@ Desktop uses a native picker. [Ownership, limits and pending manual checks](docs
 OAPEN's official alternate metadata interface is accessible and supplies download
 links; REST rejects this environment with HTTP 403 and PDF transfer remains
 blocked/unverified. See [OAPEN](docs/OAPEN.md) and the
-[comparison](docs/ACQUISITION_COMPARISON.md). Gutenberg remains experimental catalog-only; no bulk crawling. No OAPEN source/UI or PDF reader is claimed.
+[comparison](docs/ACQUISITION_COMPARISON.md). Gutenberg remains experimental catalog-only; no bulk crawling. No OAPEN source/UI or remote PDF acquisition is claimed. Local PDF reading uses
+owned contracts, Android framework PdfRenderer on API 26+, and Desktop PDFBox 3.0.8.
+[PDF limits and pending acceptance](docs/PDF_READER.md).
 
 The deliberately small v0.0.1 goal is: open INFINILECT → search for a book → get
 real results → open one → read it. Project Gutenberg/OPDS is the first functional search source.

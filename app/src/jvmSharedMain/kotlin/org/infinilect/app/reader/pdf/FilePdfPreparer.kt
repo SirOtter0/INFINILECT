@@ -70,7 +70,9 @@ internal class FilePdfPreparer(
                                 while (true) {
                                     ensureOpen()
                                     val requested = minOf(buffer.size.toLong(),PdfLimits.SOURCE_BYTES-total+1).toInt()
-                                    val n = content.read(buffer,0,requested)
+                                    val n = try { content.read(buffer,0,requested) }
+                                    catch (error: CancellationException) { throw error }
+                                    catch (_: Exception) { throw PdfException(PdfFailure.TRANSFER) }
                                     if (n == -1) break
                                     if (n !in 1..requested) throw PdfException(PdfFailure.TRANSFER)
                                     total += n
@@ -103,6 +105,7 @@ internal class FilePdfPreparer(
             when (error) {
                 is CancellationException -> throw error
                 is PdfException -> throw error
+                is Error -> throw error
                 else -> throw PdfException(PdfFailure.STORAGE)
             }
         }
@@ -169,6 +172,7 @@ internal class FilePdfPreparer(
                 when (error) {
                     is CancellationException -> throw error
                     is PdfException -> throw error
+                    is Error -> throw error
                     else -> throw PdfException(PdfFailure.RENDER)
                 }
             }

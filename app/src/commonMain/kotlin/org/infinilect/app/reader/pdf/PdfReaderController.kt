@@ -31,13 +31,16 @@ internal class PdfReaderController(
         PdfLimits.pageCount(document.pageCount)
         require(progressId.format == PublicationFormat.PDF)
     }
-    suspend fun initialize(restored: ReadingProgress?) {
+    suspend fun initialize(restored: ReadingProgress?, recreationIndex: Int? = null) {
         val saved = restored?.takeIf { it.id == progressId }
-        val index = ((saved?.locator as? ReadingLocator.Page)?.pageIndex ?: 0).coerceIn(document.pages.indices)
+        currentCoroutineContext().ensureActive();check(!closed)
+        val persistedIndex = (saved?.locator as? ReadingLocator.Page)?.pageIndex ?: 0
+        val index = (recreationIndex ?: persistedIndex).coerceIn(document.pages.indices)
         timestamp = saved?.updatedAtEpochMillis ?: 0
         mutableState.value = PdfReaderState(index,1)
         // First page must render successfully before opening/History is published.
         render(1,index)
+        if (recreationIndex != null && index != persistedIndex) savePosition()
     }
     fun next() = navigate(state.value.index+1)
     fun previous() = navigate(state.value.index-1)

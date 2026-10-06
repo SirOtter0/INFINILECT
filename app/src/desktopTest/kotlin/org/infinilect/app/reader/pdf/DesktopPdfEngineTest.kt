@@ -66,7 +66,7 @@ class DesktopPdfEngineTest {
     @Test fun missingOptionalCodecsFailInsteadOfDroppingDrawnImages() {
         for((filter,format) in listOf("JBIG2Decode" to "JBIG2","JPXDecode" to "JPEG2000")) {
             if(ImageIO.getImageReadersByFormatName(format).hasNext()) continue
-            withPdf(smallPdf(imageFilter=filter)) { document ->
+            for(explicitColor in listOf(true,false)) withPdf(smallPdf(imageFilter=filter,explicitImageColor=explicitColor)) { document ->
                 assertEquals(PdfFailure.CODEC,assertFailsWith<PdfException>{document.render(0,PdfRenderSize(128,128))}.failure)
             }
         }

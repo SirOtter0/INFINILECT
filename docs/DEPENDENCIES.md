@@ -1,5 +1,17 @@
 # Dependencies and licenses
 
+## PR #20 PDF declaration
+
+The only new direct application dependency is Desktop-only
+`org.apache.pdfbox:pdfbox:3.0.8`. Tagged upstream POMs require `pdfbox-io:3.0.8`,
+`fontbox:3.0.8`, and `commons-logging:1.4.0`; all use Apache-2.0 with applicable
+bundled notices/font terms. No PDF dependency is added to Android/common/core,
+and no optional codecs/cryptography/native engine are requested.
+[Notices](../THIRD_PARTY_NOTICES.md), [policy](PDF_READER.md),
+[actual verification](PDF_VERIFICATION.md). The inventory below is historical;
+this declaration does not masquerade as a newly resolved dependency inventory.
+
+
 ## Desktop runtime verification — PR #12, 2026-10-04
 
 No Maven dependency, version or license changes. The existing Desktop app image

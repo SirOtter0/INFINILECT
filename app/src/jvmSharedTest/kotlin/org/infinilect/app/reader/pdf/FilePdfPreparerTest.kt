@@ -76,4 +76,38 @@ class FilePdfPreparerTest {
             assertFailsWith<PdfException>{assertNotNull(engine.produced).argb}
         } finally { release.countDown();owner.close();owner.awaitClosed();base.toFile().deleteRecursively() }
     }
+    @Test fun cancellationAtIoReturnClosesUndeliveredDocument()=runBlocking<Unit> {
+        val base=Files.createTempDirectory("pdf-return-test");val engine=Engine()
+        val queued=java.util.ArrayDeque<Runnable>()
+        val io=object:CoroutineDispatcher() {
+            override fun dispatch(context:kotlin.coroutines.CoroutineContext,block:Runnable){queued.add(block)}
+        }
+        val owner=FilePdfPreparer(base,engine,io)
+        try {
+            val request=launch(start=CoroutineStart.UNDISPATCHED) {
+                owner.prepare(publication,resource,loader());error("undelivered document escaped")
+            }
+            queued.removeFirst().run() // Engine opened; caller return dispatch has not run.
+            request.cancelAndJoin()
+            while(queued.isNotEmpty())queued.removeFirst().run()
+            assertEquals(1,engine.opens.get());assertEquals(1,engine.closes.get())
+        } finally {
+            owner.close();while(queued.isNotEmpty())queued.removeFirst().run()
+            owner.awaitClosed();base.toFile().deleteRecursively()
+        }
+    }
+    @Test fun concurrentRenderRequestsRemainSerialized()=runBlocking<Unit> {
+        val base=Files.createTempDirectory("pdf-serial-test");val engine=Engine();val owner=FilePdfPreparer(base,engine)
+        val entered=CountDownLatch(1);val release=CountDownLatch(1)
+        try {
+            val document=owner.prepare(publication,resource,loader())
+            engine.onRender={entered.countDown();assertTrue(release.await(5,TimeUnit.SECONDS))}
+            val first=async {document.renderPage(0,PdfRenderSize(64,64))}
+            withContext(Dispatchers.IO){assertTrue(entered.await(5,TimeUnit.SECONDS))}
+            val second=async {document.renderPage(0,PdfRenderSize(32,32))}
+            yield();assertEquals(1,engine.renders.get())
+            release.countDown();first.await().close();second.await().close()
+            assertEquals(2,engine.renders.get());document.close()
+        } finally {release.countDown();owner.close();owner.awaitClosed();base.toFile().deleteRecursively()}
+    }
 }

@@ -39,8 +39,9 @@ jobs:
           ./gradlew -I /tmp/pdf20-unsigned.gradle :core:jvmTest --tests '*PdfDocumentTest' --no-daemon --console=plain --max-workers=2
           ./gradlew -I /tmp/pdf20-unsigned.gradle :app:desktopTest --tests '*DesktopPdfEngineTest' --tests '*FilePdfPreparerTest' --no-daemon --console=plain --max-workers=2
       - name: Focused import, reader and progress
-        run: ./gradlew -I /tmp/pdf20-unsigned.gradle :app:desktopTest --tests '*DesktopPdfImportTest' --tests '*PdfReaderControllerTest' --tests '*PdfSessionTest' --tests '*FileLocalPublicationSourceTest' --tests '*LocalImportSessionTest' --no-daemon --console=plain --max-workers=2
+        run: ./gradlew -I /tmp/pdf20-unsigned.gradle :app:desktopTest --tests '*DesktopPdfImportTest' --tests '*PdfReaderControllerTest' --tests '*PdfSessionTest' --tests '*FileLocalPublicationSourceTest' --tests '*LocalImportSessionTest' --tests '*OpenPublicationControllerTest' --no-daemon --console=plain --max-workers=2
       - name: Clean verification matrix
+        if: contains(github.event.head_commit.message, '[verify matrix]')
         run: |
           ./gradlew -I /tmp/pdf20-unsigned.gradle clean \
             :core:jvmTest :app:desktopTest :core:build :app:build :desktopApp:build \
@@ -49,6 +50,7 @@ jobs:
             :desktopApp:createDistributable \
             --no-daemon --console=plain --max-workers=2 --warning-mode=all
       - name: Record exact test counts and unsigned APK identity
+        if: contains(github.event.head_commit.message, '[verify matrix]')
         run: |
           python3 - <<'PY'
           from pathlib import Path

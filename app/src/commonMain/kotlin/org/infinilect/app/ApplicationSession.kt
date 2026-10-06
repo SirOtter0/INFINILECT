@@ -58,7 +58,7 @@ internal class ApplicationSession(
         mutableDestination.value=destination
         when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); else -> Unit }
     }
-    fun openSaved(snapshot: PublicationSnapshot) {
+    fun openSaved(snapshot: PublicationSnapshot, pdfRecreationIndex: Int? = null) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
         observer?.cancel()
         val option=sources.options.firstOrNull { it.source.id==snapshot.id.sourceId }
@@ -69,15 +69,15 @@ internal class ApplicationSession(
             return
         }
         savedReader?.close(); savedReader=session(option)
-        observe(savedReader!!); savedReader!!.open(placeholder)
+        observe(savedReader!!); savedReader!!.open(placeholder,pdfRecreationIndex)
         mutableOpening.value=savedReader!!.opening.state.value
     }
-    fun restoreLocalPdf(localId: String, destination: String) {
+    fun restoreLocalPdf(localId: String, destination: String, pageIndex: Int) {
         if (!Regex("[0-9a-f]{64}").matches(localId)) return
         val local=sources.options.firstOrNull { it.pdfReadingEnabled && it.source.id.value == "local-imports" } ?: return
         val restoredDestination=Destination.entries.firstOrNull { it.name == destination } ?: Destination.SEARCH
         navigate(restoredDestination)
-        openSaved(PublicationSnapshot(PublicationId(local.source.id,localId),"PDF",PublicationType.DOCUMENT))
+        openSaved(PublicationSnapshot(PublicationId(local.source.id,localId),"PDF",PublicationType.DOCUMENT),pageIndex.coerceIn(0,org.infinilect.core.PdfLimits.PAGES-1))
     }
     fun openSearch(publication: Publication) {
         if(closed || importing.value.busy || destination.value!=Destination.SEARCH) return

@@ -22,6 +22,7 @@ private class AndroidPdfEngineDocument(path: Path) : PdfEngineDocument {
         val opened = try { PdfRenderer(descriptor) }
         catch (error: Throwable) {
             descriptor.close()
+            if (error is Error) throw error
             throw PdfException(if (error is SecurityException) PdfFailure.ENCRYPTED else PdfFailure.MALFORMED)
         }
         // Successful construction transfers descriptor ownership to PdfRenderer.
@@ -35,7 +36,7 @@ private class AndroidPdfEngineDocument(path: Path) : PdfEngineDocument {
             renderer = opened
         } catch (error: Throwable) {
             opened.close()
-            if (error is PdfException) throw error
+            if (error is PdfException || error is Error) throw error
             throw PdfException(PdfFailure.MALFORMED)
         }
     }

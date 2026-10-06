@@ -57,7 +57,7 @@ internal class OpenPublicationController(
     private var generation = 0L
     private var closed = false
 
-    fun open(publication: Publication) {
+    fun open(publication: Publication, pdfRecreationIndex: Int? = null) {
         if (state.value is OpenPublicationState.Loading) return
         closeReady()
         if (closed || publication.id.sourceId != source.id) {
@@ -76,8 +76,7 @@ internal class OpenPublicationController(
             var openingEpub = false
             var handedOff = false
             try {
-                val details = withTimeout(60_000) { source.getPublication(publication.id) }
-                suspend fun prepareReader(): OpenPublicationState {
+                suspend fun prepareReader(details: Publication?): OpenPublicationState {
                     currentCoroutineContext().ensureActive()
                     if (details == null) {
                         throw OpeningException("This publication is no longer available.")
@@ -119,7 +118,7 @@ internal class OpenPublicationController(
                             PdfReaderController(document,scope,progress)
                         } catch (error: Throwable) { document.close(); throw error }
                         pdfReader = reader
-                        reader.initialize(progress?.get(reader.progressId))
+                        reader.initialize(progress?.get(reader.progressId),pdfRecreationIndex)
                         currentCoroutineContext().ensureActive()
                         return OpenPublicationState.PdfReady(reader,details)
                     }
@@ -132,8 +131,18 @@ internal class OpenPublicationController(
                 }
                 // Synchronous PDF parsing/rendering has no reliable interruption deadline.
                 // Cancellation is result-safe through adapter ownership and generation checks.
-                val isPdf = details?.resources?.any { it.format == PublicationFormat.PDF } == true
-                val loadedState = if (isPdf) prepareReader() else withTimeout(60_000) { prepareReader() }
+                var deferredPdf: Publication? = null
+                val withinDeadline = withTimeout(60_000) {
+                    val details = source.getPublication(publication.id)
+                    val pdfSelected = details != null && pdfPreparer != null &&
+                        selectResource(details,PublicationFormat.TEXT) == null &&
+                        (epubPreparer == null || selectResource(details,PublicationFormat.EPUB) == null) &&
+                        (pagePreparer == null || details.resources.none { it.format == PublicationFormat.PAGES || it.format == PublicationFormat.CBZ }) &&
+                        selectResource(details,PublicationFormat.PDF) != null
+                    if (pdfSelected) { deferredPdf = details; null }
+                    else prepareReader(details)
+                }
+                val loadedState = withinDeadline ?: prepareReader(checkNotNull(deferredPdf))
                 // Publish only after exiting the deadline successfully. A timeout/cancel at
                 // the withTimeout return boundary must not record History or leak the EPUB.
                 currentCoroutineContext().ensureActive()

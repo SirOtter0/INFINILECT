@@ -6,7 +6,7 @@ import java.io.ByteArrayOutputStream
 
 /** Original small real PDF: catalog/page tree, font, streams, byte-offset xref and trailer.
  * No copied publication, downloaded fixture or third-party fixture license. */
-internal fun smallPdf(count: Int = 1, width: Int = 612, height: Int = 792, imageFilter: String? = null): ByteArray {
+internal fun smallPdf(count: Int = 1, width: Int = 612, height: Int = 792, imageFilter: String? = null, explicitImageColor: Boolean = true): ByteArray {
     val objects = mutableListOf<String>()
     val pageStart = 4
     val kids = (0 until count).joinToString(" ") { "${pageStart+it*2} 0 R" }
@@ -21,7 +21,7 @@ internal fun smallPdf(count: Int = 1, width: Int = 612, height: Int = 792, image
             if(imageFilter == null) "" else "q 20 0 0 20 180 36 cm /Im1 Do Q\n"
         objects += "<< /Length ${commands.toByteArray(Charsets.US_ASCII).size} >>\nstream\n${commands}endstream"
     }
-    if(imageFilter != null) objects += "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /BitsPerComponent 8 /ColorSpace /DeviceRGB /Filter /$imageFilter /Length 1 >>\nstream\nx\nendstream"
+    if(imageFilter != null) objects += "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 ${if(explicitImageColor) "/BitsPerComponent 8 /ColorSpace /DeviceRGB" else ""} /Filter /$imageFilter /Length 1 >>\nstream\nx\nendstream"
     val out=ByteArrayOutputStream()
     fun write(s:String) { out.write(s.toByteArray(Charsets.US_ASCII)) }
     write("%PDF-1.4\n")

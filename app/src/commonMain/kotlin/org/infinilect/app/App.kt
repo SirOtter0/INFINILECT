@@ -57,10 +57,11 @@ fun App(
     val application=remember(applicationSources) { ApplicationSession(applicationSources,scope) }
     // Save only owned identity for Android recreation; never an external acquisition URI.
     var savedPdfId by rememberSaveable { mutableStateOf<String?>(null) }
+    var savedPdfPage by rememberSaveable { mutableStateOf(0) }
     var savedPdfDestination by rememberSaveable { mutableStateOf(Destination.SEARCH.name) }
     val initialPdfId=remember(application) { savedPdfId }
     LaunchedEffect(application) {
-        initialPdfId?.let { application.restoreLocalPdf(it,savedPdfDestination) }
+        initialPdfId?.let { application.restoreLocalPdf(it,savedPdfDestination,savedPdfPage) }
     }
     DisposableEffect(applicationSources,application) {
         applicationSources.attach(application)
@@ -130,7 +131,7 @@ fun App(
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                         when (current) {
                             is OpenPublicationState.Ready -> TextReader(current.document,current.reading,saveFailed,application::back,backLabel)
-                            is OpenPublicationState.PdfReady -> key(current.reader) { org.infinilect.app.reader.pdf.PdfReader(current.reader,saveFailed,application::back,backLabel) }
+                            is OpenPublicationState.PdfReady -> key(current.reader) { org.infinilect.app.reader.pdf.PdfReader(current.reader,saveFailed,application::back,backLabel) { savedPdfPage=it } }
                             is OpenPublicationState.PageReady -> key(current.reader) { org.infinilect.app.reader.page.PageReader(current.reader,saveFailed,application::back,backLabel) }
                             is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(current.reader,saveFailed,application::back,backLabel)
                         }

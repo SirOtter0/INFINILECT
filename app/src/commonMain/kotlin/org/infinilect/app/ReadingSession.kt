@@ -59,9 +59,9 @@ internal class ReadingSession(
         searchJob = scope.launch { action() }
     }
 
-    fun open(publication: Publication) {
+    fun open(publication: Publication, pdfRecreationIndex: Int? = null) {
         if (!closed && (textReadingEnabled || epubReadingEnabled || pageReadingEnabled || pdfReadingEnabled) && searchJob?.isActive != true && search.state.value !is SearchState.Loading)
-            opening.open(publication)
+            opening.open(publication,pdfRecreationIndex)
     }
 
     fun back() { opening.cancel() }

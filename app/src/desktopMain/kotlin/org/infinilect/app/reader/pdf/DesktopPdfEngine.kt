@@ -11,6 +11,7 @@ import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage
 import org.apache.pdfbox.cos.*
 import org.apache.pdfbox.rendering.*
+import org.apache.pdfbox.contentstream.operator.Operator
 import org.infinilect.core.*
 
 /** File-backed buffered random access, strict parsing, no mapping or full-source byte array.
@@ -26,6 +27,8 @@ private class DesktopPdfEngineDocument(path: Path) : PdfEngineDocument {
         val opened = try { PDFParser(input).parse(false) }
         catch (error: Throwable) {
             input.close()
+            if (error is LinkageError && error.message?.contains("bouncycastle",ignoreCase=true) == true) throw PdfException(PdfFailure.ENCRYPTED)
+            if (error is Error) throw error
             throw PdfException(if (error is InvalidPasswordException) PdfFailure.ENCRYPTED else PdfFailure.MALFORMED)
         }
         try {
@@ -49,6 +52,10 @@ private class DesktopPdfEngineDocument(path: Path) : PdfEngineDocument {
                 override fun createPageDrawer(parameters: PageDrawerParameters): PageDrawer =
                     object : PageDrawer(parameters) {
                         init { setAnnotationFilter { false } }
+                        override fun processOperator(operator: Operator, operands: MutableList<COSBase>) {
+                            if (operator.name == "BI") operator.imageParameters?.let { checkImageCodecs(it) }
+                            super.processOperator(operator,operands)
+                        }
                         override fun drawImage(image: PDImage) {
                             // PDFBox otherwise logs absent optional codecs and can omit an image.
                             checkImageCodecs(image.cosObject)
@@ -59,7 +66,7 @@ private class DesktopPdfEngineDocument(path: Path) : PdfEngineDocument {
             document = opened
         } catch (error: Throwable) {
             opened.close()
-            if (error is PdfException) throw error
+            if (error is PdfException || error is Error) throw error
             throw PdfException(PdfFailure.MALFORMED)
         }
     }
@@ -69,6 +76,7 @@ private class DesktopPdfEngineDocument(path: Path) : PdfEngineDocument {
         val geometry = pages[index]
         // Round scale down; PDFBox floors width*scale and height*scale before allocation.
         val page = document.getPage(index)
+        checkResourceCodecs(page.resources?.cosObject)
         val requestedScale = (minOf(size.width / geometry.widthPoints,size.height / geometry.heightPoints) * page.userUnit).toFloat()
         if (!requestedScale.isFinite() || requestedScale <= 0) throw PdfException(PdfFailure.GEOMETRY)
         val scale = Math.nextDown(requestedScale)
@@ -110,4 +118,29 @@ private fun checkImageCodecs(image: COSDictionary) {
             (dictionary.getDictionaryObject(key) as? COSDictionary)?.let { inspect(it,depth+1) }
     }
     inspect(image,0)
+}
+
+/** Preflight before PDImageXObject construction: JPX without an explicit color space
+ * may request its decoder during construction, before drawImage is called. Check
+ * reachable resource dictionaries conservatively, including forms/patterns/soft masks. */
+private fun checkResourceCodecs(resources: COSDictionary?) {
+    val visited=java.util.Collections.newSetFromMap(java.util.IdentityHashMap<COSDictionary,Boolean>())
+    var entries=0
+    fun inspect(resource:COSDictionary?,depth:Int) {
+        if (resource == null || !visited.add(resource)) return
+        if (depth > 16 || visited.size > 1024) throw PdfException(PdfFailure.LIMIT)
+        for (category in listOf(COSName.XOBJECT,COSName.PATTERN,COSName.EXT_G_STATE)) {
+            val values=resource.getDictionaryObject(category) as? COSDictionary ?: continue
+            for (key in values.keySet()) {
+                if (++entries > 4096) throw PdfException(PdfFailure.LIMIT)
+                val value=values.getDictionaryObject(key) as? COSDictionary ?: continue
+                if (value.getCOSName(COSName.SUBTYPE) == COSName.IMAGE) checkImageCodecs(value)
+                inspect(value.getDictionaryObject(COSName.RESOURCES) as? COSDictionary,depth+1)
+                val mask=value.getDictionaryObject(COSName.SMASK) as? COSDictionary
+                val group=mask?.getDictionaryObject(COSName.G) as? COSDictionary
+                inspect(group?.getDictionaryObject(COSName.RESOURCES) as? COSDictionary,depth+1)
+            }
+        }
+    }
+    inspect(resources,0)
 }

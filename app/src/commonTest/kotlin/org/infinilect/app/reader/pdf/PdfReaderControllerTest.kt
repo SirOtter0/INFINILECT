@@ -72,4 +72,11 @@ class PdfReaderControllerTest {
         assertEquals(1,reader.state.value.index);assertEquals(PdfFailure.CODEC,assertIs<PdfFrame.Failed>(reader.state.value.frame).failure)
         reader.close()
     }
+    @Test fun recreationIndexWinsOverAnOlderAsynchronousProgressCommit()=runTest {
+        val document=TestPdfDocument();val reader=PdfReaderController(document,this)
+        val older=ReadingProgress(document.progressId,ReadingLocator.Page("pdf-page-0",0,0.0),0.0,10)
+        reader.initialize(older,2)
+        assertEquals(2,reader.state.value.index);assertEquals(listOf(2),document.rendered)
+        reader.close()
+    }
 }

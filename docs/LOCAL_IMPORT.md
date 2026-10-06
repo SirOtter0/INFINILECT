@@ -1,8 +1,8 @@
 # Durable local import
 
 PR #19 adds a production local acquisition path for UTF-8 TEXT, the existing
-bounded passive EPUB3 subset, and the supported PNG/JPEG CBZ subset. PDF,
-CBR/RAR/7z, DRM, bulk import and local directory browsing are unsupported.
+bounded passive EPUB3 subset, and the supported PNG/JPEG CBZ subset. PR #20
+adds engine-validated bounded local PDF reading. CBR/RAR/7z, DRM, bulk import and local directory browsing are unsupported.
 Importing a file establishes no copyright or legal status.
 
 ```text
@@ -11,7 +11,7 @@ Android SAF / Desktop native picker
     → LocalPublicationImporter
     → durable owned copy + validated metadata
     → PublicationSource("local-imports") / ResourceLoader
-    → existing TEXT / EPUB / CBZ preparer and reader
+    → TEXT / EPUB / CBZ / PDF owned preparer and reader
     → existing Library / History / ReadingProgress
 ```
 
@@ -64,13 +64,16 @@ An unsupported/corrupt record is unavailable, never repaired by deleting user da
   format authorization.
 - ZIP input: existing EPUB structural preparation first, otherwise existing strict
   CBZ preparation. Ordinary/malformed/unsupported ZIP files fail. Filenames and
-  provider MIME never authorize a format. PDF signatures fail as unsupported.
+  provider MIME never authorize a format. A PDF prefix selects the owned PDF
+  preparer; bounded engine parsing/inspection must succeed before publication.
+  [PDF contracts, limits and cancellation](PDF_READER.md).
 - EPUB/CBZ limits, CRC/path/ZIP checks and raster bounds remain unchanged. CBZ
   validates every page without retaining/decoding every raster. EPUB structural
   import validation does not imply every chapter supports the presentation subset;
   later rendering can still fail safely on unsupported XHTML.
 - At most **8 live local payload handles**, plus the single import input. Local
-  operations time out after 120 seconds where cancellation is cooperative. Existing
+  catalog operations and import copy time out after 120 seconds where cancellation
+  is cooperative. PDF parsing/rendering has no interruptible deadline. Existing
   preparation storage/model limits apply in addition to the durable import budget.
 
 Acquisition closes its input on all paths. Validation uses existing preparers and
