@@ -1,8 +1,8 @@
 # PR #20 PDF verification
 
 Base: `2eb55715131b0628be526c5e4644bd6a9f68a417`, verified current main/PR #19 merge.
-Branch: `feature/bounded-local-pdf`. Draft PR creation follows final verification;
-no merge is authorized or performed.
+Branch: `feature/bounded-local-pdf`. [PR #20](https://github.com/SirOtter0/INFINILECT/pull/20)
+remains Draft; no merge is authorized or performed.
 
 ## Environment and initial checks
 
@@ -101,14 +101,15 @@ Exact frozen-code command (the external init script only disables CI signing):
   --no-daemon --console=plain --max-workers=2 --warning-mode=all
 ```
 
-## Final automated result and artifact
+## Original vertical-slice automated result and artifact
 
 [Final frozen-code run](https://github.com/SirOtter0/INFINILECT/actions/runs/37532146147)
 completed successfully on `dfc4d34feb29cf2c356763a07d41552756f6fd6f`.
 All three focused Gradle invocations passed, followed by the clean matrix:
 `BUILD SUCCESSFUL in 4m 12s`; 149 actionable tasks, 145 executed and 4 up-to-date.
-The subsequent evidence commit changes only this verification document; the
-production code, tests, dependencies and workflow remain exactly those verified.
+Evidence commit `59db9c1647dc264032e8149f3314e3ad79a4c8a2` changed only this
+verification document. The later focused progress review is recorded separately
+below; these full-matrix counts describe the original vertical slice.
 
 | XML suite | Tests | Failures | Errors | Skipped |
 | --- | ---: | ---: | ---: | ---: |
@@ -143,3 +144,91 @@ Artifact `pdf-verification`, ID `11445132774`, contains exact XML results,
 Artifact ZIP digest, APK byte count and APK digest were verified after download.
 Android physical acceptance and Windows/Linux/Wayland/niri graphical acceptance
 remain pending against the [documented checklists](PDF_READER.md).
+
+
+## Focused review follow-up: successful-page progress and workflow removal
+
+[Focused verification](https://github.com/SirOtter0/INFINILECT/actions/runs/37536916524)
+passed on production/test HEAD `1d5d0c0c444fd1f3604ab0262424058899a6fd62`.
+The final follow-up commit removes the temporary workflow and updates documentation;
+production code and tests remain exactly those verified in this run.
+
+Requested/loading index is separate from the last successfully rendered index.
+Only a current, non-cancelled render publishes Ready and submits its semantic
+position. Failed/obsolete/cancelled targets and close/flush during an in-flight
+render cannot advance progress. Initial normal opening does not write a reset.
+Compose recreation captures the last successful index, retaining restoration over
+an older asynchronous writer commit. No engine timeout, boundary, dependency,
+resource limit or non-PDF production behavior changed.
+
+Focused regression coverage includes successful navigation after a gated render,
+CODEC/RENDER failure preserving progress and reopening the previous successful page,
+late obsolete delivery, closing during a noncooperative render, failed initial
+recreation, and an older write still in flight during recreation. ApplicationSession
+coverage recreates from a loading target and reopens after a later failed render.
+The real-file PDF import/restart test now waits for Ready before closing.
+
+| Focused task | Executions | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| app / desktopTest | 77 | 0 | 0 | 0 |
+| app / testAndroidHostTest | 75 | 0 | 0 | 0 |
+| Total | 152 | 0 | 0 | 0 |
+
+Desktop suites: PdfReaderController 7, PdfSession 3, ApplicationSession 14,
+PageApplicationSession 5, OpenPublicationController 30, ProgressLifecycle 16,
+DesktopPdfImport 2. Android host runs the same suites except DesktopPdfImport.
+The ApplicationSession wildcard also selects PageApplicationSession; those existing
+page-reader cases passed unchanged. Counts were independently checked from XML.
+Gradle invocations: Desktop `BUILD SUCCESSFUL in 2m 35s`; Android host
+`BUILD SUCCESSFUL in 1m 27s`; updated unsigned APK assembly `BUILD SUCCESSFUL in
+1m 21s`. No expensive full clean matrix was rerun: engines, dependencies, limits
+and non-PDF production code are unchanged, and the affected behavior is covered
+by these focused tests plus Android compilation/assembly. Physical/graphical
+acceptance remains pending.
+
+Exact focused commands (external init script disables CI signing only):
+
+```sh
+./gradlew -I /tmp/pdf20-unsigned.gradle :app:desktopTest --tests '*PdfReaderControllerTest' --tests '*PdfSessionTest' --tests '*ApplicationSessionTest' --tests '*OpenPublicationControllerTest' --tests '*ProgressLifecycleTest' --tests '*DesktopPdfImportTest' --no-daemon --console=plain --max-workers=2
+./gradlew -I /tmp/pdf20-unsigned.gradle :app:testAndroidHostTest --tests '*PdfReaderControllerTest' --tests '*PdfSessionTest' --tests '*ApplicationSessionTest' --tests '*OpenPublicationControllerTest' --tests '*ProgressLifecycleTest' --no-daemon --console=plain --max-workers=2
+```
+
+The requested updated test APK was rebuilt after both focused suites passed:
+
+```sh
+./gradlew -I /tmp/pdf20-unsigned.gradle :androidApp:assembleDebug --no-daemon --console=plain --max-workers=2
+```
+
+The branch-only `.github/workflows/pdf-verification.yml` was used one final time
+for this evidence and is **deleted from the final PR tree**. There is no replacement
+per-feature workflow or repository-wide CI redesign. Permanent evidence is preserved
+here and in PR #20; linked run logs remain available. Artifact `pdf20-review-evidence`
+(ID `11446812978`, seven-day retention) contains XML, counts, the updated unsigned
+APK and the public apksigner JAR from Android SDK build-tools 36.0.0. No signing
+inputs were uploaded to GitHub/CI or copied into the repository.
+
+Artifact ZIP SHA-256: `8e0f35b8c218f1c932a4b6d945145f58b46d8c0bfdff1fa2daa660dc2f48346d`.
+Updated unsigned APK SHA-256: `58714ceccf05c79f99363b1d1e3a8b2bc8cdbf8c86be9f07ef8142e0dcf81103`.
+Both digests and extracted file sizes were verified after download.
+
+### Updated development-signed test APK
+
+The separately supplied development inputs were consumed locally, outside the
+repository. Alias certificate SHA-256 was verified before signing and again from
+the signed APK; both match the user-required fingerprint. No replacement key or
+release identity was generated. This identity is for development/testing only.
+
+- APK: `androidApp/build/outputs/apk/debug/androidApp-debug-development.apk`.
+- Size: **12,062,727 bytes**.
+- SHA-256: `b48b7b543446fee93d739deed2f2f8034fcb650e284913fbd5ad658ae97daba1`.
+- Signing certificate SHA-256: `95C708E6CFEE94BC13ECF34D2A38CF4F1DC5EAB185133F8E139629DD0BE470FE`.
+- Official SDK apksigner verification: **PASS for minSdk 26**, v2 and v3 signatures.
+  v1/v3.1/v4 are absent; v2 covers supported API 26 devices.
+- This APK contains the reviewed progress correction, unlike the original unsigned
+  vertical-slice artifact recorded above. Device installation/update compatibility
+  still depends on the installed app's certificate; no physical acceptance is claimed.
+
+Final tracked-file audit checks for keystores/password files, private-key headers,
+raw/Base64 attached key/password material and attachment/secret paths; no matches.
+The key, password and local signing scripts/tools are not tracked. TXT/EPUB/CBZ
+production behavior is intentionally unchanged. PR #20 remains Draft and unmerged.

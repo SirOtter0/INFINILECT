@@ -4,7 +4,7 @@ Only PDFs selected locally are enabled. Remote sources/acquisition are unchanged
 The publication first becomes an app-owned durable import, then enters Library,
 then opens through its source and ResourceLoader. History is recorded after
 preparation and the initial page render succeed. Later unsupported pages show a
-controlled failure and retain their logical page position.
+controlled failure; durable progress retains the last successfully rendered page.
 
 ## Owned boundary and engine choice
 
@@ -133,7 +133,8 @@ graphics issue or claim Android/device/Desktop graphical acceptance.
 
 - Rebuild/sign with the established external identity before attempting an update;
   expected certificate SHA-256 is
-  `547ad50541c240ad2327e8018619145a6b9d2d8a3954833ca81d46a19f9c8193`.
+  `95c708e6cfee94bc13ecf34d2a38cf4f1dc5eab185133f8e139629dd0be470fe`.
+  This supplied identity is for development/testing only; release signing is separate.
   An unsigned verification APK cannot be installed or establish update compatibility.
 - On API 26 and a current physical Android version, import one/multiple-page PDFs
   through SAF, including renamed files and an available real provider.
