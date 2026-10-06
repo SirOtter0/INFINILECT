@@ -27,6 +27,35 @@ enabled PDF route and keeps non-PDF acquisition/preparation inside the original
 deadline. Final results will be recorded below after the corrected focused run
 and frozen-code clean matrix; initial failures are not claimed as passes.
 
+[Corrected focused run](https://github.com/SirOtter0/INFINILECT/actions/runs/37531087082)
+on `63e9e2d9a84ac8330522f1c55f8133f17596a7fc` passed all three Gradle invocations:
+core PdfDocument tests; Desktop engine/preparer tests; and import/reader/session,
+existing local-import and OpenPublicationController tests. The clean matrix was
+deliberately gated out until this focused verification passed.
+
+## Review before the frozen-code matrix
+
+The resource review checked descriptor ownership on Android constructor failure
+and renderer retirement, one-page/finally closure, PDDocument/input ownership,
+intermediate bitmap/image cleanup, private spools and close/return-boundary races.
+Additional host cases cover undelivered prepared documents and serialized renders.
+Fatal VM errors are not mislabeled as ordinary PDF failures; process exhaustion
+remains possible. Missing optional codec checks include resource construction,
+forms/patterns, inline images and masks, and fail conservatively.
+
+Bounds use validated geometry and Long products before owned output allocation;
+PDFBox allocation arithmetic is checked before renderImage. The review traced
+cancelled/stale results through controller and adapter ownership, inspected import
+publication after full EOF/digest verification and engine inspection, and confirmed
+original paths/URIs remain absent from persisted records. Static boundary checks
+found no engine/Bitmap/BufferedImage/descriptor/Java2D/Skia imports in PDF core,
+common reader/controller or the owned preparation interface. Android rendering uses
+only the API-21 PdfRenderer surface available on API 26. Existing mixed-format TEXT
+deadline behavior is now covered by the original passing regression case.
+
+Modified-document local Markdown links: 140 checked, zero missing at this review.
+`git diff --check` passed. Android physical and Desktop graphical checks remain pending.
+
 ## Verification scope
 
 Original generated PDF fixtures have real page trees, streams, fonts and byte-offset
@@ -55,3 +84,14 @@ The frozen-code matrix is gated by a `[verify matrix]` commit after focused test
 and the ownership/bounds/boundary review stabilize. It includes the existing
 core/app Desktop and Android host checks, build, Android unit/lint/unsigned APK,
 and Desktop distributable. Artifact identity and exact XML counts remain pending.
+
+Exact frozen-code command (the external init script only disables CI signing):
+
+```sh
+./gradlew -I /tmp/pdf20-unsigned.gradle clean \
+  :core:jvmTest :app:desktopTest :core:build :app:build :desktopApp:build \
+  :core:testAndroidHostTest :app:testAndroidHostTest \
+  :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug \
+  :desktopApp:createDistributable \
+  --no-daemon --console=plain --max-workers=2 --warning-mode=all
+```
