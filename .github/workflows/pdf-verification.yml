@@ -22,7 +22,7 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Required Android SDK
-        run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - name: Disable signing without creating a replacement key
         run: |
           cat > /tmp/pdf20-unsigned.gradle <<'EOF'
