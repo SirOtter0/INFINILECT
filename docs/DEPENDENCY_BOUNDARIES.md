@@ -158,3 +158,15 @@ adapter/wiring/tests and (for user preferences) migration, not Library/History,
 source identity, semantic progress or other reader business logic. Future CBZ/web
 sources feed the same PageDocument. No PDF engine is hidden behind comic semantics.
 No new third-party library or framework wrapper is introduced.
+
+## Local acquisition boundary — PR #19
+
+`LocalFilePicker`/`LocalFileSelection` and `LocalPublicationImporter` are application-owned
+contracts. Android SAF/ContentResolver and Desktop AWT/NIO implement acquisition;
+FileLocalPublicationSource implements durable import/catalog/resource ownership.
+Only composition roots select these implementations. Shared session/UI orchestration
+uses the contracts, then existing PublicationSource/ResourceLoader and repository
+contracts. Readers receive no URI, File/Path, picker, filesystem, SQL or transport
+type. Replacing acquisition/storage changes its adapter, composition, integration
+tests and possibly the import record migration; unrelated readers/progress remain.
+The import namespace is owned content rather than an acquisition-cache backend.

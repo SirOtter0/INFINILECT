@@ -15,14 +15,16 @@ import androidx.compose.ui.Modifier
 
 class MainActivity : ComponentActivity() {
     private lateinit var sources: ApplicationSources
+    private lateinit var picker: AndroidDocumentPicker
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         sources = createApplicationSources(applicationContext)
+        picker = AndroidDocumentPicker(this)
         setContent {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-                App(sources, backHandler = { enabled, onBack ->
+                App(sources, localFilePicker = picker, backHandler = { enabled, onBack ->
                     BackHandler(enabled = enabled, onBack = onBack)
                 })
             }
@@ -38,6 +40,7 @@ class MainActivity : ComponentActivity() {
         // Cancels the current session first; aborts streaming/client/engine afterward.
         // Re-creation deliberately starts a new session; no retained Activity/clients.
         if (::sources.isInitialized) sources.close()
+        if (::picker.isInitialized) picker.close()
         super.onDestroy()
     }
 }

@@ -46,6 +46,7 @@ internal data class SourceOption(val name: String, val source: PublicationSource
 fun App(
     applicationSources: ApplicationSources,
     backHandler: @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit = { _, _ -> },
+    localFilePicker: org.infinilect.app.imports.LocalFilePicker? = null,
 ) {
     val scope=rememberCoroutineScope()
     val application=remember(applicationSources) { ApplicationSession(applicationSources,scope) }
@@ -61,6 +62,7 @@ fun App(
     val selected by application.selected.collectAsState()
     val destination by application.destination.collectAsState()
     val opening by application.opening.collectAsState()
+    val importing by application.importing.collectAsState()
     val membership by application.collections.reader.collectAsState()
     val collectionError by application.collections.error.collectAsState()
     val historyFailed by (applicationSources.collections?.historyFailed
@@ -68,14 +70,21 @@ fun App(
     val saveFailed by (applicationSources.progress?.saveFailed
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
     val backLabel=when(destination) { Destination.LIBRARY -> "Back to Library"; Destination.HISTORY -> "Back to History"; else -> "Back to results" }
-    ApplicationBackHandler(application.opening,application.destination,application::back,backHandler)
+    ApplicationBackHandler(application.opening,application.destination,application::back,backHandler,application.importing)
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             when(val current=opening) {
                 OpenPublicationState.Idle -> Column(Modifier.fillMaxSize()) {
+                    if(localFilePicker != null && applicationSources.localImports != null) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Button(enabled=!importing.busy,onClick={ application.importLocal(localFilePicker) }) { Text("Import local file") }
+                            if(importing.busy) { Text("Importing…",modifier=Modifier.weight(1f)); Button(onClick=application::back) { Text("Cancel") } }
+                        }
+                        importing.message?.let { Text(it,modifier=Modifier.padding(horizontal=24.dp),color=MaterialTheme.colors.error) }
+                    }
                     Row(Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         Destination.entries.forEach { target ->
-                            Button(enabled=destination!=target,onClick={ application.navigate(target) },modifier=Modifier.weight(1f)) {
+                            Button(enabled=!importing.busy && destination!=target,onClick={ application.navigate(target) },modifier=Modifier.weight(1f)) {
                                 Text(when(target) { Destination.SEARCH -> "Search"; Destination.LIBRARY -> "Library"; Destination.HISTORY -> "History" })
                             }
                         }
@@ -200,7 +209,8 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
             }
         }
         Text("Source: ${sources[selected].name}")
-        Text(if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
+        Text(if (session.textReadingEnabled && session.epubReadingEnabled && session.pageReadingEnabled) "Search your imported TEXT, EPUB and CBZ publications. Use * to list all imports."
+            else if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
             else if (session.pageReadingEnabled) "Original development comic. No production comic acquisition is enabled."
             else if (session.epubReadingEnabled) "Original development EPUB. No production EPUB acquisition is enabled."
             else "Experimental catalog only. TEXT opening is unavailable for this source.")

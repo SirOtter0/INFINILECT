@@ -39,23 +39,27 @@ internal class ApplicationSession(
     val opening=mutableOpening.asStateFlow()
     private var observer: Job?=null
     private var closed=false
+    private val mutableImport = MutableStateFlow(org.infinilect.app.imports.LocalImportState())
+    val importing = mutableImport.asStateFlow()
+    private var importRequest: Job? = null
+    private var importGeneration = 0L
     init { observe(searchSession.value) }
     private fun observe(session: ReadingSession) {
         observer?.cancel(); mutableOpening.value=session.opening.state.value
         observer=scope.launch { session.opening.state.collect { mutableOpening.value=it } }
     }
     fun selectSource(index: Int) {
-        if(closed || index !in sources.options.indices || index==selected.value || opening.value !is OpenPublicationState.Idle) return
+        if(closed || importing.value.busy || index !in sources.options.indices || index==selected.value || opening.value !is OpenPublicationState.Idle) return
         searchSession.value.close()
         mutableSelected.value=index; mutableSearch.value=session(sources.options[index]); observe(searchSession.value)
     }
     fun navigate(destination: Destination) {
-        if(closed || opening.value !is OpenPublicationState.Idle) return
+        if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
         mutableDestination.value=destination
         when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); else -> Unit }
     }
     fun openSaved(snapshot: PublicationSnapshot) {
-        if(closed || opening.value !is OpenPublicationState.Idle) return
+        if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
         observer?.cancel()
         val option=sources.options.firstOrNull { it.source.id==snapshot.id.sourceId }
         // Resources are deliberately absent. Even valid stored rights never authorize bytes.
@@ -69,7 +73,7 @@ internal class ApplicationSession(
         mutableOpening.value=savedReader!!.opening.state.value
     }
     fun openSearch(publication: Publication) {
-        if(closed || destination.value!=Destination.SEARCH) return
+        if(closed || importing.value.busy || destination.value!=Destination.SEARCH) return
         searchSession.value.open(publication); mutableOpening.value=searchSession.value.opening.state.value
     }
     fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && (it.textReadingEnabled || it.epubReadingEnabled || it.pageReadingEnabled) }
@@ -81,6 +85,7 @@ internal class ApplicationSession(
     }
     fun back() {
         if(closed) return
+        if(importing.value.busy) { cancelImport(); return }
         if(opening.value !is OpenPublicationState.Idle) {
             (savedReader ?: searchSession.value).back(); savedReader?.close(); savedReader=null
             collections.leftReader(); observe(searchSession.value)
@@ -89,10 +94,43 @@ internal class ApplicationSession(
             collections.dismissClearHistory(); navigate(Destination.SEARCH)
         }
     }
-    fun handlesBack()=opening.value !is OpenPublicationState.Idle || destination.value!=Destination.SEARCH
+    fun handlesBack()=importing.value.busy || opening.value !is OpenPublicationState.Idle || destination.value!=Destination.SEARCH
+    fun importLocal(picker: org.infinilect.app.imports.LocalFilePicker) {
+        val importer = sources.localImports ?: return
+        if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
+        val generation = ++importGeneration
+        mutableImport.value = org.infinilect.app.imports.LocalImportState(busy=true)
+        importRequest = scope.launch {
+            try {
+                val selection = picker.pick() ?: return@launch
+                val publication = importer.import(selection)
+                currentCoroutineContext().ensureActive()
+                if(closed || generation != importGeneration) return@launch
+                val result = sources.collections?.library?.put(PublicationSnapshot.from(publication),clock())
+                currentCoroutineContext().ensureActive()
+                if(closed || generation != importGeneration) return@launch
+                if(result !is LocalStoreResult.Success) {
+                    mutableImport.value = org.infinilect.app.imports.LocalImportState(message="The file was imported, but could not be added to Library. Find it under Imported files and try again.")
+                    return@launch
+                }
+                sources.collections.changed()
+                mutableImport.value = org.infinilect.app.imports.LocalImportState()
+                openSaved(PublicationSnapshot.from(publication))
+            } catch(e: CancellationException) { throw e }
+            catch(e: Exception) {
+                if(!closed && generation == importGeneration) mutableImport.value = org.infinilect.app.imports.LocalImportState(message=
+                    (e as? org.infinilect.app.imports.LocalImportException)?.failure?.userMessage ?: "The selected file could not be imported. Please try again.")
+            } finally {
+                if(generation == importGeneration && mutableImport.value.busy) mutableImport.value = org.infinilect.app.imports.LocalImportState()
+            }
+        }.also { request -> request.invokeOnCompletion {
+            if(generation == importGeneration && mutableImport.value.busy) mutableImport.value = org.infinilect.app.imports.LocalImportState()
+        } }
+    }
+    private fun cancelImport() { importGeneration++; importRequest?.cancel(); importRequest=null; mutableImport.value=org.infinilect.app.imports.LocalImportState() }
     override fun flushProgress() { (savedReader ?: searchSession.value).flushProgress() }
     override fun close() {
         if(closed) return
-        closed=true; observer?.cancel(); savedReader?.close(); searchSession.value.close(); collections.close(); job.cancel()
+        closed=true; cancelImport(); observer?.cancel(); savedReader?.close(); searchSession.value.close(); collections.close(); job.cancel()
     }
 }

@@ -29,7 +29,7 @@ usa preparación temporal privada y ventanas acotadas;
 [política del lector](docs/TEXT_READER.md).
 
 Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
-entre reinicios, sin ajustes de lector, lectura EPUB/PDF de producción ni downloads persistentes. La caché de disco automática
+entre reinicios, sin adquisición EPUB de producción, lectura PDF ni descargas explícitas. La caché de disco automática
 y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
 de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
 Consulta la [política de caché](docs/CACHE.md).
@@ -38,6 +38,13 @@ correctas. Ambas sobreviven a reinicios y al borrado de caché. Abrir una entrad
 guardada vuelve a consultar su fuente, adquiere normalmente y restaura el progreso.
 Clear History requiere confirmación y conserva Library/progreso.
 [Política local](docs/LIBRARY_HISTORY.md).
+
+**Import local file** copia un TEXT UTF-8, EPUB3 compatible o CBZ PNG/JPEG a
+almacenamiento privado y duradero, lo añade a Library y lo abre con los lectores
+existentes. Library/History y el progreso sobreviven a reinicios, borrado de caché
+y eliminación del archivo original. Límite: 32 MiB (TEXT: 16 MiB); duplicados por
+contenido, sin borrar copias al quitar filas de Library. Android usa SAF y Desktop
+un selector nativo. [Propiedad, límites y verificación manual pendiente](docs/LOCAL_IMPORT.md).
 **v0.0.1 no está terminada**. [Alcance](docs/INTERNET_ARCHIVE.md).
 
 La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona

@@ -19,8 +19,10 @@ internal fun ApplicationBackHandler(
     destination: StateFlow<Destination>,
     onBack: () -> Unit,
     handler: @Composable (Boolean, () -> Unit) -> Unit,
+    importing: StateFlow<org.infinilect.app.imports.LocalImportState>? = null,
 ) {
     val currentOpening by opening.collectAsState()
     val currentDestination by destination.collectAsState()
-    handler(currentOpening.handlesBack() || currentDestination != Destination.SEARCH, onBack)
+    val importBusy = importing?.collectAsState()?.value?.busy == true
+    handler(importBusy || currentOpening.handlesBack() || currentDestination != Destination.SEARCH, onBack)
 }

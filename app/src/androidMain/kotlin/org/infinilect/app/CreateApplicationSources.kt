@@ -34,7 +34,8 @@ fun createApplicationSources(context: Context): ApplicationSources {
         epubDirectory = org.infinilect.app.epub.androidEpubDirectory(appContext.cacheDir.toPath()),
         epubSettingsDirectory = settingsDirectory, developmentComicEnabled = debuggable,
         pageSettingsDirectory = pageSettingsDirectory,
-        cbzPreparationDirectory = cbzDirectory)
+        cbzPreparationDirectory = cbzDirectory,
+        importDirectory = try { org.infinilect.app.imports.androidImportDirectory(appContext.filesDir) } catch (_: Exception) { null })
 }
 
 internal fun androidCacheDirectory(privateCacheDir: File): Path = privateCacheDir.toPath().resolve(CACHE_DIRECTORY_NAME)

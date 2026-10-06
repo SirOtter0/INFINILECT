@@ -262,3 +262,11 @@ ordinal and path-independent, so progress persists no archive path, ZIP metadata
 transport locator. Re-preparing a CBZ maps the same natural page order back to the
 existing synthetic keys; no progress schema migration is introduced. Closing/clearing
 temporary CBZ cache storage leaves ReadingProgress untouched.
+
+Local import (PR #19) preserves all existing TEXT/EPUB/PAGE records and settings.
+Source `local-imports` + the committed byte digest supplies a stable publication ID
+and resource key `content`; identical bytes resolve to the same progress identity
+regardless of external filename or location. Reader/session recreation, original
+file deletion and cache cleanup retain the owned publication and semantic progress.
+Library row removal/History clearing do not delete imports or progress. No progress
+serialization or SQL schema migration is introduced. [Ownership](LOCAL_IMPORT.md).
