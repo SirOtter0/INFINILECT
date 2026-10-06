@@ -14,22 +14,44 @@ import org.infinilect.app.imports.*
 /** Activity-owned registration only. Selected content uses an application resolver. */
 internal class AndroidDocumentPicker(activity: ComponentActivity) : LocalFilePicker {
     private val resolver = activity.applicationContext.contentResolver
-    private val lock = Any()
+    private val requests = AndroidDocumentPickerState()
     private var pending: CancellableContinuation<Uri?>? = null
-    private var inFlight = false
     private val launcher = activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        val continuation = synchronized(lock) { inFlight=false; pending.also { pending=null } }
+        val continuation = synchronized(requests) {
+            if (requests.result() == null) null else pending.also { pending = null }
+        }
         continuation?.resume(uri)
     }
     override suspend fun pick(): LocalFileSelection? {
         val uri = suspendCancellableCoroutine<Uri?> { continuation ->
-            // A cancelled SAF request can still return. Do not let its URI satisfy a new request.
-            synchronized(lock) { check(!inFlight); inFlight=true; pending=continuation }
-            continuation.invokeOnCancellation { synchronized(lock) { if(pending === continuation) pending=null } }
-            try { launcher.launch(arrayOf("*/*")) }
-            catch(e: Exception) { synchronized(lock) { if(pending === continuation) pending=null; inFlight=false }; continuation.resumeWithException(e) }
+            val request = synchronized(requests) { requests.begin().also { pending = continuation } }
+            continuation.invokeOnCancellation {
+                synchronized(requests) {
+                    requests.cancel(request)
+                    if (pending === continuation) pending = null
+                }
+            }
+            val failure = synchronized(requests) {
+                if (!requests.launch(request)) null // Cancelled/closed before the actual launch.
+                else try { launcher.launch(arrayOf("*/*")); null }
+                catch (error: Exception) {
+                    if (requests.launchFailed(request)) {
+                        if (pending === continuation) pending = null
+                        error
+                    } else null
+                }
+            }
+            failure?.let { continuation.resumeWithException(it) }
         } ?: return null
         return androidLocalFileSelection(resolver,uri)
     }
-    fun close() { synchronized(lock) { pending?.cancel(); pending=null }; launcher.unregister() }
+    fun close() {
+        val continuation = synchronized(requests) {
+            if (requests.isClosed()) return
+            requests.close()
+            pending.also { pending = null }
+        }
+        continuation?.cancel()
+        launcher.unregister()
+    }
 }
