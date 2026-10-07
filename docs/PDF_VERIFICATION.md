@@ -232,3 +232,103 @@ Final tracked-file audit checks for keystores/password files, private-key header
 raw/Base64 attached key/password material and attachment/secret paths; no matches.
 The key, password and local signing scripts/tools are not tracked. TXT/EPUB/CBZ
 production behavior is intentionally unchanged. PR #20 remains Draft and unmerged.
+
+
+## Search layout follow-up and user-reported Android acceptance (2026-10-07)
+
+The user reported physical Android acceptance of local PDF import, rendering,
+multi-page navigation, landscape page rendering and progress/reopen behavior.
+These are user-reported device results, not additional host tests or a claim that
+all device/security checklist cases or API 26 devices have been exercised.
+Previous/Next-only PDF navigation and automatic Library insertion after import
+remain intentional and unchanged.
+
+A separate Search regression was reported on smaller Android viewports: fixed
+controls/source rows/messages/footer content could exhaust the available height,
+leaving the weighted result list with no usable viewport. Idle/loading/error
+content outside that list could also extend below the non-scrollable screen.
+
+The surgical fix gives SearchScreen an explicit weight in App's existing Column.
+Inside its bounded area, controls form a separately scrolling header capped at
+half the available content height; the existing LazyColumn receives the remaining
+space. Status, empty/error/loading messages, Library feedback, pagination and the
+notice footer are lazy items in that same viewport, so none is stranded below
+fixed content. Result keys, callbacks, page-generation viewport ownership and
+source/session navigation are retained. The header and list are scroll siblings,
+not nested scroll containers. No whole-screen verticalScroll was added.
+
+Android MainActivity already handles safe drawing/IME padding and adjustResize;
+that code is unchanged and no duplicate IME padding was added. A shorter available
+height simply remeasures the bounded header/result allocation. Controls can be
+reached by scrolling the header, while the result viewport remains independently
+scrollable. No PDF reader, import/acquisition, engine, limits or dependency changed.
+The entire App reader/navigation branch is byte-identical to the pre-follow-up
+version; Open, Library and Next page callbacks are unchanged.
+
+### Focused verification
+
+[Successful focused run](https://github.com/SirOtter0/INFINILECT/actions/runs/37576657696)
+verified production/test HEAD `83d3f4dc74898b826063f2cef5660d77b883ce5d`.
+The final evidence commit only removes the temporary workflow and updates this
+verification document; production and tests remain exactly those verified.
+An [initial attempt](https://github.com/SirOtter0/INFINILECT/actions/runs/37576381829)
+failed compilation before tests because the Column DSL hid BoxWithConstraints'
+implicit maxHeight receiver. Capturing that value in its constraint scope fixed
+compilation; no initial failure is claimed as a pass.
+
+| Focused task | Executions | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| app / desktopTest | 48 | 0 | 0 | 0 |
+| app / testAndroidHostTest | 44 | 0 | 0 | 0 |
+| Total | 92 | 0 | 0 | 0 |
+
+Four new SearchLayout tests render and measure the actual Compose UI through the
+existing Desktop ImageComposeScene/Skiko runtime; no UI-test dependency was added.
+They exercise long source headers at mobile heights 420/280 and enlarged font
+scale 1.6, a reduced-height keyboard scenario, a wide Desktop viewport, first/last
+publication reachability, scroll-owner independence, header controls reachability,
+Idle/Loading/Empty/Error feedback, pagination, viewport retention/reset and the
+actual App import controls. Assertions use positive/bounded visibility, logical
+indices and semantics, not fixed expected pixel coordinates. These are headless
+layout tests, not physical Android touch/IME or native Desktop-window acceptance.
+
+Existing SearchController (8), SearchResultsViewport (7), ResultKey (1),
+ApplicationSession (14), PageApplicationSession (5), LocalImportSession (6) and
+PdfSession (3) cases passed on both targets; Desktop additionally ran the four
+layout cases. This includes automatic Library-before-open import semantics,
+reader Back/search viewport preservation and PDF opening/progress behavior.
+XML totals and artifact digest were independently verified after download.
+
+Exact commands:
+
+```sh
+./gradlew :app:desktopTest --tests '*SearchLayoutTest' --tests '*SearchControllerTest' --tests '*SearchResultsViewportTest' --tests '*ResultKeyTest' --tests '*ApplicationSessionTest' --tests '*LocalImportSessionTest' --tests '*PdfSessionTest' --no-daemon --console=plain --max-workers=2
+./gradlew :app:testAndroidHostTest --tests '*SearchControllerTest' --tests '*SearchResultsViewportTest' --tests '*ResultKeyTest' --tests '*ApplicationSessionTest' --tests '*LocalImportSessionTest' --tests '*PdfSessionTest' --no-daemon --console=plain --max-workers=2
+./gradlew :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+- Desktop focused tests: `BUILD SUCCESSFUL in 2m 32s`; 15 tasks executed.
+- Android host focused tests: `BUILD SUCCESSFUL in 1m 21s`; 14 executed, 1 up-to-date.
+- Android `compileDebugKotlin` and Desktop `compileKotlin`: `BUILD SUCCESSFUL in 26s`;
+  12 executed, 11 up-to-date. Common/platform compilation was also covered by tests.
+- No full clean matrix, APK build, signing operation or signing-input access was
+  performed for this follow-up. Existing development signing work is untouched.
+- Temporary verification automation is deleted from the final tree. No permanent
+  per-feature workflow, CI redesign or dependency change remains.
+- Artifact `pr20-search-layout-verification`, ID `11463202697`, contains XML and exact
+  JSON counts (seven-day retention). ZIP SHA-256:
+  `941867035cafadde93ed7d438e8b43c21160527b4ccf101c95ad87cff22a7dc1`.
+- Final diff/status, Markdown links and tracked-secret checks pass. No signing
+  input, private key or attachment/secret path is introduced. PR #20 stays Draft.
+
+### Remaining physical/graphical checks
+
+Install a build of the corrected HEAD on the small Android viewport that exposed
+the bug. Check portrait/landscape and enlarged fonts; scroll the source/query
+header, then the result list; show/hide the keyboard while the query is focused;
+search/next page/open/Back; exercise empty/loading/error states; confirm import and
+navigation controls remain accessible and imports still enter Library. The user's
+reported PDF acceptance is preserved, but Search touch/IME behavior with this fix
+still needs that physical check. A native Desktop-window smoke test should confirm
+mouse-wheel/header/result behavior and resizing; headless layout/compilation does
+not establish Windows/Linux/Wayland/niri graphical acceptance.
