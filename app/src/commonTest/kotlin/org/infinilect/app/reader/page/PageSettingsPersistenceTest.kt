@@ -16,12 +16,12 @@ class PageSettingsPersistenceTest {
     }
     @Test fun defaultsDoNotCreateRecord()=runTest {
         val store=Store();val owner=PageSettingsPersistence(store,StandardTestDispatcher(testScheduler))
-        owner.awaitLoaded();assertEquals(PageReadingMode.PAGED_RTL,owner.settings.value.mode);owner.close();owner.awaitClosed();assertTrue(store.writes.isEmpty())
+        owner.awaitLoaded();assertEquals(PageReadingMode.PAGED_LTR,owner.settings.value.mode);owner.close();owner.awaitClosed();assertTrue(store.writes.isEmpty())
     }
     @Test fun rapidModeChangesCoalesceToFinalChoice()=runTest {
         val store=Store();val owner=PageSettingsPersistence(store,StandardTestDispatcher(testScheduler))
         owner.awaitLoaded();val lease=owner.claimReader()
-        owner.submit(lease,PageReaderSettings(PageReadingMode.PAGED_LTR));runCurrent();advanceTimeBy(100)
+        owner.submit(lease,PageReaderSettings(PageReadingMode.PAGED_RTL));runCurrent();advanceTimeBy(100)
         owner.submit(lease,PageReaderSettings(PageReadingMode.VERTICAL));advanceTimeBy(100)
         owner.submit(lease,PageReaderSettings(PageReadingMode.WEBTOON));advanceTimeBy(100);runCurrent()
         assertEquals(1,store.writes.size);assertEquals(PageReadingMode.WEBTOON,store.value.settings.mode);owner.close();owner.awaitClosed()

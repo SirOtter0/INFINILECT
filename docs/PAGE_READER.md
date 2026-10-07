@@ -40,15 +40,15 @@ page acquisition backend does not rewrite page progress/session/source contracts
 
 ## Modes and presentation
 
-- PAGED_RTL (default): rightward swipe advances logical next; leftward returns.
-- PAGED_LTR: leftward swipe advances; rightward returns.
+- PAGED_LTR (default since PR #21): right tap / leftward swipe advances; left tap / rightward swipe returns.
+- PAGED_RTL: left tap / rightward swipe advances; right tap / leftward swipe returns.
 - VERTICAL: lazy, width-fit individual pages with an 8dp gap.
 - WEBTOON: same bounded lazy implementation with no gap. Distinct semantic preference.
 
 Paged canvas fits the page, supports 1–4× pinch zoom/pan and visible zoom/reset controls.
 Swipe navigation requires a predominantly horizontal ≥48dp gesture at 1×. A gesture
 that ever uses multiple fingers/zoom cannot change page; panning while zoomed never
-advances. Page navigation resets transient zoom/pan. No spreads/tap zones/stitching.
+advances. Page navigation resets transient zoom/pan. No spreads/stitching.
 Controls are collapsible; accessible labels describe controls and “Page N of M”,
 without pretending OCR descriptions exist. Existing launcher insets remain in use.
 
@@ -108,8 +108,11 @@ restoration approximate; no checksum is invented as source authority.
 Paged navigation saves page start. Continuous reading saves approximate fraction
 through the first visible page; UI pixels are transient mapping inputs only. Mode
 changes preserve page/fraction and invalidate older callback tickets. Initial restore
-and loading geometry do not replace persisted position. Unsupported-page placeholders
-still represent their logical page, so a reader may save its position and move on.
+and loading geometry do not replace persisted position. Since PR #21, a current
+ticket/index/raster-stamp acknowledgement from a successfully composed UI bitmap
+is required to save a new position. Navigation, prefetch, failed decode/conversion,
+obsolete presentation and closing during loading cannot save the requested target.
+Unavailable placeholders remain navigable but do not advance durable progress.
 Progress throttles at 2s while reading, flushes on Back/close and uses the existing
 application-owned writer. PAGE uses schema3/tag3; historical TEXT v1 and EPUB v2 bytes
 remain unchanged/readable. No SQL migration or progress/cache amalgamation.
@@ -120,7 +123,8 @@ PageReaderSettingsStore is an independent owned contract. PageSettingsPersistenc
 loads once, leases updates to the current reader, holds one pending record and
 coalesces changes over 300ms. Back/onStop/close wake the writer and application close
 drains it. Newer timestamps win across owners; failed writes report a fixed message,
-never pretend RAM proves durability. Missing/corrupt/future records safely use RTL.
+never pretend RAM proves durability. Missing/corrupt/future records safely use LTR.
+Existing valid RTL/vertical/webtoon records retain their original meaning and encoding.
 
 FilePageReaderSettingsStore uses one fixed 56-byte version1 record: magic, schema,
 mode enum, nonnegative timestamp, SHA-256 checksum. Private same-directory temporary
@@ -262,3 +266,181 @@ scroll, Back through Search/Library/History, mode/progress save and full process
 Repeat offline/cache-only deletion, verify TEXT/EPUB regression. Building the
 distributable and headless ImageIO/Skia tests do not prove graphical execution.
 The unrelated niri/Wayland outer-window sizing issue remains outside this PR.
+
+## Comic reader UX (PR #21)
+
+The paged canvas is the primary input surface. Its actual available width determines
+invisible left/center/right tap zones (30% / 40% / 30%). Left/right request logical
+previous/next in LTR and next/previous in RTL. Taps beyond either end are harmless;
+center toggles chrome without changing the page or its progress ticket. A drag,
+pinch or consumed control event cannot also become a navigation tap. Desktop mouse
+clicks use the same surface. Canvas accessibility actions reveal controls or invoke
+logical Previous/Next without depending on spatial taps.
+
+Chrome starts hidden and overlays the unchanged fit-page canvas. Top: Back, an
+ellipsized title and Hide. Bottom: page count, Previous, Settings and Next. Those
+buttons always retain logical meaning in either direction. Top/bottom chrome each
+have a viewport-relative height cap and their own scrolling when space/fonts require
+it; the center gap passes taps to the canvas. This keeps controls reachable in short
+windows without nesting scroll owners or making the image smaller. Existing launcher
+safe-drawing insets apply. Save failures remain readable with hidden chrome.
+
+Settings exposes LTR/RTL using the existing durable global PageReader preference
+writer and fixed record: no new database/schema or path is introduced. The preference
+survives Back, another publication and a new application owner; default is now LTR.
+The earlier vertical/webtoon and zoom/reset entries are retained, not added or expanded
+by this PR. Continuous modes retain scrolling and center-tap chrome; side taps do not
+request paged navigation in those modes. Chrome visibility and animation are transient.
+
+Paged LTR/RTL now uses one spatial transition for taps and the existing swipe.
+At 1x, a one-finger horizontal drag moves the current page continuously; its neighbor
+is exactly one viewport away and receives the same displacement. Next enters from
+the right in LTR, from the left in RTL; Previous reverses those directions. Tap zones
+and logical buttons request an automatic version of the same movement. Center tap
+still only toggles chrome. Vertical/Webtoon scrolling is unchanged.
+
+Release completes after 25% of a viewport, or a deliberate fling of at least 5%
+with agreeing velocity of at least 0.9 viewports/second. Otherwise it returns.
+A 180ms position-only settle starts at the exact release offset; there is no fade,
+incoming-only jitter, artificial loading delay or animation queue. Rapid requests
+coalesce into one latest target (intermediate pages may be skipped); tickets retire
+older animations/decodes. Grabbing an interrupted turn preserves its incoming
+identity until the finger crosses the origin. Resize, mode changes and Back
+invalidate the transition.
+Zoomed gestures pan/zoom; a multi-pointer gesture cannot turn a page. Explicit
+navigation buttons/taps reset zoom as before.
+
+The controller retains its existing maximum of three raster slots. During a normal
+transition these contain current and adjacent pages; a rapid request prioritizes
+current and latest target, with at most one other prefetch slot. The UI reuses its
+same stamp-filtered conversion map (at most three bitmaps); the two artwork layers
+borrow those references without copying pixels or adding a cache. Transition state
+contains indices, ticket, stamp and normalized offset only. After settling only the
+current artwork layer remains; an outgoing page may remain as ordinary bounded
+adjacent prefetch, never as a separate transition owner. Cancelled conversions and
+animation jobs release their references; platform bitmap reclamation remains GC
+managed, as before.
+
+A missing neighbor shows a bounded loading placeholder. On release it waits without
+blocking the UI until successful bitmap conversion; a failed target returns to the
+current page with a controlled message. No requested/prefetched/dragged page changes
+progress. Logical position changes only after a validated target reaches rest; the
+new composed bitmap then acknowledges progress using the existing periodic/Back-flush
+writer. Failed, reverted, obsolete and closed transitions cannot save progress.
+No hard timeout around synchronous native work is claimed.
+
+Behavioral reference: Mihon's upstream `Pager.kt`, `PagerViewer.kt` and
+`PagerViewers.kt` at
+[`7aacaa3`](https://github.com/mihonapp/mihon/tree/7aacaa349019ff42b8b05403d8beebe94c8f6dfc/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager).
+Its pager handles drag and animated tap navigation with one offscreen neighbor;
+RTL reverses logical navigation's spatial direction. INFINILECT implements this
+independently with Compose and its own bounded frames/state/progress handshake.
+No Mihon code or dependency was copied. Its exact thresholds/progress callbacks
+are not assumed to match ours.
+
+No new reader modes, zoom/pan feature, double-page mode, cropping, filters,
+brightness, image processing, arbitrary gesture or animation dependency is added.
+Android automatic return into a comic after Activity recreation remains separate
+work: recreation closes the old owner; reopening restores the last durable
+successfully presented page. Reading direction remains locally durable; transition
+state and chrome visibility remain transient.
+
+### Android physical acceptance for PR #21
+
+User-reported physical Android acceptance is complete for reviewed source
+`0c52eb415490f410d46ee171eaa3560d64330606`. The user reports that the final
+spatial page transition works correctly, the previous shake/jitter problem is
+resolved, page navigation works correctly, and the PR #21 comic-reader UX is
+physically acceptable on Android.
+
+This is user-reported physical-device evidence, not Codex/device-lab automated
+verification. The earlier incoming-only animation had failed physical acceptance;
+the replacement spatial transition is the implementation now accepted. The checklist
+below remains future regression guidance, not a record of individually reported
+observations:
+
+1. Open an imported CBZ; verify its restored page and fitted artwork.
+2. In LTR, tap right → next; tap left → previous.
+3. Tap center → controls appear; center again → controls disappear.
+4. Use visible Previous/Next; they must not also trigger an underlying zone.
+5. Enable RTL; right tap → previous and left tap → next; buttons stay logical.
+6. Drag both ways: both pages follow the finger; short drags return and committed
+   drags/taps slide naturally into place in LTR/RTL. Navigate rapidly; confirm no
+   late old page flashes/replaces the latest one. Pan above 1x and pinch with two
+   fingers; neither turns pages. Verify missing/failed neighbors do not save progress.
+7. Close/reopen; last successfully presented page restores, including after failure.
+8. Rotate/recreate and reopen; confirm position/preference restoration, no late work.
+9. Check portrait/landscape, small heights and enlarged fonts; reach Back and Settings.
+10. Check first/last boundaries, loading/error placeholders and accessibility controls.
+
+Desktop graphical acceptance is also pending: mouse taps/buttons/settings, rapid
+navigation and Back, resize short/wide windows, restart progress/preferences and
+native Windows/Linux/Wayland/niri presentation. Headless Compose interaction/layout
+tests and successful compilation do not establish physical or native-window acceptance.
+
+### Original automated verification for PR #21
+
+[Focused run](https://github.com/SirOtter0/INFINILECT/actions/runs/37580430095):
+64 Desktop cases (2m31s), 59 Android host cases (1m20s), followed by successful
+Android/Desktop application compilation (27s). This includes all 22 existing
+PageReaderController cases, eight interaction/progress cases, five headless Compose
+layout/input cases on Desktop, seven preference-writer cases, 16 file-preference
+cases and six real-file progress/durability cases. Each test target used:
+`--tests '*PageReader*Test' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --tests '*PageProgressDurabilityTest'`.
+
+[Final affected-module run](https://github.com/SirOtter0/INFINILECT/actions/runs/37580953953)
+at `abb245ef4f4a18be81acd25876e8a393cb05ac12` ran all `app` tests: 837 Desktop
+and 795 Android host, zero failures/errors/skips, plus both application targets.
+`BUILD SUCCESSFUL in 2m 38s`; all 36 tasks executed. Production/tests were identical
+to the original PR #21 tree at `cb122e6`; subsequent changes in that run only recorded evidence and removed the
+temporary workflow. No repository-wide clean matrix, signing operation or APK
+build was performed as part of that original automated verification.
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+XML counts were independently checked after downloading artifact `11463938768`
+(seven-day retention), ZIP SHA-256
+`b8ee3090f89edbef78f71b00a2ef268b1d0598df6a7a491dc0d1315048d93435`.
+Temporary feature-specific automation is removed from the final tree. Compilation
+and host/headless checks do not replace the physical/graphical checklist above.
+
+### Spatial-transition follow-up verification
+
+[Final follow-up run](https://github.com/SirOtter0/INFINILECT/actions/runs/37625944475)
+at `7ec959c3d004c85064d9d6fb4c59a5951d675c20` passed focused Desktop (79 cases,
+2m27s) and Android host (71 cases, 1m23s) before the final all-app regression:
+852 Desktop + 807 Android host, zero failures/errors/skips, and successful
+Android/Desktop application compilation (`BUILD SUCCESSFUL in 52s`).
+Production and tests are unchanged after that run; the final commit records this
+evidence and removes temporary automation. The broader app run was justified by
+moving logical page establishment from navigation request to validated settle.
+No repository-wide clean matrix or signing/APK work was performed in this follow-up.
+
+Each focused target used these filters (plus the flags below):
+`--tests '*PageReader*Test' --tests '*PageTransitionTest' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --tests '*PageProgressDurabilityTest'`.
+Targets were `:app:desktopTest` and `:app:testAndroidHostTest`; the final command was:
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+Twelve deterministic transition cases cover directions, threshold/velocity,
+bounds, zoom exclusion, coalesced/interrupted turns, stale decode/callbacks,
+failure/cancellation/progress/reopen, Back, resize and mode changes. Eight real
+headless Compose layout/input cases include three new drag/dual-artwork,
+short-return/zoom-pan, and failed/rapid-turn/disposal cases. Existing controller,
+center-tap/accessibility, settings, file-progress and app regressions remain green.
+The first development run exposed one incorrect boundary-test expectation;
+it was corrected before the successful runs.
+
+Artifact `11484516372` (seven-day retention) XML totals and focused selection were
+independently checked; ZIP SHA-256:
+`90d1684a0c21c5c93b56d4c66b9bf523db5026c5a3558d21bae1bb813a80fef9`.
+`git diff --check` and tracked signing-file/private-key/attachment-path checks
+passed. The final tree contains no feature-specific workflow or signing material.
+The final spatial transition subsequently received the user-reported physical
+Android acceptance recorded above. Automated evidence remains distinct from that
+report; native Desktop graphical acceptance, including Windows/Linux/Wayland/niri,
+remains pending. No Desktop physical/graphical verification is claimed.

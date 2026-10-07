@@ -32,6 +32,7 @@ class PageProgressDurabilityTest {
         val settings=PageSettingsPersistence(FilePageReaderSettingsStore(root.resolve(PAGE_SETTINGS_DIRECTORY_NAME),dispatcher),dispatcher){1}
         val document=doc;val reader=PageReaderController(document,this,first,settings,TestRasterDecoder(),dispatcher)
         reader.initialize(null);reader.mode(PageReadingMode.WEBTOON);reader.report(reader.state.value.ticket,63,.7)
+        runCurrent();reader.presented(reader.state.value.ticket,63,assertIs<PageFrame.Ready>(reader.state.value.frames[63]).stamp)
         reader.close();first.close();settings.close();first.awaitClosed();settings.awaitClosed()
         assertFalse(first.saveFailed.value);assertTrue(Files.isRegularFile(records().single()))
         Files.createDirectories(root.resolve("cache")).resolve("bytes").toFile().writeText("disposable")
@@ -43,6 +44,21 @@ class PageProgressDurabilityTest {
         try {reopened.initialize(second.get(fresh.progressId));assertEquals(PagePosition(63,.7),reopened.state.value.position)
             assertEquals(PageReadingMode.WEBTOON,reopened.state.value.settings.mode)}
         finally{reopened.close();second.close();preferences.close();second.awaitClosed();preferences.awaitClosed()}
+    }
+    @Test fun failedTargetNeverBecomesDurableAcrossCompletelyNewOwners()=runTest {
+        val dispatcher=StandardTestDispatcher(testScheduler)
+        val first=ProgressPersistence(FileReadingProgressStore(directory,dispatcher=dispatcher),dispatcher){1}
+        val document=doc;val decoder=TestRasterDecoder()
+        val reader=PageReaderController(document,this,first,decoder=decoder,decodeDispatcher=dispatcher)
+        reader.initialize(null);reader.navigate(2);runCurrent()
+        reader.presented(reader.state.value.ticket,2,assertIs<PageFrame.Ready>(reader.state.value.frames[2]).stamp)
+        decoder.action={error("Unavailable page")};reader.navigate(50);runCurrent()
+        assertIs<PageFrame.Unavailable>(reader.state.value.frames[50])
+        reader.close();first.close();first.awaitClosed()
+        val second=ProgressPersistence(FileReadingProgressStore(directory,dispatcher=dispatcher),dispatcher){2}
+        val fresh=doc;val reopened=PageReaderController(fresh,this,second,decoder=TestRasterDecoder(),decodeDispatcher=dispatcher)
+        try {reopened.initialize(second.get(fresh.progressId));assertEquals(2,reopened.state.value.position.index)}
+        finally{reopened.close();second.close();second.awaitClosed()}
     }
     /** Independent historical serializer: verifies TEXT/EPUB bytes are unchanged, not merely
      * current-write/current-read agreement. The PR7/15 schemas retain their original tags. */
