@@ -332,3 +332,25 @@ reported PDF acceptance is preserved, but Search touch/IME behavior with this fi
 still needs that physical check. A native Desktop-window smoke test should confirm
 mouse-wheel/header/result behavior and resizing; headless layout/compilation does
 not establish Windows/Linux/Wayland/niri graphical acceptance.
+
+### Updated development APK for Search physical acceptance
+
+An updated unsigned debug APK was built from production HEAD
+`347e2eeb5ccdfab55ec3e646bc329be857d45034` using temporary automation at
+`0c470033fc6e399ad93c4b19c8d8de2e12dae4a0`; application code is identical.
+[Build evidence](https://github.com/SirOtter0/INFINILECT/actions/runs/37577728203)
+records `:androidApp:assembleDebug` with an external initialization script that
+disables debug signing. `BUILD SUCCESSFUL in 2m 57s`; no tests or full matrix
+were repeated. The temporary workflow is removed again from the final tree.
+
+The unsigned artifact ZIP (ID `11463496663`) was verified against SHA-256
+`079a97d0ad19000daf5839935a74a1763a4c0d25ec008e1828fa61378987b63d`.
+Signing occurred locally with the user-supplied development identity; no signing
+input was copied into the repository or uploaded to CI. The signed APK is
+12,079,111 bytes, SHA-256
+`f8d574976206b2dd3db1d9a1d53a7e3edf28663d69076fc3fb885748d4d0b699`.
+Certificate SHA-256:
+`95:C7:08:E6:CF:EE:94:BC:13:EC:F3:4D:2A:38:CF:4F:1D:C5:EA:B1:85:13:3F:8E:13:96:29:DD:0B:E4:70:FE`.
+APK Signature Schemes v2/v3 were verified with minimum SDK 26. This identity is
+for development/testing only. The remaining Search physical checks above still
+apply; building/signing does not constitute device acceptance.
