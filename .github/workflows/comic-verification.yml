@@ -20,9 +20,9 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - name: Focused Desktop reader tests
-        run: ./gradlew :app:desktopTest --tests '*PageReader*Test' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --no-daemon --console=plain --max-workers=2
+        run: ./gradlew :app:desktopTest --tests '*PageReader*Test' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --tests '*PageProgressDurabilityTest' --no-daemon --console=plain --max-workers=2
       - name: Focused Android host reader tests
-        run: ./gradlew :app:testAndroidHostTest --tests '*PageReader*Test' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --no-daemon --console=plain --max-workers=2
+        run: ./gradlew :app:testAndroidHostTest --tests '*PageReader*Test' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --tests '*PageProgressDurabilityTest' --no-daemon --console=plain --max-workers=2
       - name: Compile Android and Desktop applications
         run: ./gradlew :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

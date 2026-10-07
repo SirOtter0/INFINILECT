@@ -51,6 +51,13 @@ class PageReaderLayoutTest {
             repeat(200) { draw(); if (artwork(index) != null) return; Thread.sleep(5) }
             fail("Current page must be presented: $index")
         }
+        fun awaitSettingsClosed() {
+            repeat(60) {
+                draw()
+                if (nodes().none { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == "Right-to-left (manga)" } == true }) return
+            }
+            fail("Exiting settings popup must release its hit-test layer")
+        }
         override fun close() { scene.close(); reader.close(); scope.cancel(); assertEquals(1, document.closes) }
     }
     @Test fun mouseTapZonesToggleChromeWithoutShrinkingPageAndButtonsTakePrecedence() {
@@ -72,6 +79,8 @@ class PageReaderLayoutTest {
         Fixture(360, 420).use { f ->
             f.tapZone(.5f); f.click("Settings"); f.click("Right-to-left (manga)")
             assertEquals(PageReadingMode.PAGED_RTL, f.reader.state.value.settings.mode)
+            // Let Material's exiting popup retire its hit-test layer before canvas input.
+            f.awaitSettingsClosed()
             f.tapZone(.1f); assertEquals(1, f.reader.state.value.position.index)
             f.tapZone(.9f); assertEquals(0, f.reader.state.value.position.index)
             f.click("Next"); assertEquals(1, f.reader.state.value.position.index)

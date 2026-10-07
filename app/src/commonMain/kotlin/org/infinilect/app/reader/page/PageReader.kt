@@ -64,6 +64,9 @@ internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBac
     val currentBitmap = bitmaps[state.position.index]
     val currentFrame = state.frames[state.position.index] as? PageFrame.Ready
     LaunchedEffect(reader, state.ticket, state.position.index, currentBitmap, currentFrame?.stamp) {
+        val live = reader.state.value
+        if (live.ticket != state.ticket || live.position.index != state.position.index ||
+            live.frames[state.position.index] != currentFrame) return@LaunchedEffect
         arrival.snapTo(1f)
         if (currentBitmap != null && currentFrame != null) {
             arrivalSign = pageTransitionSign(lastShown[0], state.position.index, state.settings.mode)
