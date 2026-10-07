@@ -92,6 +92,26 @@ class EpubCompatibilityTest {
         rejected(epub2Fixture().apply { deflate = true; entries["OPS/Bad/"] = byteArrayOf(1) })
         rejected(epub2Fixture().apply { deflate = true; entries["OPS/"] = byteArrayOf() }, EpubFailure.LIMIT, EpubLimits(entries = 5))
     }
+    @Test fun storedDirectoriesCannotHideCompressedPayloadDuringZipInspection() = runBlocking<Unit> {
+        val bytes = epub2Fixture().apply { entries["OPS/Bad/"] = byteArrayOf(0, 0) }.zip()
+        val name = "OPS/Bad/".encodeToByteArray()
+        // Original malformed fixture: keep two physically present STORED bytes, but claim zero size/CRC.
+        val buffer = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (i in 0..bytes.size - name.size) if (bytes.copyOfRange(i, i + name.size).contentEquals(name)) {
+            if (i >= 30 && buffer.getInt(i - 30) == 0x04034b50) {
+                buffer.putInt(i - 30 + 14, 0); buffer.putInt(i - 30 + 22, 0)
+            } else if (i >= 46 && buffer.getInt(i - 46) == 0x02014b50) {
+                buffer.putInt(i - 46 + 16, 0); buffer.putInt(i - 46 + 24, 0)
+            }
+        }
+        val path = Files.createTempFile("epub-invalid-directory", ".zip")
+        try {
+            Files.write(path, bytes)
+            assertEquals(org.infinilect.app.zip.ZipFailure.INVALID, assertFailsWith<org.infinilect.app.zip.BoundedZipException> {
+                org.infinilect.app.zip.inspectBoundedZip(path, EpubLimits().zipLimits(), epubCompatibility = true)
+            }.failure)
+        } finally { Files.deleteIfExists(path) }
+    }
     @Test fun missingMalformedAndWrongNcxAreControlledPreparationFailures() = runBlocking<Unit> {
         rejected(epub2Fixture().apply { entries.remove("OPS/Nav/toc.ncx") })
         rejected(epub2Fixture().apply { opf { it.replace(" toc=\"nav\"", "") } })

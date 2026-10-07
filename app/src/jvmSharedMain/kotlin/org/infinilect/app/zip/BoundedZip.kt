@@ -108,7 +108,7 @@ internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: Bounded
             zipRequire(names.add(aliasKey(canonical)))
             val mode = (u32(h, 38) ushr 16).toInt() and 0xf000
             zipRequire(mode == 0 || mode == if (directory) 0x4000 else 0x8000) // reject symlinks/special files
-            zipRequire(!directory || size == 0L && (epubCompatibility || compressed == 0L && method == 0))
+            zipRequire(!directory || size == 0L && (method == 0 && compressed == 0L || epubCompatibility && method == 8 && compressed > 0L))
             if (size > limits.entryBytes || size > maxOf(1L, compressed) * limits.ratio) zipLimit()
             expanded += size; if (expanded > limits.expandedBytes) zipLimit()
             val extras = ByteArray(extraLength); file.readFully(extras); checkExtra(extras)
