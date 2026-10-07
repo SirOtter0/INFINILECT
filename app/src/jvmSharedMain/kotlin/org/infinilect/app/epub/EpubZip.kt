@@ -25,7 +25,7 @@ internal data class EpubZipEntry(
 private fun EpubLimits.zipLimits() = BoundedZipLimits(archiveBytes, expandedBytes, entryBytes, entries, ratio)
 
 internal suspend fun inspectEpubZip(path: Path, limits: EpubLimits): List<EpubZipEntry> {
-    val entries = try { inspectBoundedZip(path, limits.zipLimits()) }
+    val entries = try { inspectBoundedZip(path, limits.zipLimits(), epubCompatibility = true) }
     catch (error: BoundedZipException) {
         when (error.failure) { ZipFailure.LIMIT -> limit(); ZipFailure.INVALID, ZipFailure.TRANSFER -> invalid() }
     }

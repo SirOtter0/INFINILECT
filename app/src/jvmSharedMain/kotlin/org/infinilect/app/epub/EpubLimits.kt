@@ -23,31 +23,3 @@ internal fun limit(): Nothing = throw EpubException(EpubFailure.LIMIT)
 internal fun requireEpub(value: Boolean) {
     if (!value) invalid()
 }
-
-/** URI references may normalize safe relative dots
-ZIP names themselves cannot contain them.
-* Never accepts a scheme, encoded alias, absolute path, backslash, query or fragment.
-*/
-internal fun resolveEpubPath(base: EpubEntryPath?, reference: String): EpubEntryPath {
-    requireEpub(reference.isNotEmpty() && reference.length <= 512 && !reference.startsWith('/'))
-    requireEpub(reference.all {
-        it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "._~-/"
-    }
-    )
-    val parts = base?.value?.split('/')?.dropLast(1)?.toMutableList() ?: mutableListOf()
-    for (segment in reference.split('/')) when (segment) {
-        "" -> invalid()
-        "." -> Unit
-        ".." -> {
-            requireEpub(parts.isNotEmpty())
-            parts.removeAt(parts.lastIndex)
-        }
-        else -> parts.add(segment)
-    }
-    return try {
-        EpubEntryPath(parts.joinToString("/"))
-    }
-    catch (_: IllegalArgumentException) {
-        invalid()
-    }
-}

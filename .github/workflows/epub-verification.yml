@@ -1,0 +1,39 @@
+name: Temporary EPUB compatibility verification
+on:
+  push:
+    branches: [feature/epub-compatibility]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  epub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - name: Focused EPUB ZIP import and progress tests
+        run: >-
+          ./gradlew :core:jvmTest --tests '*Epub*Test'
+          :core:testAndroidHostTest --tests '*Epub*Test'
+          :app:desktopTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test'
+          :app:testAndroidHostTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test'
+          --no-daemon --console=plain --max-workers=2
+      - name: Compile affected targets
+        run: ./gradlew :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: epub-focused-test-results
+          path: |
+            app/build/test-results/**/*.xml
+            core/build/test-results/**/*.xml
+          retention-days: 7

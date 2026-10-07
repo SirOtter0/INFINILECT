@@ -97,7 +97,7 @@ internal class BoundedEpubParser : EpubParser {
                     contextPath = if (savedPath.size > 1) savedPath else pathParts
                     if (++imageCount > 64) limit()
                     val src = node.attr("src") ?: invalid()
-                    requireEpub(!src.contains('#') && src.split('/').none { it == "." || it == ".." })
+                    requireEpub(!src.contains('#'))
                     val targetPath = ownedTarget(document, path, src, false).path
                     val item = document.manifest.single { it.path == targetPath }
                     val alt = node.attr("alt")?.let { it.substring(0, it.epubUtf16(it.epubPointAtUtf16(minOf(256, it.length)))) } ?: ""
@@ -143,6 +143,12 @@ internal class BoundedEpubParser : EpubParser {
 
     override suspend fun toc(document: EpubDocument): List<EpubTocEntry> = withContext(Dispatchers.IO) {
         val nav = document.manifest.singleOrNull { it.id == document.navigationItemId } ?: invalid()
+        if (nav.mediaType == NCX_MEDIA_TYPE) {
+            val bytes = try { document.openResource(nav.path).readBytes(1024 * 1024) }
+            catch (error: ResourceLimitExceededException) { limit() }
+            return@withContext readEpubNcx(parseEpubXml(bytes, EpubLimits(), currentCoroutineContext().job),
+                nav.path, document.manifest, document.spine, currentCoroutineContext().job)
+        }
         val root = xml(document, nav.path)
         val toc = root.walk().filter { it.name.local == "nav" && it.attributes[XmlName("http://www.idpf.org/2007/ops", "type")]?.split(' ')?.contains("toc") == true }.singleOrNull() ?: invalid()
         val job = currentCoroutineContext().job
@@ -168,13 +174,6 @@ internal class BoundedEpubParser : EpubParser {
 }
 
 private fun ownedTarget(document: EpubDocument, base: EpubEntryPath, reference: String, spineOnly: Boolean): EpubTarget {
-    requireEpub(reference.length in 1..640 && reference.count { it == '#' } <= 1)
-    val file = reference.substringBefore('#')
-    val path = if (file.isEmpty()) base else resolveEpubPath(base, file)
-    requireEpub(document.manifest.any { it.path == path })
-    if (spineOnly) requireEpub(document.spine.any { spine -> document.manifest.any { it.id == spine.itemId && it.path == path } })
-    val anchor = reference.substringAfter('#', "").takeIf { it.isNotEmpty() }
-    requireEpub(!reference.contains('#') || anchor != null)
-    anchor?.let { requireEpub(Regex("[A-Za-z_][A-Za-z0-9_.-]{0,127}").matches(it)) }
-    return EpubTarget(path, anchor)
+    val spinePaths = if (spineOnly) document.spine.map { ref -> document.manifest.single { it.id == ref.itemId }.path }.toSet() else null
+    return resolveEpubTarget(base, reference, document.manifest, spinePaths)
 }

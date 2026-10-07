@@ -4,6 +4,8 @@ package org.infinilect.app.zip
 
 import java.io.RandomAccessFile
 import java.util.Locale
+import java.text.Normalizer
+import org.infinilect.core.EpubEntryPath
 import java.util.zip.CRC32
 import java.util.zip.ZipFile
 import kotlinx.coroutines.currentCoroutineContext
@@ -47,7 +49,7 @@ internal data class BoundedZipEntry(
 )
 
 /** Manual ZIP32 structural validation before using the JDK ZipFile reader. */
-internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: BoundedZipLimits): List<BoundedZipEntry> =
+internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: BoundedZipLimits, epubCompatibility: Boolean = false): List<BoundedZipEntry> =
     RandomAccessFile(path.toFile(), "r").use { file ->
         val length = file.length()
         zipRequire(length in 22..limits.archiveBytes)
@@ -93,12 +95,15 @@ internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: Bounded
             val directory = name.endsWith('/')
             val canonical = if (directory) name.dropLast(1) else name
             zipRequire(canonical.length in 1..512 && canonical.split('/').size <= 32)
-            zipRequire(canonical.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "._~-/" })
+            if (epubCompatibility) {
+                try { EpubEntryPath(canonical) } catch (_: IllegalArgumentException) { zipRequire(false) }
+                zipRequire(Normalizer.isNormalized(canonical, Normalizer.Form.NFC))
+            } else zipRequire(canonical.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "._~-/" })
             zipRequire(canonical.split('/').all { it.isNotEmpty() && it != "." && it != ".." })
             zipRequire(names.add(canonical.lowercase(Locale.ROOT)))
             val mode = (u32(h, 38) ushr 16).toInt() and 0xf000
             zipRequire(mode == 0 || mode == if (directory) 0x4000 else 0x8000) // reject symlinks/special files
-            zipRequire(!directory || size == 0L && compressed == 0L && method == 0)
+            zipRequire(!directory || size == 0L && (epubCompatibility || compressed == 0L && method == 0))
             if (size > limits.entryBytes || size > maxOf(1L, compressed) * limits.ratio) zipLimit()
             expanded += size; if (expanded > limits.expandedBytes) zipLimit()
             val extras = ByteArray(extraLength); file.readFully(extras); checkExtra(extras)

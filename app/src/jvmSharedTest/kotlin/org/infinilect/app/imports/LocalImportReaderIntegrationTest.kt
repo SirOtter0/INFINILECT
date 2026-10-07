@@ -79,4 +79,62 @@ class LocalImportReaderIntegrationTest {
         try {reopened.openSaved(snapshot);assertEquals(12,assertNotNull(assertIs<OpenPublicationState.Ready>(ready(reopened)).reading).codePointOffset.value)}
         finally {reopened.close();second.close()}
     }
+    @Test fun importedEpub2AndEpub3KeepIdentityLibraryHistoryAndProgressAfterOriginalDeletion()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("local-epub-compatibility")
+        val first=Owner(root);val session=ApplicationSession(first.sources,this)
+        val records=mutableListOf<Pair<PublicationSnapshot,ReadingLocator.Epub>>()
+        try {
+            for(fixture in listOf(epub2Fixture(),EpubFixture())) {
+                val original=root.resolve("original.epub")
+                Files.write(original,fixture.zip())
+                val fromFile=object:LocalFilePicker {
+                    override suspend fun pick()=LocalFileSelection("original.epub") { EpubBytes(Files.readAllBytes(original)) }
+                }
+                session.importLocal(fromFile)
+                val open=assertIs<OpenPublicationState.EpubReady>(ready(session))
+                val frame=assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(open.reader.state.value)
+                val snapshot=PublicationSnapshot.from(open.publication)
+                open.reader.report(frame.ticket,0,5)
+                records+=snapshot to frame.chapter.locator(0,5)
+                session.back()
+                // Byte-identical import deduplicates through the same durable import boundary.
+                session.importLocal(fromFile);assertEquals(snapshot.id,assertIs<OpenPublicationState.EpubReady>(ready(session)).publication.id)
+                session.back();Files.delete(original)
+            }
+            first.collections.flushHistory()
+            assertEquals(2,value(first.store.library.list()).size)
+            assertEquals(2,value(first.store.history.listRecent()).size)
+        } finally {session.close();first.close()}
+        root.resolve("cache").toFile().deleteRecursively()
+        val second=Owner(root);val reopened=ApplicationSession(second.sources,this)
+        try {
+            for((snapshot,expected) in records) {
+                val row=assertNotNull(value(second.store.library.get(snapshot.id)))
+                reopened.navigate(Destination.LIBRARY);reopened.openSaved(row.publication)
+                val open=assertIs<OpenPublicationState.EpubReady>(ready(reopened))
+                val frame=assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(open.reader.state.value)
+                assertEquals(expected,frame.chapter.locator(frame.initialPosition.first,frame.initialPosition.second))
+                assertEquals(listOf("chapter"),open.reader.document.spine.map{it.itemId})
+                reopened.back()
+                reopened.navigate(Destination.HISTORY)
+                reopened.openSaved(value(second.store.history.listRecent()).first{it.publication.id==snapshot.id}.publication)
+                assertIs<OpenPublicationState.EpubReady>(ready(reopened));reopened.back()
+            }
+            value(second.store.library.remove(records.first().first.id))
+            value(second.store.history.clear())
+            assertNotNull(second.local.getPublication(records.first().first.id))
+        } finally {reopened.close();second.close();root.toFile().deleteRecursively()}
+    }
+    @Test fun malformedNcxNeverPublishesOwnedImportLibraryOrHistory()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("local-epub-reject");val owner=Owner(root);val session=ApplicationSession(owner.sources,this)
+        try {
+            session.importLocal(picker(epub2Fixture().apply{entries["OPS/Nav/toc.ncx"]="<broken".encodeToByteArray()}.zip()))
+            withTimeout(5000){session.importing.first{!it.busy}}
+            assertNotNull(session.importing.value.message)
+            assertIs<OpenPublicationState.Idle>(session.opening.value)
+            assertTrue(owner.local.search("*").publications.isEmpty())
+            assertTrue(value(owner.store.library.list()).isEmpty());assertTrue(value(owner.store.history.listRecent()).isEmpty())
+        } finally {session.close();owner.close();root.toFile().deleteRecursively()}
+    }
+
 }

@@ -48,7 +48,8 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
     requireEpub(rootfile.attr("media-type")=="application/oebps-package+xml")
     val packagePath = resolveEpubPath(null, rootfile.attr("full-path") ?: invalid())
     val opf = xml(packagePath)
-    requireEpub(opf.name==XmlName(OPF, "package") && opf.attr("version")=="3.0")
+    val epub2 = opf.attr("version") == "2.0"
+    requireEpub(opf.name==XmlName(OPF, "package") && (epub2 || opf.attr("version")=="3.0"))
     val metadataNode = opf.children(OPF, "metadata").singleOrNull() ?: invalid()
     val manifestNode = opf.children(OPF, "manifest").singleOrNull() ?: invalid()
     val spineNode = opf.children(OPF, "spine").singleOrNull() ?: invalid()
@@ -82,13 +83,11 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
     val modified = metadataNode.children(OPF, "meta").singleOrNull {
         it.attr("property")=="dcterms:modified"
     }
-    ?.text?.toString()?.trim() ?: invalid()
-    requireEpub(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z").matches(modified))
-    try {
-        Instant.parse(modified)
-    }
-    catch (_: Exception) {
-        invalid()
+    ?.text?.toString()?.trim()
+    if (!epub2) requireEpub(modified != null)
+    if (modified != null) {
+        requireEpub(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z").matches(modified))
+        try { Instant.parse(modified) } catch (_: Exception) { invalid() }
     }
     val items = manifestNode.children(OPF, "item")
     if (items.size>limits.manifest) limit()
@@ -129,11 +128,15 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
         it.linear
     }
     )
-    val nav = manifest.singleOrNull {
-        "nav" in it.properties
+    val nav = if (epub2) {
+        val toc = spineNode.attr("toc") ?: invalid()
+        requireEpub(validId(toc))
+        byId[toc]?.also { requireEpub(it.mediaType == NCX_MEDIA_TYPE) } ?: invalid()
+    } else {
+        manifest.singleOrNull { "nav" in it.properties }
+            ?.also { requireEpub(it.mediaType == "application/xhtml+xml") } ?: invalid()
     }
-    ?: invalid()
-    requireEpub(nav.mediaType=="application/xhtml+xml")
+    if (epub2) readEpubNcx(xml(nav.path), nav.path, manifest, spine, job)
     for (item in manifest.filter {
         it.mediaType=="application/xhtml+xml"
     }
@@ -149,16 +152,13 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
                 requireEpub(!name.local.startsWith("on", ignoreCase = true))
                 if (name.local=="id") requireEpub(validId(value) && documentIds.add(value))
                 if (name.local in setOf("href", "src", "poster", "data")) {
-                    val parts = value.split('#')
-                    requireEpub(parts.size<=2 && value.length<=512)
-                    if (parts.size==2) requireEpub(validId(parts[1]))
-                    val target = if (parts[0].isEmpty()) item.path else resolveEpubPath(item.path, parts[0])
-                    requireEpub(target in paths)
+                    requireEpub(value.length <= 512)
+                    resolveEpubTarget(item.path, value, manifest)
                 }
                 requireEpub(name.local !in setOf("srcset", "action"))
             }
         }
-        if (item.id==nav.id) requireEpub(doc.walk().any {
+        if (!epub2 && item.id==nav.id) requireEpub(doc.walk().any {
             node -> node.name==XmlName(XHTML, "nav") &&
             node.attributes[XmlName("http://www.idpf.org/2007/ops", "type")]?.split(Regex("\\s+"))?.contains("toc")==true
         }
