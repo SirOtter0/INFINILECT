@@ -391,3 +391,12 @@ NFC UTF-8 resource names resolve to manifest-owned entries; image references may
 use safe document-relative parent segments. XML/TOC/chapter/image ownership limits
 and passive/no-network presentation remain unchanged. See [preparation policy](EPUB.md)
 for exact supported subset, bounds, URI rules and physical acceptance checklist.
+
+### User-reported physical Android acceptance
+
+The user reports successful installation of the PR #22 development APK and
+manual testing of all four supplied positive EPUB fixtures without reported
+errors. See [the exact physical evidence and unclaimed checklist observations](EPUB.md#user-reported-physical-android-acceptance).
+This does not claim individual TOC/order/image/progress/import/Library/History or
+TXT/CBZ/PDF manual observations. Automated evidence remains separate, and native
+Desktop graphical acceptance (Windows/Linux/Wayland/niri) remains pending.

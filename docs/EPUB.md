@@ -209,11 +209,28 @@ literal canonical spine paths and element/code-point positions; no progress sche
 migration or reader/controller redesign. Synthetic deterministic ZIP fixtures are
 original project content generated in tests; no third-party books are committed.
 
-Physical Android acceptance remains pending: import/read known-good EPUB3; import
-EPUB2+NCX and check spine order/TOC; check images with space/encoded-space paths;
-close/reopen and terminate/relaunch to verify progress; delete the original and
-reopen the owned copy; check Library/History and TEXT/CBZ/PDF regression opening.
-Desktop graphical acceptance (Windows/Linux/Wayland/niri) remains separate.
+### User-reported physical Android acceptance
+
+USER-REPORTED PHYSICAL ANDROID: The user reports that the PR #22 development APK
+installed successfully and that they manually tested every supplied positive EPUB
+compatibility artifact on a physical Android device. The user reports that none
+of the tested EPUBs produced an error. The four supplied fixtures covered EPUB3
+regression, EPUB2 + NCX, space/encoded-space resource paths, and explicit ZIP
+directory-entry handling. This is user-reported physical device evidence;
+individual checklist observations not explicitly reported by the user are not
+claimed.
+
+The tested corpus was `PR22-EPUB3-regression.epub`, `PR22-EPUB2-NCX.epub`,
+`PR22-EPUB2-spaces.epub`, and `PR22-EPUB2-directories.epub`; no combined fixture
+was produced. The development APK was built from reviewed HEAD
+`456a80405c19365ab2ebc355ac3b56c9e35e2cd8`.
+
+Unclaimed individual manual observations include exact NCX UI hierarchy and
+spine-vs-NCX progression, individual image correctness, process-death progress
+restoration, original-file deletion/reopening, Library/History semantics,
+TXT/CBZ/PDF regression, resource/memory measurements and performance/FPS.
+Their automated coverage, where present, remains separate from physical evidence.
+Native Desktop graphical acceptance (Windows/Linux/Wayland/niri) remains pending.
 
 Not full EPUB2/EPUB3 conformance: UTF-16 XML, DTD/entities, DTBook/non-XHTML spine,
 pageList/navList/audio, fallbacks, SVG rendering, DRM/font obfuscation, signatures,
@@ -224,8 +241,10 @@ No dependency, Android permission, acquisition policy or signing change.
 
 [Final CI run](https://github.com/SirOtter0/INFINILECT/actions/runs/37640027762)
 verified production/test revision `7cc5284d9266c4dbb5710ec0050dc9f424e4a9e2`
-on 2026-10-07. The final documentation/workflow-cleanup commit does not change
-that production/test tree. Original generated fixtures require no network/books.
+on 2026-10-07. Reviewed HEAD `456a80405c19365ab2ebc355ac3b56c9e35e2cd8`
+differs only by documentation and temporary-CI cleanup; the subsequent physical
+acceptance documentation update also leaves that production/test tree unchanged.
+Original generated fixtures require no network/books.
 
 Focused command (EPUB/ZIP/CBZ/import/progress), then full app/core regression:
 
