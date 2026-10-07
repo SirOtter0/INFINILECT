@@ -347,8 +347,17 @@ state and chrome visibility remain transient.
 
 ### Android physical acceptance for PR #21
 
-The user reported the earlier interactions passed except the arrival animation.
-The replacement spatial transition still requires physical acceptance:
+User-reported physical Android acceptance is complete for reviewed source
+`0c52eb415490f410d46ee171eaa3560d64330606`. The user reports that the final
+spatial page transition works correctly, the previous shake/jitter problem is
+resolved, page navigation works correctly, and the PR #21 comic-reader UX is
+physically acceptable on Android.
+
+This is user-reported physical-device evidence, not Codex/device-lab automated
+verification. The earlier incoming-only animation had failed physical acceptance;
+the replacement spatial transition is the implementation now accepted. The checklist
+below remains future regression guidance, not a record of individually reported
+observations:
 
 1. Open an imported CBZ; verify its restored page and fitted artwork.
 2. In LTR, tap right → next; tap left → previous.
@@ -385,7 +394,7 @@ and 795 Android host, zero failures/errors/skips, plus both application targets.
 `BUILD SUCCESSFUL in 2m 38s`; all 36 tasks executed. Production/tests were identical
 to the original PR #21 tree at `cb122e6`; subsequent changes in that run only recorded evidence and removed the
 temporary workflow. No repository-wide clean matrix, signing operation or APK
-build was performed for this PR.
+build was performed as part of that original automated verification.
 
 ```sh
 ./gradlew :app:desktopTest :app:testAndroidHostTest :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
@@ -431,6 +440,7 @@ independently checked; ZIP SHA-256:
 `90d1684a0c21c5c93b56d4c66b9bf523db5026c5a3558d21bae1bb813a80fef9`.
 `git diff --check` and tracked signing-file/private-key/attachment-path checks
 passed. The final tree contains no feature-specific workflow or signing material.
-The physical checklist above must be repeated for the new spatial transition;
-host/headless tests do not establish real-device animation, touch/pinch, or native
-Desktop window behavior.
+The final spatial transition subsequently received the user-reported physical
+Android acceptance recorded above. Automated evidence remains distinct from that
+report; native Desktop graphical acceptance, including Windows/Linux/Wayland/niri,
+remains pending. No Desktop physical/graphical verification is claimed.
