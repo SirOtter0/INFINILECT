@@ -58,7 +58,7 @@ class PageReaderInteractionTest {
         reader.next(); runCurrent(); reader.settlePageTurn(); assertEquals(2, reader.state.value.position.index)
         reader.previous(); runCurrent(); reader.settlePageTurn(); assertEquals(1, reader.state.value.position.index)
         reader.navigate(7); reader.tap(.1f); assertEquals(7, reader.state.value.position.index)
-        reader.navigate(0); reader.tap(.9f); runCurrent(); reader.settlePageTurn(); assertEquals(0, reader.state.value.position.index)
+        reader.navigate(0); reader.tap(.9f); assertEquals(0, reader.state.value.position.index); assertNull(reader.state.value.transition)
     } }
     @Test fun decodingAloneDoesNotSaveAndSuccessfulPresentationCommitsOnce() = runTest { withReader { reader, _, store ->
         reader.show(); reader.flush(); runCurrent(); assertTrue(store.writes.isEmpty())

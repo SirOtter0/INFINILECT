@@ -134,15 +134,15 @@ class PageReaderLayoutTest {
         }
     }
     @Test fun shortDragReturnsAndZoomedPanDoesNotNavigate() {
-        Fixture(360, 420).use { f ->
+        Fixture(640, 420).use { f ->
             val start = Offset(f.width * .5f, f.height * .5f)
             f.scene.sendPointerEvent(PointerEventType.Press, start)
-            f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .08f, 0f))
+            f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .04f, 0f))
             f.draw()
             assertEquals(PageTransitionPhase.DRAGGING, f.reader.state.value.transition?.phase)
             // Hold before release: this is a short drag, not a deliberate fling.
-            repeat(3) { f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .08f, 0f)); f.draw(20) }
-            f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(f.width * .08f, 0f))
+            repeat(3) { f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .04f, 0f)); f.draw(20) }
+            f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(f.width * .04f, 0f))
             f.awaitArtwork(0)
             f.tapZone(.5f); f.click("Settings"); f.click("Zoom in"); f.awaitSettingsClosed()
             f.scene.sendPointerEvent(PointerEventType.Press, start)

@@ -131,6 +131,33 @@ class PageTransitionTest {
             assertEquals(1, values.size)
         } finally { r.close(); persistence.close(); persistence.awaitClosed() }
     }
+    @Test fun actualFailedDecodeThenReopenRestoresLastSettledPresentedPage() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var saved: ReadingProgress? = null
+        val persistence = ProgressPersistence(object : ReadingProgressStore {
+            override suspend fun get(id: ReadingProgressId) = saved
+            override suspend fun save(progress: ReadingProgress): Boolean { saved = progress; return true }
+            override suspend fun remove(id: ReadingProgressId) = true
+        }, dispatcher) { 10 }
+        val decoder = TestRasterDecoder()
+        val r = PageReaderController(TestPageDocument(8), this, persistence, decoder = decoder, decodeDispatcher = dispatcher)
+        try {
+            r.initialize(null); runCurrent(); r.next(); runCurrent(); r.settlePageTurn()
+            val ready = assertIs<PageFrame.Ready>(r.state.value.frames[1])
+            r.presented(r.state.value.ticket, 1, ready.stamp); r.flush(); runCurrent()
+            decoder.action = { error("Unsupported target") }
+            r.next(); r.next(); runCurrent()
+            val t = assertNotNull(r.state.value.transition)
+            assertIs<PageFrame.Unavailable>(r.state.value.frames[3])
+            r.transitionReady(t.ticket, 3, ready.stamp); r.finishTransition(t.ticket)
+            assertEquals(1, r.state.value.position.index)
+            r.returnTransition(t.ticket, failed = true); r.settlePageTurn(); r.close(); runCurrent()
+            assertEquals(1, (assertNotNull(saved).locator as ReadingLocator.Page).pageIndex)
+            val reopened = PageReaderController(TestPageDocument(8), this, decoder = TestRasterDecoder(), decodeDispatcher = dispatcher)
+            try { reopened.initialize(saved); runCurrent(); assertEquals(1, reopened.state.value.position.index) }
+            finally { reopened.close() }
+        } finally { r.close(); persistence.close(); persistence.awaitClosed() }
+    }
     @Test fun backModeAndResizeInvalidateTransitionCallbacks() = runTest { reader { r ->
         r.next(); val old = assertNotNull(r.state.value.transition); r.presentationChanged()
         r.transitionOffset(old.ticket, -1f); r.finishTransition(old.ticket); assertNull(r.state.value.transition)
