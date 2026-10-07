@@ -99,7 +99,7 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
             onClick(label = "Toggle reader controls") { reader.toggleControls(); true }
             customActions = listOf(CustomAccessibilityAction("Previous page") { reader.previous(); true },
                 CustomAccessibilityAction("Next page") { reader.next(); true })
-        }.pointerInput(reader) {
+        }.pointerInput(reader, transform) {
             awaitEachGesture {
                 val down = awaitFirstDown()
                 var swipe = 0f

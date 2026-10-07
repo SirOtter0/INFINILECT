@@ -40,15 +40,15 @@ page acquisition backend does not rewrite page progress/session/source contracts
 
 ## Modes and presentation
 
-- PAGED_RTL (default): rightward swipe advances logical next; leftward returns.
-- PAGED_LTR: leftward swipe advances; rightward returns.
+- PAGED_LTR (default since PR #21): right tap / leftward swipe advances; left tap / rightward swipe returns.
+- PAGED_RTL: left tap / rightward swipe advances; right tap / leftward swipe returns.
 - VERTICAL: lazy, width-fit individual pages with an 8dp gap.
 - WEBTOON: same bounded lazy implementation with no gap. Distinct semantic preference.
 
 Paged canvas fits the page, supports 1–4× pinch zoom/pan and visible zoom/reset controls.
 Swipe navigation requires a predominantly horizontal ≥48dp gesture at 1×. A gesture
 that ever uses multiple fingers/zoom cannot change page; panning while zoomed never
-advances. Page navigation resets transient zoom/pan. No spreads/tap zones/stitching.
+advances. Page navigation resets transient zoom/pan. No spreads/stitching.
 Controls are collapsible; accessible labels describe controls and “Page N of M”,
 without pretending OCR descriptions exist. Existing launcher insets remain in use.
 
@@ -108,8 +108,11 @@ restoration approximate; no checksum is invented as source authority.
 Paged navigation saves page start. Continuous reading saves approximate fraction
 through the first visible page; UI pixels are transient mapping inputs only. Mode
 changes preserve page/fraction and invalidate older callback tickets. Initial restore
-and loading geometry do not replace persisted position. Unsupported-page placeholders
-still represent their logical page, so a reader may save its position and move on.
+and loading geometry do not replace persisted position. Since PR #21, a current
+ticket/index/raster-stamp acknowledgement from a successfully composed UI bitmap
+is required to save a new position. Navigation, prefetch, failed decode/conversion,
+obsolete presentation and closing during loading cannot save the requested target.
+Unavailable placeholders remain navigable but do not advance durable progress.
 Progress throttles at 2s while reading, flushes on Back/close and uses the existing
 application-owned writer. PAGE uses schema3/tag3; historical TEXT v1 and EPUB v2 bytes
 remain unchanged/readable. No SQL migration or progress/cache amalgamation.
@@ -120,7 +123,8 @@ PageReaderSettingsStore is an independent owned contract. PageSettingsPersistenc
 loads once, leases updates to the current reader, holds one pending record and
 coalesces changes over 300ms. Back/onStop/close wake the writer and application close
 drains it. Newer timestamps win across owners; failed writes report a fixed message,
-never pretend RAM proves durability. Missing/corrupt/future records safely use RTL.
+never pretend RAM proves durability. Missing/corrupt/future records safely use LTR.
+Existing valid RTL/vertical/webtoon records retain their original meaning and encoding.
 
 FilePageReaderSettingsStore uses one fixed 56-byte version1 record: magic, schema,
 mode enum, nonnegative timestamp, SHA-256 checksum. Private same-directory temporary
@@ -262,3 +266,61 @@ scroll, Back through Search/Library/History, mode/progress save and full process
 Repeat offline/cache-only deletion, verify TEXT/EPUB regression. Building the
 distributable and headless ImageIO/Skia tests do not prove graphical execution.
 The unrelated niri/Wayland outer-window sizing issue remains outside this PR.
+
+## Comic reader UX (PR #21)
+
+The paged canvas is the primary input surface. Its actual available width determines
+invisible left/center/right tap zones (30% / 40% / 30%). Left/right request logical
+previous/next in LTR and next/previous in RTL. Taps beyond either end are harmless;
+center toggles chrome without changing the page or its progress ticket. A drag,
+pinch or consumed control event cannot also become a navigation tap. Desktop mouse
+clicks use the same surface. Canvas accessibility actions reveal controls or invoke
+logical Previous/Next without depending on spatial taps.
+
+Chrome starts hidden and overlays the unchanged fit-page canvas. Top: Back, an
+ellipsized title and Hide. Bottom: page count, Previous, Settings and Next. Those
+buttons always retain logical meaning in either direction. Top/bottom chrome each
+have a viewport-relative height cap and their own scrolling when space/fonts require
+it; the center gap passes taps to the canvas. This keeps controls reachable in short
+windows without nesting scroll owners or making the image smaller. Existing launcher
+safe-drawing insets apply. Save failures remain readable with hidden chrome.
+
+Settings exposes LTR/RTL using the existing durable global PageReader preference
+writer and fixed record: no new database/schema or path is introduced. The preference
+survives Back, another publication and a new application owner; default is now LTR.
+The earlier vertical/webtoon and zoom/reset entries are retained, not added or expanded
+by this PR. Continuous modes retain scrolling and center-tap chrome; side taps do not
+request paged navigation in those modes. Chrome visibility and animation are transient.
+
+A successful incoming page receives a 140ms subtle fade/3.5%-width slide. The logical
+change and reading direction determine the slide sign. Loading/errors never animate
+as a success. A newer frame cancels the previous animation rather than queuing it.
+Only the incoming image is drawn; animation retains the last successful index, not
+an outgoing raster/bitmap. The existing three-frame controller/conversion working
+set and serialized decode mutex are unchanged. Superseded tickets/stamps and closed
+readers cannot acknowledge progress; callbacks use the existing periodic/Back-flush
+writer, not a new progress store. No native decode hard-timeout claim is added.
+
+No new swipe, zoom/pan, continuous/double-page/webtoon mode, cropping, filters,
+brightness, image processing, arbitrary gesture or animation dependency is added.
+Further gesture/reader features and Android automatic return into a comic after
+Activity recreation remain separate work. Current recreation closes the old owner;
+opening the comic again restores the last durable successfully presented position.
+
+### Android physical acceptance for PR #21 (pending)
+
+1. Open an imported CBZ; verify its restored page and fitted artwork.
+2. In LTR, tap right → next; tap left → previous.
+3. Tap center → controls appear; center again → controls disappear.
+4. Use visible Previous/Next; they must not also trigger an underlying zone.
+5. Enable RTL; right tap → previous and left tap → next; buttons stay logical.
+6. Navigate rapidly; confirm no late old page flashes/replaces the latest one.
+7. Close/reopen; last successfully presented page restores, including after failure.
+8. Rotate/recreate and reopen; confirm position/preference restoration, no late work.
+9. Check portrait/landscape, small heights and enlarged fonts; reach Back and Settings.
+10. Check first/last boundaries, loading/error placeholders and accessibility controls.
+
+Desktop graphical acceptance is also pending: mouse taps/buttons/settings, rapid
+navigation and Back, resize short/wide windows, restart progress/preferences and
+native Windows/Linux/Wayland/niri presentation. Headless Compose interaction/layout
+tests and successful compilation do not establish physical or native-window acceptance.

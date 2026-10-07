@@ -94,7 +94,7 @@ class PageReaderLayoutTest {
         Fixture(360, 420).use { f ->
             assertTrue(assertNotNull(f.canvas().config[SemanticsActions.OnClick].action).invoke()); f.draw()
             f.reachable(f.text("Next"))
-            val actions = f.canvas().config[SemanticsProperties.CustomActions]
+            val actions = f.canvas().config[SemanticsActions.CustomActions]
             assertTrue(actions.first { it.label == "Next page" }.action()); f.draw()
             assertEquals(1, f.reader.state.value.position.index)
             assertTrue(actions.first { it.label == "Previous page" }.action()); f.draw()
