@@ -469,8 +469,8 @@ no image analysis, splitting, joining or cover-content heuristic.
 
 For logical pair A then B, LTR places A left/B right; RTL places B left/A right.
 Logical numbering, Previous/Next semantics and publication identity do not reverse.
-Pairs share one fit-page viewport with equal-width halves, no gutter, aspect-preserving
-centering and no default crop. Wide/single pages use the full viewport. The indicator
+Pairs use one common fit scale, a fixed 2dp gutter and adjacent aspect-preserving
+page rectangles; their combined rectangle is centered with no default crop. Wide/single pages use the full viewport. The indicator
 uses logical 1-based numbers (`2–3 / 10` or `1 / 10`). Navigation advances between
 non-overlapping spreads, with safe first/last boundaries.
 
@@ -480,8 +480,9 @@ release threshold/velocity and the 180ms settle remain unchanged. Side taps,
 accessibility actions and semantic Previous/Next share that transition. The center
 40% toggles controls; side zones remain 30% each. Rapid requests coalesce into one
 latest target. Pair pages have no independent animation or zoom state. The complete
-canvas zooms/pans at 1–4×; above 1× one-finger input pans, and multi-pointer/pinch
-input cannot turn a spread. Returning to 1× restores paged navigation.
+canvas zooms/pans at 1–4×. Above 1×, one-finger movement pans first; deliberate
+horizontal excess at a real pan boundary can hand off to the same spatial pager.
+Multi-pointer/pinch input cannot turn a spread, and zoomed side taps do not navigate.
 
 ### Progress and interruption
 
@@ -536,7 +537,7 @@ Provider decode buffers, bitmap-conversion scratch, encoded read buffers and fra
 snapshots/native/GPU overhead remain additional bounded pipeline/allocator costs.
 
 Paired native pages use factor-two source sampling in both dimensions before ARGB
-allocation (Android BitmapFactory / Desktop ImageIO). Each gets half the viewport;
+allocation (Android BitmapFactory / Desktop ImageIO). Pair pages share the fitted spread;
 standalone pages keep the original decode policy. Sampling is opt-in for PageReader;
 EPUB and other raster callers retain their existing decode path. Original source
 preflight still enforces 2 MiB encoded, 2048 per dimension and 1,048,576 source pixels;
@@ -578,7 +579,7 @@ contrast/color filters/enhancement/image processing, new Webtoon behavior, OCR,
 translation, panel detection and guided view. CBZ preparation, import ownership,
 Library/History/Search, EPUB/PDF/TEXT, acquisition and storage identity are unchanged.
 
-### Automated PR #23 verification
+### Initial automated PR #23 verification
 
 Production/test revision `e4b02795e31a72b9d380b8dbdebbb0061e7f1bb0` passed
 all app regressions: **906 Desktop + 851 Android-host tests**, zero failures,
@@ -601,3 +602,59 @@ passed. Headless native-library setup was external to the repository; no tempora
 CI, signing configuration, dependency or generated acceptance artifact was added.
 The subsequent commit only records this evidence. Physical Android and native
 Desktop graphical acceptance remain pending.
+
+
+### Physical Android pre-fix findings and UX follow-up
+
+**USER-REPORTED PHYSICAL ANDROID PRE-FIX FINDINGS:** The user tested the PR #23
+APK and `PR23-double-page-acceptance.cbz`. Intended Double grouping/navigation
+otherwise behaved as expected, but landscape pairs had excessive internal page
+separation and zoom >1× prevented page/spread navigation by drag. The user supplied
+a screenshot as spacing reproduction evidence. These findings triggered this
+follow-up; they are not final physical acceptance. No device model/version or other
+individual checklist observations are inferred.
+
+The old pair fit each page separately inside half the viewport. Height-limited
+pages therefore left a large artificial gap. Now a common scale is
+`min((viewportWidth - gutter) / (widthA + widthB), viewportHeight / max(heightA, heightB))`.
+Scaled rectangles sit directly adjacent in a centered row, with a **2dp gutter**
+(capped at 10% of width only for exceptionally tiny viewports). Each page is vertically
+centered; unused space lies outside the pair. LTR/RTL placement and grouping are
+unchanged; standalone artwork still uses ordinary fit-page.
+
+Zoomed pan bounds now use the actual fitted content rectangle: horizontal/vertical
+half-range is `max(0, (fittedExtent * zoom - viewportExtent) / 2)`. A 0.5-pixel
+near-edge epsilon avoids float jitter. One finger consumes available pan first;
+only additional outward horizontal movement reaches the pager, in the same gesture.
+Horizontal intent must exceed touch slop and dominate vertical movement by 1.2×;
+vertical-first gestures remain pan-only. Content narrower than the viewport has zero
+horizontal pan range, allowing deliberate overscroll without fake pan distance.
+Reversal consumes pager displacement first, then resumes pan inside the content.
+
+The existing authoritative transition/ticket, target preparation and presentation
+handshake are reused. Thresholds remain **25% viewport excess**, or **at least 5%
+excess plus agreeing velocity ≥0.9 viewports/second**; settle remains **180ms**.
+Zoomed side taps stay non-navigating; center tap and explicit Previous/Next retain
+their semantics. Another pointer cancels the handoff and gives pinch exclusive
+ownership for the remainder of the gesture. Successful turns present the new spread
+at fit/1×; returned, reversed or failed turns retain current zoom/pan. Resize/mode
+change retires old tickets and restores fit, as in the existing reader. No progress
+is saved during pan, overscroll, target preparation or animation; only the validated
+complete target composed at rest can persist its logical anchor. Resource/cache
+bounds, decoding, grouping, progress identity and continuous modes are unchanged.
+
+**Physical Android re-acceptance is PENDING. Native Desktop graphical acceptance
+is PENDING. PR #23 remains DRAFT and must not be merged.**
+
+Focused re-acceptance with the same CBZ:
+
+1. **Landscape pair:** inspect [2,3]/[5,6]; tiny gutter, centered complete pair, no
+   giant gap; check both LTR and RTL.
+2. **Pan:** zoom >1× and drag within real pan range; content pans without turning.
+3. **Next/Previous edges:** pan to the appropriate boundary and continue outward;
+   short excess returns, qualifying excess turns, in both directions.
+4. **Cancel:** begin an edge turn and reverse/release below threshold; current
+   spread and coherent zoom/pan remain. Successful turns reset the new spread to 1×.
+5. **Pinch:** multi-touch/pinch must not turn, including after handoff starts.
+6. **Regression:** 1× drags/side taps, center controls and grouping
+   [1] [2,3] [4] [5,6] [7]; wide PAGE 4 remains alone.

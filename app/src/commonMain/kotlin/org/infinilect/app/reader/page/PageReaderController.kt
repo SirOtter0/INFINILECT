@@ -122,6 +122,9 @@ internal class PageReaderController(
                 if (target == s.position.index) PageTransitionPhase.RETURNING else PageTransitionPhase.WAITING))
         loadWindow(s.position.index, visible = listOf(target))
     }
+    /** UI may call only after a one-finger horizontal gesture exhausts actual pan bounds.
+     * Uses the same identity/ticket/resource guards as fit-page dragging. */
+    fun beginEdgeDrag(sourceStamp: Long?): Long? = beginDrag(1f, sourceStamp)
     fun beginDrag(zoom: Float, sourceStamp: Long?): Long? {
         if (closed || zoom != 1f || !pagedMode(state.value.settings.mode)) return null
         val s = state.value
