@@ -1,5 +1,28 @@
 # Third-party notices
 
+## Bounded local PDF — PR #20
+
+Desktop adds only the direct `org.apache.pdfbox:pdfbox:3.0.8` dependency, Apache-2.0,
+compatible with INFINILECT GPL-3.0-or-later; no commercial license is required.
+Its required upstream runtime graph includes `pdfbox-io:3.0.8`, `fontbox:3.0.8`
+and `commons-logging:1.4.0` (Apache-2.0). No optional JBIG2/JPEG2000 or Bouncy Castle
+modules are requested. Actual resolved graph/build evidence is separate from POM declarations.
+
+Retained tagged upstream [PDFBox license](third-party/pdfbox-LICENSE.txt) includes
+legacy PDFBox/FontBox and Adobe font/metrics/CMap terms as well as Apache-2.0;
+[PDFBox NOTICE](third-party/pdfbox-NOTICE.txt) and
+[Commons Logging NOTICE](third-party/commons-logging-NOTICE.txt) are retained.
+Source copies normalize trailing whitespace only. Distributable JARs must retain
+all their embedded upstream notices. No third-party PDF fixtures are copied.
+
+Android adds no PDF dependency or packaged PDF native binary: framework PdfRenderer
+is supplied by the device. Existing Android/JDK/Compose/Skiko notices still apply.
+There is no PDFium, MuPDF, KitePDF, Readium PDF or WebView viewer dependency.
+[Upstream PDFBox 3.0.8 POM](https://github.com/apache/pdfbox/blob/3.0.8/pdfbox/pom.xml),
+[parent versions](https://github.com/apache/pdfbox/blob/3.0.8/parent/pom.xml),
+[Commons Logging 1.4.0](https://github.com/apache/commons-logging/tree/rel/commons-logging-1.4.0).
+
+
 ## Desktop runtime verification — PR #12, 2026-10-04
 
 The existing Compose `createDistributable` task builds a local Desktop app image

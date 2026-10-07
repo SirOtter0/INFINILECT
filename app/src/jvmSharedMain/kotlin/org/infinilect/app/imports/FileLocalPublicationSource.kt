@@ -40,6 +40,7 @@ internal class FileLocalPublicationSource(
     private val maxEntries: Int = 256,
     private val maxTotalBytes: Long = 512L * 1024 * 1024,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val pdf: org.infinilect.app.reader.pdf.PdfPreparer? = null,
 ) : PublicationSource, LocalPublicationImporter {
     override val id = LOCAL_SOURCE_ID
     private val closed = AtomicBoolean()
@@ -53,39 +54,44 @@ internal class FileLocalPublicationSource(
     private var shutdown: Job? = null
     init { require(maxBytes in 1..MAX_LOCAL_IMPORT_BYTES && maxEntries in 1..256 && maxTotalBytes in 1..512L*1024*1024) }
 
-    override suspend fun import(selection: LocalFileSelection): Publication = operation {
+    override suspend fun import(selection: LocalFileSelection): Publication = operation(timed = false) {
         var content: ResourceContent? = null
         var partial: Path? = null
         try {
             val base = initialize()
-            content = try { selection.open() } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { fail(ImportFailure.TRANSFER) }
-            contents.add(content)
-            checkOpen()
-            partial = Files.createDirectory(base.resolve("import-${UUID.randomUUID()}.part"))
-            val payload = partial.resolve("payload")
-            val digest = MessageDigest.getInstance("SHA-256")
-            val declared = content.sizeBytes
-            if (declared != null && (declared <= 0 || declared > maxBytes)) fail(if (declared > maxBytes) ImportFailure.LIMIT else ImportFailure.TRANSFER)
-            var total = 0L
-            Files.newOutputStream(payload, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS).use { out ->
-                val buffer = ByteArray(BUFFER_BYTES)
-                while (true) {
-                    checkOpen()
-                    val requested = minOf(buffer.size.toLong(), (declared ?: maxBytes) - total + 1).toInt()
-                    val n = try { content.read(buffer, 0, requested) } catch (e: CancellationException) { throw e }
-                        catch (_: Exception) { fail(ImportFailure.TRANSFER) }
-                    if (n == -1) break
-                    if (n !in 1..requested) fail(ImportFailure.TRANSFER)
-                    total += n
-                    if (total > maxBytes) fail(ImportFailure.LIMIT)
-                    if (declared != null && total > declared) fail(ImportFailure.TRANSFER)
-                    digest.update(buffer, 0, n); out.write(buffer, 0, n)
+            val (total,key) = withTimeout(120_000) {
+                val opened = try { selection.open().also { content = it } } catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { fail(ImportFailure.TRANSFER) }
+                contents.add(opened)
+                checkOpen()
+                val staging = Files.createDirectory(base.resolve("import-${UUID.randomUUID()}.part"))
+                partial = staging
+                val payload = staging.resolve("payload")
+                val digest = MessageDigest.getInstance("SHA-256")
+                val declared = opened.sizeBytes
+                if (declared != null && (declared <= 0 || declared > maxBytes)) fail(if (declared > maxBytes) ImportFailure.LIMIT else ImportFailure.TRANSFER)
+                var total = 0L
+                Files.newOutputStream(payload, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS).use { out ->
+                    val buffer = ByteArray(BUFFER_BYTES)
+                    while (true) {
+                        checkOpen()
+                        val requested = minOf(buffer.size.toLong(), (declared ?: maxBytes) - total + 1).toInt()
+                        val n = try { opened.read(buffer, 0, requested) } catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { fail(ImportFailure.TRANSFER) }
+                        if (n == -1) break
+                        if (n !in 1..requested) fail(ImportFailure.TRANSFER)
+                        total += n
+                        if (total > maxBytes) fail(ImportFailure.LIMIT)
+                        if (declared != null && total > declared) fail(ImportFailure.TRANSFER)
+                        digest.update(buffer, 0, n); out.write(buffer, 0, n)
+                    }
                 }
+                if (total == 0L || declared != null && total != declared) fail(ImportFailure.TRANSFER)
+                opened.close(); contents.remove(opened); content = null
+                total to digest.digest().hex()
             }
-            if (total == 0L || declared != null && total != declared) fail(ImportFailure.TRANSFER)
-            content.close(); contents.remove(content); content = null
-            val key = digest.digest().hex()
+            val staging = checkNotNull(partial)
+            val payload = staging.resolve("payload")
             val target = base.resolve("$key.import")
             if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
                 val previous = readRecord(target, key) ?: fail(ImportFailure.STORAGE)
@@ -98,13 +104,13 @@ internal class FileLocalPublicationSource(
             if (committed.size >= maxEntries || total > maxTotalBytes - used) fail(ImportFailure.LIMIT)
             val publication = validate(payload, key, fallbackTitle(selection.displayName))
             val record = Record(publication, total)
-            val metadata = partial.resolve("record")
+            val metadata = staging.resolve("record")
             Files.write(metadata, encode(record), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
             forceFile(payload); forceFile(metadata)
             checkOpen()
             // Same-filesystem rename publishes the complete directory; no existing entry is replaced.
-            try { Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE) }
-            catch (_: AtomicMoveNotSupportedException) { Files.move(partial, target) }
+            try { Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE) }
+            catch (_: AtomicMoveNotSupportedException) { Files.move(staging, target) }
             partial = null
             forceDirectory(base)
             publication
@@ -153,7 +159,7 @@ internal class FileLocalPublicationSource(
         fun candidate(format: PublicationFormat) = Publication(identity, title,
             if (format == PublicationFormat.CBZ) PublicationType.COMIC else if (format == PublicationFormat.EPUB) PublicationType.BOOK else PublicationType.DOCUMENT,
             resources = listOf(PublicationResource(identity, "content", format, when (format) {
-                PublicationFormat.EPUB -> "application/epub+zip"; PublicationFormat.CBZ -> "application/vnd.comicbook+zip"; else -> "text/plain"
+                PublicationFormat.EPUB -> "application/epub+zip"; PublicationFormat.CBZ -> "application/vnd.comicbook+zip"; PublicationFormat.PDF -> "application/pdf"; else -> "text/plain"
             }, revision = key)))
         val loader = object : ResourceLoader { override suspend fun load(resource: PublicationResource): ResourceContent =
             payloadContent(path, Files.size(path), key) }
@@ -176,7 +182,22 @@ internal class FileLocalPublicationSource(
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { fail(ImportFailure.UNSUPPORTED) }
         }
-        if (n >= 4 && prefix.copyOf(4).contentEquals(byteArrayOf(37,80,68,70))) fail(ImportFailure.UNSUPPORTED)
+        if (n >= 4 && prefix.copyOf(4).contentEquals(byteArrayOf(37,80,68,70))) {
+            val preparer = pdf ?: fail(ImportFailure.UNSUPPORTED)
+            val publication = candidate(PublicationFormat.PDF)
+            try {
+                preparer.prepare(publication,publication.resources.single(),loader).close()
+                checkOpen()
+                return publication
+            } catch (e: CancellationException) { throw e }
+            catch (e: PdfException) { fail(when (e.failure) {
+                PdfFailure.LIMIT, PdfFailure.GEOMETRY -> ImportFailure.LIMIT
+                PdfFailure.ENCRYPTED -> ImportFailure.PDF_ENCRYPTED
+                PdfFailure.STORAGE, PdfFailure.CLOSED -> ImportFailure.STORAGE
+                PdfFailure.TRANSFER -> ImportFailure.TRANSFER
+                else -> ImportFailure.UNSUPPORTED
+            }) }
+        }
         val publication = candidate(PublicationFormat.TEXT)
         try {
             val doc = text.prepare(publication, publication.resources.single(), loader, io)
@@ -193,9 +214,12 @@ internal class FileLocalPublicationSource(
         catch (e: TextDocumentException) { fail(if (e.failure == TextFailure.TOO_LARGE) ImportFailure.LIMIT else if (e.failure == TextFailure.STORAGE) ImportFailure.STORAGE else ImportFailure.UNSUPPORTED) }
     }
 
-    private suspend fun <T> operation(action: suspend () -> T): T {
+    private suspend fun <T> operation(timed: Boolean = true, action: suspend () -> T): T {
         val job = currentCoroutineContext().job; jobs.add(job)
-        try { return withContext(io) { withTimeout(120_000) { mutex.withLock { checkOpen(); action() } } } }
+        try { return withContext(io) {
+            if (timed) withTimeout(120_000) { mutex.withLock { checkOpen(); action() } }
+            else mutex.withLock { checkOpen(); action() }
+        } }
         catch (e: CancellationException) { throw e }
         catch (e: LocalImportException) { throw e }
         catch (e: IllegalArgumentException) { throw e }
@@ -264,12 +288,12 @@ internal class FileLocalPublicationSource(
             if (input.readInt() != 1 || input.readUTF() != key) return null
             val size = input.readLong(); if (size !in 1..maxBytes || Files.size(payload) != size) return null
             val format = PublicationFormat.valueOf(input.readUTF())
-            if (format !in listOf(PublicationFormat.TEXT, PublicationFormat.EPUB, PublicationFormat.CBZ)) return null
+            if (format !in listOf(PublicationFormat.TEXT, PublicationFormat.EPUB, PublicationFormat.CBZ, PublicationFormat.PDF)) return null
             val title = input.readUTF()
             fun list(max: Int): List<String> { val count = input.readInt(); require(count in 0..max); return List(count) { input.readUTF() } }
             val authors = list(64); val languages = list(32); if (input.read() != -1) return null
             val identity = PublicationId(id, key)
-            val resource = PublicationResource(identity, "content", format, when(format) { PublicationFormat.EPUB -> "application/epub+zip"; PublicationFormat.CBZ -> "application/vnd.comicbook+zip"; else -> "text/plain" }, key)
+            val resource = PublicationResource(identity, "content", format, when(format) { PublicationFormat.EPUB -> "application/epub+zip"; PublicationFormat.CBZ -> "application/vnd.comicbook+zip"; PublicationFormat.PDF -> "application/pdf"; else -> "text/plain" }, key)
             val pub = Publication(identity, title, if (format == PublicationFormat.CBZ) PublicationType.COMIC else if (format == PublicationFormat.EPUB) PublicationType.BOOK else PublicationType.DOCUMENT,
                 authors, listOf(resource), languages)
             PublicationSnapshot.from(pub).validate(); Record(pub,size)

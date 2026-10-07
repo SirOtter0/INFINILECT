@@ -29,7 +29,7 @@ usa preparación temporal privada y ventanas acotadas;
 [política del lector](docs/TEXT_READER.md).
 
 Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
-entre reinicios, sin adquisición EPUB de producción, lectura PDF ni descargas explícitas. La caché de disco automática
+entre reinicios, sin adquisición remota EPUB/PDF ni descargas explícitas. La caché de disco automática
 y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
 de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
 Consulta la [política de caché](docs/CACHE.md).
@@ -39,7 +39,7 @@ guardada vuelve a consultar su fuente, adquiere normalmente y restaura el progre
 Clear History requiere confirmación y conserva Library/progreso.
 [Política local](docs/LIBRARY_HISTORY.md).
 
-**Import local file** copia un TEXT UTF-8, EPUB3 compatible o CBZ PNG/JPEG a
+**Import local file** copia un TEXT UTF-8, EPUB3 compatible, CBZ PNG/JPEG o PDF acotado a
 almacenamiento privado y duradero, lo añade a Library y lo abre con los lectores
 existentes. Library/History y el progreso sobreviven a reinicios, borrado de caché
 y eliminación del archivo original. Límite: 32 MiB (TEXT: 16 MiB); duplicados por
@@ -51,7 +51,9 @@ La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona
 enlaces de descarga. REST rechaza este entorno con HTTP 403 y la transferencia PDF
 sigue bloqueada/no verificada. Consulta [OAPEN](docs/OAPEN.md) y la
 [comparación](docs/ACQUISITION_COMPARISON.md). Gutenberg sigue como catálogo experimental; no hay crawling masivo.
-No se anuncia fuente/UI OAPEN ni lector PDF.
+No se anuncia fuente/UI OAPEN ni adquisición remota PDF. El lector PDF local usa
+contratos propios, PdfRenderer de Android en API 26+ y PDFBox 3.0.8 en Desktop.
+[Límites PDF y aceptación pendiente](docs/PDF_READER.md).
 
 El objetivo deliberadamente pequeño de v0.0.1 es: abrir INFINILECT → buscar un libro
 → obtener resultados reales → abrir uno → leerlo. Project Gutenberg/OPDS es la primera fuente de búsqueda funcional.

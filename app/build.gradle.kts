@@ -42,6 +42,7 @@ kotlin {
             dependencies {
                 implementation("io.ktor:ktor-client-java:3.6.0")
                 implementation("app.cash.sqldelight:sqlite-driver:2.4.0")
+                implementation("org.apache.pdfbox:pdfbox:3.0.8")
             }
         }
         getByName("androidMain") {

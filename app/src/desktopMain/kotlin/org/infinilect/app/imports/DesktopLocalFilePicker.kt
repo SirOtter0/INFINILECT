@@ -22,7 +22,7 @@ class DesktopLocalFilePicker : LocalFilePicker {
             EventQueue.invokeLater {
                 if(!continuation.isActive) return@invokeLater
                 try {
-                    val picker = FileDialog(null as Frame?, "Import TEXT, EPUB or CBZ", FileDialog.LOAD)
+                    val picker = FileDialog(null as Frame?, "Import TEXT, EPUB, CBZ or PDF", FileDialog.LOAD)
                     dialog.set(picker)
                     try {
                         picker.isVisible=true

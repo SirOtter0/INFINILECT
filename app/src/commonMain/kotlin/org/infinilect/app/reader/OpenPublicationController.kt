@@ -18,6 +18,7 @@ import kotlinx.coroutines.withTimeout
 import org.infinilect.core.*
 import org.infinilect.app.reader.epub.*
 import org.infinilect.app.reader.page.*
+import org.infinilect.app.reader.pdf.*
 import org.infinilect.core.PublicationFormat
 import org.infinilect.core.PublicationSource
 import org.infinilect.core.ResourceLoader
@@ -30,6 +31,7 @@ internal sealed interface OpenPublicationState {
     data class Ready(val document: TextDocument, val reading: TextReadingProgress? = null, val publication: Publication? = null) : OpenPublicationState
     data class EpubReady(val reader: EpubReaderController, val publication: Publication) : OpenPublicationState
     data class PageReady(val reader: PageReaderController, val publication: Publication) : OpenPublicationState
+    data class PdfReady(val reader: PdfReaderController, val publication: Publication) : OpenPublicationState
     data class Error(val publication: Publication, val userMessage: String) : OpenPublicationState
 }
 
@@ -46,6 +48,7 @@ internal class OpenPublicationController(
     private val epubSettings: EpubSettingsPersistence? = null,
     private val pagePreparer: PagePreparer? = null,
     private val pageSettings: PageSettingsPersistence? = null,
+    private val pdfPreparer: PdfPreparer? = null,
     private val onOpened: (Publication) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
@@ -54,7 +57,7 @@ internal class OpenPublicationController(
     private var generation = 0L
     private var closed = false
 
-    fun open(publication: Publication) {
+    fun open(publication: Publication, pdfRecreationIndex: Int? = null) {
         if (state.value is OpenPublicationState.Loading) return
         closeReady()
         if (closed || publication.id.sourceId != source.id) {
@@ -68,12 +71,12 @@ internal class OpenPublicationController(
             var prepared: TextDocument? = null
             var epubReader: EpubReaderController? = null
             var pageReader: PageReaderController? = null
+            var pdfReader: PdfReaderController? = null
             var openingPages = false
             var openingEpub = false
             var handedOff = false
             try {
-                val loadedState = withTimeout(60_000) {
-                    val details = source.getPublication(publication.id)
+                suspend fun prepareReader(details: Publication?): OpenPublicationState {
                     currentCoroutineContext().ensureActive()
                     if (details == null) {
                         throw OpeningException("This publication is no longer available.")
@@ -93,7 +96,7 @@ internal class OpenPublicationController(
                         epubReader = reader
                         reader.initialize(progress?.get(reader.progressId))
                         currentCoroutineContext().ensureActive()
-                        return@withTimeout OpenPublicationState.EpubReady(reader, details)
+                        return OpenPublicationState.EpubReady(reader, details)
                     }
                     if (textResource == null && pagePreparer != null && details.resources.any { it.format == PublicationFormat.PAGES || it.format == PublicationFormat.CBZ }) {
                         openingPages = true
@@ -105,15 +108,41 @@ internal class OpenPublicationController(
                         pageReader = reader
                         reader.initialize(progress?.get(reader.progressId))
                         currentCoroutineContext().ensureActive()
-                        return@withTimeout OpenPublicationState.PageReady(reader, details)
+                        return OpenPublicationState.PageReady(reader, details)
+                    }
+                    if (textResource == null && pdfPreparer != null && selectResource(details,PublicationFormat.PDF) != null) {
+                        val resource = checkNotNull(selectResource(details,PublicationFormat.PDF))
+                        val document = pdfPreparer.prepare(details,resource,loader)
+                        val reader = try {
+                            check(document.progressId == ReadingProgressId(details.id,resource.key,PublicationFormat.PDF))
+                            PdfReaderController(document,scope,progress)
+                        } catch (error: Throwable) { document.close(); throw error }
+                        pdfReader = reader
+                        reader.initialize(progress?.get(reader.progressId),pdfRecreationIndex)
+                        currentCoroutineContext().ensureActive()
+                        return OpenPublicationState.PdfReady(reader,details)
                     }
                     val resource = textResource
                         ?: throw OpeningException("No readable text format is available for this publication.")
                     val loaded = loadTextDocument(details, resource, loader, decodingDispatcher, preparer).also { prepared = it }
                     val stored = loaded.progressId?.let { progress?.get(it) }
-                    OpenPublicationState.Ready(loaded,
+                    return OpenPublicationState.Ready(loaded,
                         progress?.let { TextReadingProgress(loaded, stored, it, scope) }, details)
                 }
+                // Synchronous PDF parsing/rendering has no reliable interruption deadline.
+                // Cancellation is result-safe through adapter ownership and generation checks.
+                var deferredPdf: Publication? = null
+                val withinDeadline = withTimeout(60_000) {
+                    val details = source.getPublication(publication.id)
+                    val pdfSelected = details != null && pdfPreparer != null &&
+                        selectResource(details,PublicationFormat.TEXT) == null &&
+                        (epubPreparer == null || selectResource(details,PublicationFormat.EPUB) == null) &&
+                        (pagePreparer == null || details.resources.none { it.format == PublicationFormat.PAGES || it.format == PublicationFormat.CBZ }) &&
+                        selectResource(details,PublicationFormat.PDF) != null
+                    if (pdfSelected) { deferredPdf = details; null }
+                    else prepareReader(details)
+                }
+                val loadedState = withinDeadline ?: prepareReader(checkNotNull(deferredPdf))
                 // Publish only after exiting the deadline successfully. A timeout/cancel at
                 // the withTimeout return boundary must not record History or leak the EPUB.
                 currentCoroutineContext().ensureActive()
@@ -123,6 +152,7 @@ internal class OpenPublicationController(
                         is OpenPublicationState.Ready -> checkNotNull(loadedState.publication)
                         is OpenPublicationState.EpubReady -> loadedState.publication
                         is OpenPublicationState.PageReady -> loadedState.publication
+                        is OpenPublicationState.PdfReady -> loadedState.publication
                         else -> error("Unexpected prepared state")
                     }
                     onOpened(details)
@@ -138,6 +168,7 @@ internal class OpenPublicationController(
             } catch (error: Exception) {
                 currentCoroutineContext().ensureActive()
                 val message = when (error) {
+                    is PdfException -> error.failure.userMessage
                     is EpubException -> error.failure.userMessage
                     is TextDocumentException -> error.failure.userMessage
                     is OpeningException -> error.message!!
@@ -147,7 +178,7 @@ internal class OpenPublicationController(
                 }
                 if (generation == ticket) mutableState.value = OpenPublicationState.Error(publication, message)
             } finally {
-                if (!handedOff) { prepared?.close(); epubReader?.close(); pageReader?.close() }
+                if (!handedOff) { prepared?.close(); epubReader?.close(); pageReader?.close(); pdfReader?.close() }
             }
         }.also { job ->
             job.invokeOnCompletion {
@@ -159,7 +190,7 @@ internal class OpenPublicationController(
     }
 
     /** Back cancels work and invalidates even a noncooperative late result. */
-    fun flushProgress() { (state.value as? OpenPublicationState.Ready)?.reading?.flush(); (state.value as? OpenPublicationState.EpubReady)?.reader?.flush(); (state.value as? OpenPublicationState.PageReady)?.reader?.flush() }
+    fun flushProgress() { (state.value as? OpenPublicationState.Ready)?.reading?.flush(); (state.value as? OpenPublicationState.EpubReady)?.reader?.flush(); (state.value as? OpenPublicationState.PageReady)?.reader?.flush(); (state.value as? OpenPublicationState.PdfReady)?.reader?.flush() }
 
     fun cancel() {
         closeReady()
@@ -170,6 +201,7 @@ internal class OpenPublicationController(
     }
 
     private fun closeReady() {
+        (state.value as? OpenPublicationState.PdfReady)?.reader?.close()
         (state.value as? OpenPublicationState.PageReady)?.reader?.close()
         (state.value as? OpenPublicationState.EpubReady)?.reader?.close()
         (state.value as? OpenPublicationState.Ready)?.let { it.reading?.close(); it.document.close() }

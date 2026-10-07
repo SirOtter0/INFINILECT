@@ -35,3 +35,4 @@ Amend superseded decisions with a new ADR explaining the concrete need and trade
 - [0022: Session EPUB presentation and bounded local raster media](0022-bounded-epub-media-and-presentation.md)
 
 - [0023: Bounded source-independent page reader](0023-bounded-page-reader.md)
+- [0024: Owned bounded local PDF reading](0024-owned-bounded-local-pdf.md)

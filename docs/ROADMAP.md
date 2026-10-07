@@ -6,8 +6,9 @@ Android SAF/Desktop native selection → bounded validated owned copy → local 
 → existing TEXT/EPUB/CBZ readers → existing Library/History/progress is implemented.
 Source identity is independent of the original location; exact-byte deduplication
 and non-destructive Library removal preserve user ownership. Physical picker/update/
-restart and graphical Desktop checks remain separate human gates. PDF, explicit
-import deletion/orphan cleanup, bulk/directory import and backup remain future work.
+restart and graphical Desktop checks remain separate human gates. PR #20 adds
+bounded local PDF via owned adapters; advanced PDF features and process isolation
+remain deferred ([policy](PDF_READER.md)). Explicit import deletion/orphan cleanup, bulk/directory import and backup remain future work.
 [Policies and limitations](LOCAL_IMPORT.md). No v0.0.1 completion claim.
 
 ## EPUB usability and local media — Draft PR #16

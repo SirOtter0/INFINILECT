@@ -59,7 +59,7 @@ data class ReadingProgress(
         require(updatedAtEpochMillis >= 0)
         require(locator !is ReadingLocator.Epub || id.format == PublicationFormat.EPUB)
         require(locator !is ReadingLocator.Text || id.format == PublicationFormat.TEXT)
-        require(locator !is ReadingLocator.Page || id.format == PublicationFormat.PAGES)
+        require(locator !is ReadingLocator.Page || id.format == PublicationFormat.PAGES || id.format == PublicationFormat.PDF)
     }
 }
 

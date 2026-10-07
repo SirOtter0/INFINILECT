@@ -28,7 +28,7 @@ internal class ApplicationSession(
     val destination=mutableDestination.asStateFlow()
     val collections=CollectionsController(sources.collections,this.scope,clock)
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
-        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings) { publication ->
+        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer) { publication ->
         collections.enteredReader(publication)
         sources.collections?.recordOpened(publication,clock())
     }
@@ -58,25 +58,32 @@ internal class ApplicationSession(
         mutableDestination.value=destination
         when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); else -> Unit }
     }
-    fun openSaved(snapshot: PublicationSnapshot) {
+    fun openSaved(snapshot: PublicationSnapshot, pdfRecreationIndex: Int? = null) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
         observer?.cancel()
         val option=sources.options.firstOrNull { it.source.id==snapshot.id.sourceId }
         // Resources are deliberately absent. Even valid stored rights never authorize bytes.
         val placeholder=Publication(snapshot.id,snapshot.title,snapshot.type,snapshot.authors,languages=snapshot.languages)
-        if(option==null || !(option.textReadingEnabled || option.epubReadingEnabled || option.pageReadingEnabled)) {
+        if(option==null || !(option.textReadingEnabled || option.epubReadingEnabled || option.pageReadingEnabled || option.pdfReadingEnabled)) {
             mutableOpening.value=OpenPublicationState.Error(placeholder,"This publication cannot be opened from its source.")
             return
         }
         savedReader?.close(); savedReader=session(option)
-        observe(savedReader!!); savedReader!!.open(placeholder)
+        observe(savedReader!!); savedReader!!.open(placeholder,pdfRecreationIndex)
         mutableOpening.value=savedReader!!.opening.state.value
+    }
+    fun restoreLocalPdf(localId: String, destination: String, pageIndex: Int) {
+        if (!Regex("[0-9a-f]{64}").matches(localId)) return
+        val local=sources.options.firstOrNull { it.pdfReadingEnabled && it.source.id.value == "local-imports" } ?: return
+        val restoredDestination=Destination.entries.firstOrNull { it.name == destination } ?: Destination.SEARCH
+        navigate(restoredDestination)
+        openSaved(PublicationSnapshot(PublicationId(local.source.id,localId),"PDF",PublicationType.DOCUMENT),pageIndex.coerceIn(0,org.infinilect.core.PdfLimits.PAGES-1))
     }
     fun openSearch(publication: Publication) {
         if(closed || importing.value.busy || destination.value!=Destination.SEARCH) return
         searchSession.value.open(publication); mutableOpening.value=searchSession.value.opening.state.value
     }
-    fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && (it.textReadingEnabled || it.epubReadingEnabled || it.pageReadingEnabled) }
+    fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && (it.textReadingEnabled || it.epubReadingEnabled || it.pageReadingEnabled || it.pdfReadingEnabled) }
     fun sourceName(id: SourceId)=sources.options.firstOrNull { it.source.id==id }?.name ?: id.value
     fun retry(publication: Publication) {
         if(closed || !canRetry(publication)) return
