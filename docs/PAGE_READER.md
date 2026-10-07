@@ -470,7 +470,8 @@ no image analysis, splitting, joining or cover-content heuristic.
 For logical pair A then B, LTR places A left/B right; RTL places B left/A right.
 Logical numbering, Previous/Next semantics and publication identity do not reverse.
 Pairs use one common fit scale, a fixed 2dp gutter and adjacent aspect-preserving
-page rectangles; their combined rectangle is centered with no default crop. Wide/single pages use the full viewport. The indicator
+page rectangles; their combined rectangle is centered with no default crop.
+Wide/single pages use the full viewport. The indicator
 uses logical 1-based numbers (`2–3 / 10` or `1 / 10`). Navigation advances between
 non-overlapping spreads, with safe first/last boundaries.
 
@@ -603,7 +604,6 @@ CI, signing configuration, dependency or generated acceptance artifact was added
 The subsequent commit only records this evidence. Physical Android and native
 Desktop graphical acceptance remain pending.
 
-
 ### Physical Android pre-fix findings and UX follow-up
 
 **USER-REPORTED PHYSICAL ANDROID PRE-FIX FINDINGS:** The user tested the PR #23
@@ -642,6 +642,19 @@ change retires old tickets and restores fit, as in the existing reader. No progr
 is saved during pan, overscroll, target preparation or animation; only the validated
 complete target composed at rest can persist its logical anchor. Resource/cache
 bounds, decoding, grouping, progress identity and continuous modes are unchanged.
+
+**AUTOMATED FOLLOW-UP VERIFICATION:** Production/test revision
+`35d9e89722238e1f2fd54893fbd3164d0ce9fb49` passed **172 focused Desktop +
+140 focused Android-host PageReader tests**, then **931 full Desktop app +
+866 full Android-host app tests**, all with zero failures/errors/skips. Android
+application (`:androidApp:compileDebugKotlin`) and Desktop application
+(`:desktopApp:compileKotlin`) compilation passed. Existing PR #21/#23 assertions
+remain intact; two pan fixtures now zoom enough to have real fitted-content pan
+range. Core and dependencies are unchanged; no unrelated core suites were run.
+The complete incremental diff was reviewed and `git diff --check` passed. The
+repository scan found no signing secrets, attachment paths, generated acceptance
+artifacts or temporary CI; native headless test setup remains external. The
+subsequent commit only records this verification and adjusts documentation wrapping.
 
 **Physical Android re-acceptance is PENDING. Native Desktop graphical acceptance
 is PENDING. PR #23 remains DRAFT and must not be merged.**
