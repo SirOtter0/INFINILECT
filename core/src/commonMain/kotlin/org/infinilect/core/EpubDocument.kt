@@ -9,8 +9,14 @@ data class EpubEntryPath(val value: String) {
     init {
         require(value.length in 1..512 && value.split('/').size <= 32)
         require(value.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "._~-/ ()!$&'+,=@[]" ||
-            it >= '\u00a0' && it !in '\u202a'..'\u202e' && it !in '\u2066'..'\u2069' && it != '\ufeff' })
+            it >= '\u00a0' && it !in '\ue000'..'\uf8ff' && it !in '\ufdd0'..'\ufdef' && it < '\ufff0' && it !in '\u202a'..'\u202e' && it !in '\u2066'..'\u2069' && it != '\ufeff' })
         require(value.encodeToByteArray().decodeToString(throwOnInvalidSequence = true) == value)
+        var index = 0
+        while (index < value.length) {
+            val first = value[index++].code
+            val point = if (first in 0xd800..0xdbff) 0x10000 + ((first - 0xd800) shl 10) + (value[index++].code - 0xdc00) else first
+            require(point < 0xf0000 && (point and 0xffff) < 0xfffe)
+        }
         require(value.split('/').all { it.isNotEmpty() && it != "." && it != ".." })
     }
 }

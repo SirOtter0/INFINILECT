@@ -11,7 +11,7 @@ class EpubDocumentTest {
     }
     @Test fun pathsRejectTraversalAbsoluteAndAmbiguousUriForms() {
         for (path in listOf("", "/book", "a/../b", "a/./b", "a//b", "a/", "a\\b", "../b",
-            "https://example.org/book", "file:book", "a%2fb", "a%252fb", "a?b", "a#b", "a\u0000b", "a\u0085b")) {
+            "https://example.org/book", "file:book", "a%2fb", "a%252fb", "a?b", "a#b", "a\u0000b", "a\u0085b", "a\ue001b", "a\ufdd0b", "a\udb80\udc00b")) {
             assertFailsWith<IllegalArgumentException>(path) { EpubEntryPath(path) }
         }
     }

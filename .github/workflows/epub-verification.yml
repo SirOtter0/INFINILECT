@@ -27,12 +27,16 @@ jobs:
           :app:desktopTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test'
           :app:testAndroidHostTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test'
           --no-daemon --console=plain --max-workers=2
+      - name: Final app and core regression suites
+        run: >-
+          ./gradlew :core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest
+          --no-daemon --console=plain --max-workers=2
       - name: Compile affected targets
         run: ./gradlew :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: epub-focused-test-results
+          name: epub-final-test-results
           path: |
             app/build/test-results/**/*.xml
             core/build/test-results/**/*.xml

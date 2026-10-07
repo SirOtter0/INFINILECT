@@ -48,7 +48,9 @@ internal data class BoundedZipEntry(
     val localExtraLength: Int,
 )
 
-/** Manual ZIP32 structural validation before using the JDK ZipFile reader. */
+/** Manual ZIP32 structural validation before using the JDK ZipFile reader.
+ * EPUB opts into literal NFC/UTF-8 names and empty Deflated directories; CBZ keeps its policy.
+ */
 internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: BoundedZipLimits, epubCompatibility: Boolean = false): List<BoundedZipEntry> =
     RandomAccessFile(path.toFile(), "r").use { file ->
         val length = file.length()
@@ -68,6 +70,9 @@ internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: Bounded
         zipRequire(central + centralSize == length - tailSize + eocd && centralSize <= limits.archiveBytes)
         file.seek(central)
         val entries = ArrayList<BoundedZipEntry>(count)
+        fun aliasKey(value: String): String = if (epubCompatibility)
+            Normalizer.normalize(value.uppercase(Locale.ROOT).lowercase(Locale.ROOT), Normalizer.Form.NFC)
+        else value.lowercase(Locale.ROOT)
         val names = HashSet<String>()
         var expanded = 0L
         fun checkExtra(bytes: ByteArray) {
@@ -100,7 +105,7 @@ internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: Bounded
                 zipRequire(Normalizer.isNormalized(canonical, Normalizer.Form.NFC))
             } else zipRequire(canonical.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "._~-/" })
             zipRequire(canonical.split('/').all { it.isNotEmpty() && it != "." && it != ".." })
-            zipRequire(names.add(canonical.lowercase(Locale.ROOT)))
+            zipRequire(names.add(aliasKey(canonical)))
             val mode = (u32(h, 38) ushr 16).toInt() and 0xf000
             zipRequire(mode == 0 || mode == if (directory) 0x4000 else 0x8000) // reject symlinks/special files
             zipRequire(!directory || size == 0L && (epubCompatibility || compressed == 0L && method == 0))
@@ -140,9 +145,9 @@ internal suspend fun inspectBoundedZip(path: java.nio.file.Path, limits: Bounded
             }
         }
         zipRequire(expected == central)
-        val files = entries.filterNot { it.directory }.map { it.path.lowercase(Locale.ROOT) }.toSet()
+        val files = entries.filterNot { it.directory }.map { aliasKey(it.path) }.toSet()
         for (entry in entries) {
-            val parts = entry.path.lowercase(Locale.ROOT).split('/')
+            val parts = aliasKey(entry.path).split('/')
             for (i in 1 until parts.size) zipRequire(parts.take(i).joinToString("/") !in files)
         }
         entries

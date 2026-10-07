@@ -18,9 +18,9 @@ class EpubCompatibilityTest {
             try { action(doc) } finally { doc.close(); doc.close() }
         } finally { owner.close(); owner.awaitClosed(); assertTrue(payloads(root).isEmpty()); root.toFile().deleteRecursively() }
     }
-    private suspend fun rejected(fixture: EpubFixture, failure: EpubFailure = EpubFailure.INVALID) {
+    private suspend fun rejected(fixture: EpubFixture, failure: EpubFailure = EpubFailure.INVALID, limits: EpubLimits = EpubLimits()) {
         val root = Files.createTempDirectory("epub-compatibility-reject")
-        val owner = FileEpubPreparer(root)
+        val owner = FileEpubPreparer(root, limits)
         val content = EpubBytes(fixture.zip())
         try { assertEquals(failure, assertFailsWith<EpubException> { owner.prepare(epubPublication, epubResource, epubLoader(content)) }.failure) }
         finally { owner.close(); owner.awaitClosed(); assertTrue(content.closed); assertTrue(payloads(root).isEmpty()); root.toFile().deleteRecursively() }
@@ -54,7 +54,7 @@ class EpubCompatibilityTest {
         for ((name, href) in listOf("cover image.png" to "cover image.png", "cover image.png" to "cover%20image.png",
             "日本語.png" to "%E6%97%A5%E6%9C%AC%E8%AA%9E.png", "é.png" to "é.png", "a+b.png" to "a+b.png")) {
             val fixture = EpubFixture().apply {
-                entries["OPS/Images/$name"] = byteArrayOf(1, 2, 3) // resource resolution, not decoder acceptance
+                entries["OPS/Images/$name"] = developmentPng()
                 entries["OPS/Text/chapter.xhtml"] = entries.remove("OPS/chapter.xhtml")!!
                 opf { it.replace("href=\"chapter.xhtml\"", "href=\"Text/chapter.xhtml\"")
                     .replace("</manifest>", "<item id=\"image\" href=\"Images/$href\" media-type=\"image/png\"/></manifest>") }
@@ -66,7 +66,9 @@ class EpubCompatibilityTest {
                 val toc = parser.toc(doc)
                 val chapter = parser.chapter(doc, toc.single().target.path)
                 assertEquals(EpubEntryPath("OPS/Images/$name"), chapter.blocks.single { it.image != null }.image!!.path)
-                assertContentEquals(byteArrayOf(1, 2, 3), doc.openResource(EpubEntryPath("OPS/Images/$name")).readBytes(3))
+                val bytes = doc.openResource(EpubEntryPath("OPS/Images/$name")).readBytes(4096)
+                assertContentEquals(developmentPng(), bytes)
+                assertEquals(96 to 64, epubRasterDimensions(bytes, "image/png"))
             }
         }
     }
@@ -88,6 +90,7 @@ class EpubCompatibilityTest {
             assertEquals(1, doc.spine.size)
         }
         rejected(epub2Fixture().apply { deflate = true; entries["OPS/Bad/"] = byteArrayOf(1) })
+        rejected(epub2Fixture().apply { deflate = true; entries["OPS/"] = byteArrayOf() }, EpubFailure.LIMIT, EpubLimits(entries = 5))
     }
     @Test fun missingMalformedAndWrongNcxAreControlledPreparationFailures() = runBlocking<Unit> {
         rejected(epub2Fixture().apply { entries.remove("OPS/Nav/toc.ncx") })
@@ -115,8 +118,23 @@ class EpubCompatibilityTest {
     @Test fun normalizationAliasesCannotAuthorizeAnotherPayload() = runBlocking<Unit> {
         rejected(EpubFixture().apply { entries["OPS/é.xhtml"] = byteArrayOf(1); entries["OPS/e\u0301.xhtml"] = byteArrayOf(2) })
         rejected(EpubFixture().apply { entries["OPS/é.xhtml"] = byteArrayOf(1); entries["OPS/É.xhtml"] = byteArrayOf(2) })
+        rejected(EpubFixture().apply { entries["OPS/straße.xhtml"] = byteArrayOf(1); entries["OPS/strasse.xhtml"] = byteArrayOf(2) })
         rejected(EpubFixture().apply { entries["OPS/%20.xhtml"] = byteArrayOf(2) })
         rejected(EpubFixture().apply { opf { it.replace("</manifest>", "<item id=\"alias\" href=\"%63hapter.xhtml\" media-type=\"application/xhtml+xml\"/></manifest>") } })
+    }
+    @Test fun ncxTraversalPropagatesCancellationAndOnlyAuthorizesSpineTargets() = runBlocking<Unit> {
+        prepared(epub2Fixture()) { doc ->
+            val root = parseEpubXml(ncx(point("n", "Chapter", "../chapter.xhtml")).encodeToByteArray(), EpubLimits(), null)
+            val cancelled = Job().apply { cancel() }
+            assertFailsWith<CancellationException> { readEpubNcx(root, EpubEntryPath("OPS/Nav/toc.ncx"), doc.manifest, doc.spine, cancelled) }
+        }
+        rejected(epub2Fixture().apply { entries["OPS/Nav/toc.ncx"] = ncx(point("n", "Not a spine target", "toc.ncx")).encodeToByteArray() })
+    }
+    @Test fun epubDetectionStillRequiresExactFirstStoredMimetype() = runBlocking<Unit> {
+        rejected(epub2Fixture().apply { entries["mimetype"] = "application/epub+zip\n".encodeToByteArray() })
+        rejected(epub2Fixture().apply { entries.remove("mimetype") })
+        rejected(epub2Fixture().apply { deflate = true; compressedMimetype = true })
+        rejected(epub2Fixture().apply { val mime = entries.remove("mimetype")!!; entries["mimetype"] = mime })
     }
     @Test fun epub3StillUsesXhtmlNavigationAndSameSemanticChapter() = runBlocking<Unit> {
         prepared(EpubFixture()) { doc ->
