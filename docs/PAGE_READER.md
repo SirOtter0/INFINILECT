@@ -577,3 +577,27 @@ pairing offsets, source double-page splitting/joining, crop/margin removal, brig
 contrast/color filters/enhancement/image processing, new Webtoon behavior, OCR,
 translation, panel detection and guided view. CBZ preparation, import ownership,
 Library/History/Search, EPUB/PDF/TEXT, acquisition and storage identity are unchanged.
+
+### Automated PR #23 verification
+
+Production/test revision `e4b02795e31a72b9d380b8dbdebbb0061e7f1bb0` passed
+all app regressions: **906 Desktop + 851 Android-host tests**, zero failures,
+errors or skips. PageReader-focused coverage comprises 147 Desktop cases within
+that Desktop run and a separate 125-case Android-host focused run. This includes
+all existing PR #21 assertions plus grouping, both placement directions, complete
+spread progress/failure handshakes, mode/reopen behavior, rapid/obsolete work,
+conversion/decode ownership, persisted preferences, real PNG/JPEG sampling and
+headless paired layout/drag/zoom/pinch/resize checks.
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+Both application compilation targets passed. The final command reused the current
+successful full Desktop result and ran the full Android-host suite. Core is unchanged,
+so unrelated core suites were not repeated. XML totals were checked independently;
+`git diff --check`, the final scope review and signing-secret/generated-artifact scan
+passed. Headless native-library setup was external to the repository; no temporary
+CI, signing configuration, dependency or generated acceptance artifact was added.
+The subsequent commit only records this evidence. Physical Android and native
+Desktop graphical acceptance remain pending.
