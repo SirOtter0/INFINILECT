@@ -230,9 +230,10 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         SearchState.Idle -> null
     }
     BoxWithConstraints(modifier.fillMaxSize().padding(24.dp)) {
+        val headerMaxHeight = maxHeight / 2
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Long headers/source rows may scroll, but can never consume the result viewport.
-            Column(Modifier.fillMaxWidth().heightIn(max = maxHeight / 2)
+            Column(Modifier.fillMaxWidth().heightIn(max = headerMaxHeight)
                 .verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("INFINILECT", style = MaterialTheme.typography.h4)
                 Text("Open knowledge. Infinite reading.")
