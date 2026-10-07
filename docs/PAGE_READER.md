@@ -324,3 +324,31 @@ Desktop graphical acceptance is also pending: mouse taps/buttons/settings, rapid
 navigation and Back, resize short/wide windows, restart progress/preferences and
 native Windows/Linux/Wayland/niri presentation. Headless Compose interaction/layout
 tests and successful compilation do not establish physical or native-window acceptance.
+
+### Automated verification for PR #21
+
+[Focused run](https://github.com/SirOtter0/INFINILECT/actions/runs/37580430095):
+64 Desktop cases (2m31s), 59 Android host cases (1m20s), followed by successful
+Android/Desktop application compilation (27s). This includes all 22 existing
+PageReaderController cases, eight interaction/progress cases, five headless Compose
+layout/input cases on Desktop, seven preference-writer cases, 16 file-preference
+cases and six real-file progress/durability cases. Each test target used:
+`--tests '*PageReader*Test' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --tests '*PageProgressDurabilityTest'`.
+
+[Final affected-module run](https://github.com/SirOtter0/INFINILECT/actions/runs/37580953953)
+at `abb245ef4f4a18be81acd25876e8a393cb05ac12` ran all `app` tests: 837 Desktop
+and 795 Android host, zero failures/errors/skips, plus both application targets.
+`BUILD SUCCESSFUL in 2m 38s`; all 36 tasks executed. Production/tests are identical
+to the final PR tree; subsequent changes only record evidence and remove the
+temporary workflow. No repository-wide clean matrix, signing operation or APK
+build was performed for this PR.
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+XML counts were independently checked after downloading artifact `11463938768`
+(seven-day retention), ZIP SHA-256
+`b8ee3090f89edbef78f71b00a2ef268b1d0598df6a7a491dc0d1315048d93435`.
+Temporary feature-specific automation is removed from the final tree. Compilation
+and host/headless checks do not replace the physical/graphical checklist above.
