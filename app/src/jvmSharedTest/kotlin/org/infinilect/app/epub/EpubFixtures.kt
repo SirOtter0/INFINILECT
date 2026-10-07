@@ -14,6 +14,7 @@ import org.infinilect.core.*
 internal class EpubFixture(val packagePath: String = "OPS/package.opf") {
     val entries = linkedMapOf<String, ByteArray>()
     var deflate = false
+    var compressedMimetype = false // Negative OCF fixture; ordinary fixtures keep the first entry STORED.
     init {
         entries["mimetype"] = "application/epub+zip".encodeToByteArray()
         entries["META-INF/container.xml"] = """
@@ -58,7 +59,7 @@ internal class EpubFixture(val packagePath: String = "OPS/package.opf") {
             for ((name, bytes) in entries) {
                 val entry = ZipEntry(name)
                 entry.time = 1_700_000_000_000L
-                if (!deflate || name == "mimetype") {
+                if (!deflate || name == "mimetype" && !compressedMimetype) {
                     entry.method = ZipEntry.STORED
                     entry.size = bytes.size.toLong()
                     entry.compressedSize = entry.size

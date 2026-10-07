@@ -122,7 +122,7 @@ class FileEpubPreparerTest {
     }
     @Test fun zipTraversalAbsoluteBackslashAndEncodedNamesAreRejected() = runBlocking<Unit> {
         for (path in listOf("../evil", "/evil", "C:/evil", "OPS\\evil", "OPS/./evil", "OPS/../evil", "OPS//evil",
-            "OPS/%2e%2e/evil", "OPS/%252e%252e/evil", "OPS/é.xhtml")) {
+            "OPS/%2e%2e/evil", "OPS/%252e%252e/evil")) {
             invalidFixture { entries[path] = byteArrayOf(42) }
         }
     }

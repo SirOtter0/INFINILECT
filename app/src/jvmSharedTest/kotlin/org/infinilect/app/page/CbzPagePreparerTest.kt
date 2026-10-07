@@ -62,6 +62,24 @@ class CbzPagePreparerTest {
             }
         }
     }
+    @Test fun epubCompatibilityDoesNotRelaxCbzNamesOrDirectoryPolicy() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("cbz-policy-regression")
+        val owner = CbzPagePreparer(root)
+        try {
+            for (name in listOf("page one.png", "é.png", "../page.png", "page%20one.png"))
+                assertFails { owner.prepare(publication(), loader(archive(listOf(name to png)))) }
+            val compressedDirectory = ByteArrayOutputStream().use { out ->
+                ZipOutputStream(out).use { zip ->
+                    zip.putNextEntry(ZipEntry("pages/")); zip.closeEntry()
+                    zip.putNextEntry(ZipEntry("pages/1.png")); zip.write(png); zip.closeEntry()
+                }
+                out.toByteArray()
+            }
+            assertFails { owner.prepare(publication(), loader(compressedDirectory)) }
+            val valid = owner.prepare(publication(), loader(archive(listOf("pages/" to byteArrayOf(), "pages/1.png" to png))))
+            assertEquals(1, valid.pages.size); valid.close()
+        } finally { owner.close(); owner.awaitClosed(); root.toFile().deleteRecursively() }
+    }
     @Test fun preparesValidatedPngJpegPagesInNaturalPathOrderAndPageReaderCanOpenThem() = runBlocking<Unit> {
         val bytes = archive(listOf("pages/10.jpg" to jpeg, "pages/2.png" to png2, "pages/1.png" to png,
             "extras/nested/page4.png" to pngNested, "pages/03.png" to pngZeroPadded, "pages/3.png" to png3))

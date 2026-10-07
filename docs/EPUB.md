@@ -1,4 +1,4 @@
-# Bounded EPUB foundation — PR #13
+# Bounded EPUB preparation — EPUB2/EPUB3 subset
 
 PR #13 introduced **structural EPUB3 preparation, not a renderer**. These validation
 and resource-ownership guarantees remain unchanged. Merged PR #15 added a separate
@@ -27,8 +27,8 @@ sequential local handle for a manifest-owned entry; it cannot fetch a URL or
 expose a filesystem/ZIP/Readium object. The manifest and ordered spine retain media
 types, linear reading order and the navigation item's identity. Unicode metadata
 is preserved. The package identifier never replaces source-scoped PublicationId
-or becomes a cache revision. Identifier/title/language/modified metadata are required by this
-supported package subset; optional creators/rights are retained without inferring
+or becomes a cache revision. Identifier/title/language metadata are required. EPUB3 also requires
+`dcterms:modified`; EPUB2 has no fabricated modification timestamp (`modified=null`); optional creators/rights are retained without inferring
 permissions.
 
 `app/commonMain` has a small parallel `EpubPreparer` seam, owned on both platforms.
@@ -49,7 +49,7 @@ registry is added. A structurally valid document still needs renderer checks.
 | XML depth / element count / attributes per element | 32 / 20,000 / 32 |
 | Per-node text / attribute value | 8,192 UTF-16 units |
 | Manifest / spine entries | 256 / 128 |
-| Canonical path length / components | 512 ASCII characters / 32 |
+| Canonical path length / components | 512 UTF-16 units / 32 (ZIP name still ≤513 UTF-8 bytes) |
 | Archive/entry comments and extra fields | 1,024 bytes each |
 | Acquisition and decompression buffer | 8 KiB |
 | Serialized preparation deadline | 60 seconds, including waiting for the owner |
@@ -78,16 +78,44 @@ to 8 KiB even when a caller supplies a larger buffer.
   flags, inconsistent records, duplicate/case aliases and symlink/special modes.
 - Require the first local entry to be uncompressed `mimetype`, without extra
   fields, containing exactly `application/epub+zip`.
-- Never extract entries. ZIP names are canonical portable ASCII paths; reject
-  absolute paths, backslashes, empty/dot segments, schemes, percent encoding,
-  query/fragment ambiguity and alternate encoded ZIP names. This intentionally
-  excludes legitimate EPUB filenames requiring non-ASCII/URI encoding support.
-  Package-relative `.`/`..` references may normalize **within** the container;
-  references escaping its root are rejected.
-- One `META-INF/container.xml` rootfile, EPUB3 `version="3.0"` package, required
-  metadata/manifest/spine and exactly one XHTML navigation item. Reject duplicate
-  package IDs/manifest paths, missing entries/idrefs, unsupported fallback/media
-  overlay, and non-XHTML spine items.
+- Never extract entries. Canonical ZIP paths preserve literal spaces and valid NFC
+  UTF-8 names, case sensitively. Reject absolute paths, backslashes, empty/dot
+  entry segments, controls, private-use/noncharacter scalars, schemes, raw `%`,
+  query/fragment ambiguity and alternate encoded ZIP names. Reject Unicode
+  normalization and conservative case aliases (including expanding case mappings).
+  Non-NFC names are deliberately unsupported rather than normalized onto a payload.
+- URI references are parsed as relative paths, with literal-space compatibility
+  and strict UTF-8 percent decoding **once per segment**. `+` stays `+`.
+  `Images/cover image.jpg` and `Images/cover%20image.jpg` resolve to the same literal
+  entry. OPF/nav/NCX/XHTML references use their containing document's directory;
+  container rootfile references use the archive root. Literal `.`/`..` may resolve
+  within the archive; root escape, encoded dot segments, encoded separators,
+  decoded `%`/double encoding, malformed escapes, authorities, schemes and queries
+  are rejected. Manifest resources must exist as files and be unique after
+  resolution; links/resources cannot authorize entries absent from the manifest.
+  TOC targets must additionally be spine documents. Fragments decode once and
+  retain the existing bounded ASCII XML-ID subset (128 units); no external launch.
+- Ordinary empty ZIP directory entries may be STORED or DEFLATED, including valid
+  data descriptors. They count toward 512 entries and receive the same structural,
+  size and CRC verification, but never become resources, spine items or descendant
+  authorization. Directories with payload bytes are rejected. **CBZ retains its
+  existing ASCII-name and STORED-empty-directory policy**; this is an EPUB opt-in.
+- One `META-INF/container.xml` rootfile. EPUB3 keeps OPF `version="3.0"`, required
+  metadata/manifest/spine and exactly one XHTML navigation item. EPUB2 supports OPF
+  `version="2.0"` (the version value used by EPUB 2.0/2.0.1), manifest and XHTML
+  spine with `linear` semantics. Its required `spine toc` must identify a manifest
+  `application/x-dtbncx+xml` resource. Reject duplicate IDs/paths, missing entries,
+  unsupported fallback/media overlays and non-XHTML spine items.
+- EPUB2 NCX `version="2005-1"`/namespace, `navMap`, `navPoint`, `navLabel/text` and
+  `content src` normalize to the existing owned TOC entries, preserving nested
+  document order. Spine order alone determines reading order; `playOrder` does
+  not reorder it. Iterative NCX traversal enforces 256 navPoints, 16 levels,
+  512 UTF-16-unit labels, 640-unit references (path component ≤512), within the
+  unchanged 1 MiB XML and 32/20,000 XML depth/node limits. Missing, malformed,
+  empty, over-limit or unauthorized NCX fails preparation with a controlled
+  INVALID/LIMIT result; no incomplete import is published. EPUB2 requires NCX,
+  so this subset does not silently discard a broken TOC. NCX without a DOCTYPE
+  is supported; DTD/entity-bearing NCX remains unsupported by the passive policy.
 - Strict UTF-8 XML1.0 only. Namespace-aware SAX with required external-entity
   flags and lexical DTD handler; reject DTD/entity declarations, external
   resolution, processing instructions, XInclude and `xml:base`. Setup fails
@@ -142,7 +170,12 @@ No real source request is needed by this synthetic fixture suite.
 
 ## Platform/API evidence and future work
 
-Official sources inspected on 2026-10-04:
+Official compatibility sources inspected on 2026-10-07:
+
+- [IDPF OPF 2.0.1](https://idpf.org/epub/20/spec/OPF_2.0.1_draft.htm) — required
+  NCX/spine toc, manifest and reading order; NCX without DOCTYPE may omit playOrder.
+- [RFC3986](https://www.rfc-editor.org/rfc/rfc3986) — relative paths, percent
+  encoding and dot-segment resolution; the reader accepts a conservative subset.
 
 - [W3C EPUB 3.3](https://www.w3.org/TR/epub-33/) — OCF ZIP/container/package,
   manifest/spine and navigation requirements; the implementation is a restricted
@@ -165,3 +198,74 @@ belongs behind an Android-specific adapter, never in core.
 
 See [ADR 0019](adr/0019-bounded-epub-foundation.md) and
 [verification](VERIFICATION.md). No v0.0.1 completion is claimed.
+
+## PR #22 durable imports and acceptance
+
+The existing content-validated local import path is unchanged: validation succeeds
+before an owned import is published, SHA-256 identity/deduplication and Library
+insertion are unchanged, and no original picker URI/path is retained. NCX metadata
+never enters publication/progress identity. Existing EPUB3 locators keep their
+literal canonical spine paths and element/code-point positions; no progress schema
+migration or reader/controller redesign. Synthetic deterministic ZIP fixtures are
+original project content generated in tests; no third-party books are committed.
+
+### User-reported physical Android acceptance
+
+USER-REPORTED PHYSICAL ANDROID: The user reports that the PR #22 development APK
+installed successfully and that they manually tested every supplied positive EPUB
+compatibility artifact on a physical Android device. The user reports that none
+of the tested EPUBs produced an error. The four supplied fixtures covered EPUB3
+regression, EPUB2 + NCX, space/encoded-space resource paths, and explicit ZIP
+directory-entry handling. This is user-reported physical device evidence;
+individual checklist observations not explicitly reported by the user are not
+claimed.
+
+The tested corpus was `PR22-EPUB3-regression.epub`, `PR22-EPUB2-NCX.epub`,
+`PR22-EPUB2-spaces.epub`, and `PR22-EPUB2-directories.epub`; no combined fixture
+was produced. The development APK was built from reviewed HEAD
+`456a80405c19365ab2ebc355ac3b56c9e35e2cd8`.
+
+Unclaimed individual manual observations include exact NCX UI hierarchy and
+spine-vs-NCX progression, individual image correctness, process-death progress
+restoration, original-file deletion/reopening, Library/History semantics,
+TXT/CBZ/PDF regression, resource/memory measurements and performance/FPS.
+Their automated coverage, where present, remains separate from physical evidence.
+Native Desktop graphical acceptance (Windows/Linux/Wayland/niri) remains pending.
+
+Not full EPUB2/EPUB3 conformance: UTF-16 XML, DTD/entities, DTBook/non-XHTML spine,
+pageList/navList/audio, fallbacks, SVG rendering, DRM/font obfuscation, signatures,
+script/forms/media execution, remote resources and browser CSS remain unsupported.
+No dependency, Android permission, acquisition policy or signing change.
+
+## PR #22 automated verification
+
+[Final CI run](https://github.com/SirOtter0/INFINILECT/actions/runs/37640027762)
+verified production/test revision `7cc5284d9266c4dbb5710ec0050dc9f424e4a9e2`
+on 2026-10-07. Reviewed HEAD `456a80405c19365ab2ebc355ac3b56c9e35e2cd8`
+differs only by documentation and temporary-CI cleanup; the subsequent physical
+acceptance documentation update also leaves that production/test tree unchanged.
+Original generated fixtures require no network/books.
+
+Focused command (EPUB/ZIP/CBZ/import/progress), then full app/core regression:
+
+```sh
+./gradlew :core:jvmTest --tests '*Epub*Test' :core:testAndroidHostTest --tests '*Epub*Test' :app:desktopTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test' :app:testAndroidHostTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test' --no-daemon --console=plain --max-workers=2
+./gradlew :core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest --no-daemon --console=plain --max-workers=2
+./gradlew :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+| Suite | Focused tests | Final regression tests |
+| --- | ---: | ---: |
+| app Desktop | 271 | 872 |
+| app Android-host | 262 | 827 |
+| core JVM | 11 | 59 |
+| core Android-host | 11 | 59 |
+
+All final suites: **zero failures, errors and skipped tests** (counts verified from
+JUnit XML). Both Android/Desktop Kotlin compilation tasks passed. CBZ regressions,
+malformed import non-publication, original deletion/cache clearing/full owner
+restart, deduplication, Library/History and EPUB2/EPUB3 progress restore passed.
+`git diff --check` and tracked secret/generated-artifact scans passed. No dependency
+or signing change. Temporary per-branch verification workflow is removed from the
+final diff; the run/logs and this summary preserve evidence. These are host/compile
+checks, **not physical Android or native Desktop graphical acceptance**.

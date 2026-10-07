@@ -36,7 +36,7 @@ cleanup. No EPUB progress is persisted; a future locator must be EPUB-specific.
 
 32 MiB archive / 64 MiB expanded / 8 MiB per-entry / 512-entry / 100:1 bounds,
 1 MiB XML and finite parser/manifest/spine limits make preparation cost explicit.
-The current subset rejects legitimate features including encoded/non-ASCII paths,
+The initial PR #13 subset rejected legitimate features including encoded/non-ASCII paths,
 multiple renditions, DTDs, protected fonts, media overlays and fallback chains.
 CSS/SVG are inert, not sanitized for rendering. CRC is corruption detection, not
 source authorization or a fabricated revision. Full validation scans the archive
@@ -45,3 +45,12 @@ owner are supported. Physical Android provider/engine verification is still need
 
 This adds a new boundary without rewriting ADR 0017 or enabling Gutenberg
 acquisition. [Exact policy, limits and evidence](../EPUB.md).
+
+## Compatibility follow-up — PR #22
+
+The same preparation/document/passive-reader boundary now supports bounded OPF2
+spine/NCX navigation, literal-space/single-decoded URI references, NFC UTF-8 names
+and verified empty STORED/DEFLATED directory entries for EPUB. No archive/resource
+ceiling, publication/progress identity, import ownership or CBZ policy is relaxed.
+Missing/malformed NCX remains a controlled preparation failure. DTD/entities and
+active/network content remain unsupported. See the updated [exact subset](../EPUB.md).

@@ -1,9 +1,9 @@
-# Passive EPUB reader — bounded EPUB3 subset
+# Passive EPUB reader — bounded EPUB2/EPUB3 subset
 
 The existing [EPUB preparation](EPUB.md) proves structure, ownership and bounded
 local resource access. Merged PR #15 added the initial reader; Draft PR #16 improves
 its session presentation and bounded local media. This reader adds a separate **passive presentation** boundary.
-It supports a narrow EPUB3/XHTML subset on Android and Desktop with the same
+It supports a narrow EPUB2/EPUB3 XHTML subset on Android and Desktop with the same
 Compose UI. It does not claim generic EPUB compatibility or a completed v0.0.1.
 
 ## Acquisition status and a reproducible development route
@@ -188,9 +188,10 @@ unsupported. Both provider bounds must match preflight before pixel allocation.
 Encoded bytes and decoded pixels are bounded independently. The decoder is not an
 integrity/authenticity or complete image-conformance proof.
 
-Image references cannot contain dot/dot-dot segments, encoding, query or fragment
-aliases, schemes/absolute/network-relative paths, or undeclared resources. Other
-existing relative EPUB link normalization stays unchanged. The controller independently
+Image references use the bounded [EPUB URI resolver](EPUB.md): safe relative
+parents and single UTF-8 percent decoding are supported; root escape, encoded
+separators/dot segments, schemes, query and fragments remain rejected. Undeclared
+resources remain rejected. The controller independently
 checks exact path and MIME against the manifest, rejects unsupported types before
 opening, verifies declared byte size, and always closes resource handles. Wrong MIME,
 corruption, oversized data or decoder failure produces alt text, not a source request
@@ -379,3 +380,23 @@ and Codex did not perform Android device testing.
 - Rapid navigation/settings/Back must not publish stale content. No graphical
   execution is claimed by host codec tests or distributable construction. The known
   unrelated niri/Wayland outer-window sizing issue remains outside this PR.
+
+## EPUB2 compatibility (PR #22)
+
+EPUB2 NCX and EPUB3 XHTML nav both produce the same owned `EpubTocEntry` list.
+The existing TOC UI, ordered-spine chapter navigation and semantic progress path
+are reused without a second reader. Missing/malformed NCX is a controlled preparation
+failure, not an empty-successful TOC. Valid literal-space/percent-encoded-space and
+NFC UTF-8 resource names resolve to manifest-owned entries; image references may
+use safe document-relative parent segments. XML/TOC/chapter/image ownership limits
+and passive/no-network presentation remain unchanged. See [preparation policy](EPUB.md)
+for exact supported subset, bounds, URI rules and physical acceptance checklist.
+
+### User-reported physical Android acceptance
+
+The user reports successful installation of the PR #22 development APK and
+manual testing of all four supplied positive EPUB fixtures without reported
+errors. See [the exact physical evidence and unclaimed checklist observations](EPUB.md#user-reported-physical-android-acceptance).
+This does not claim individual TOC/order/image/progress/import/Library/History or
+TXT/CBZ/PDF manual observations. Automated evidence remains separate, and native
+Desktop graphical acceptance (Windows/Linux/Wayland/niri) remains pending.
