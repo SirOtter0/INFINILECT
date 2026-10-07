@@ -108,7 +108,7 @@ class EpubCompatibilityTest {
         try {
             Files.write(path, bytes)
             assertEquals(org.infinilect.app.zip.ZipFailure.INVALID, assertFailsWith<org.infinilect.app.zip.BoundedZipException> {
-                org.infinilect.app.zip.inspectBoundedZip(path, EpubLimits().zipLimits(), epubCompatibility = true)
+                org.infinilect.app.zip.inspectBoundedZip(path, org.infinilect.app.zip.BoundedZipLimits(), epubCompatibility = true)
             }.failure)
         } finally { Files.deleteIfExists(path) }
     }
