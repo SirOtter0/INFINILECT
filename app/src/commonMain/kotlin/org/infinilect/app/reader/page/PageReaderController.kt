@@ -27,6 +27,8 @@ internal data class PageReaderState(
     val ticket: Long = 0,
     val frames: Map<Int, PageFrame> = emptyMap(),
     val controlsVisible: Boolean = false,
+    val transition: PageTransition? = null,
+    val navigationFailed: Boolean = false,
 )
 
 /** UI-thread commands and immutable state. One serialized acquisition/decode worker,
@@ -76,11 +78,96 @@ internal class PageReaderController(
     }
     fun navigate(index: Int) {
         if (closed || index !in document.pages.indices) return
-        mutableState.value = state.value.copy(position = PagePosition(index), ticket = state.value.ticket + 1)
+        mutableState.value = state.value.copy(position = PagePosition(index), ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
         loadWindow(index)
     }
-    fun next() = navigate(state.value.position.index + 1)
-    fun previous() = navigate(state.value.position.index - 1)
+    fun next() = turn(1)
+    fun previous() = turn(-1)
+    private fun turn(direction: Int) {
+        if (closed) return
+        val s = state.value
+        if (!pagedMode(s.settings.mode)) { navigate(s.position.index + direction); return }
+        // Coalesce rapid requests into one latest target, never an animation queue.
+        val old = s.transition
+        val base = old?.takeIf { it.phase != PageTransitionPhase.RETURNING }?.target ?: s.position.index
+        val target = base + direction
+        if (target !in document.pages.indices) return
+        val side = pageIncomingSide(s.position.index, target, s.settings.mode)
+        val offset = old?.offset?.takeIf { side == 0 || it * side <= 0 } ?: 0f
+        val ticket = s.ticket + 1
+        mutableState.value = s.copy(ticket = ticket, navigationFailed = false,
+            transition = PageTransition(ticket, s.position.index, target, offset,
+                if (target == s.position.index) PageTransitionPhase.RETURNING else PageTransitionPhase.WAITING))
+        loadWindow(s.position.index, visible = listOf(target))
+    }
+    fun beginDrag(zoom: Float, sourceStamp: Long?): Long? {
+        if (closed || zoom != 1f || !pagedMode(state.value.settings.mode)) return null
+        val s = state.value
+        val source = s.frames[s.position.index] as? PageFrame.Ready ?: return null
+        if (sourceStamp != source.stamp) return null
+        val ticket = s.ticket + 1
+        val offset = s.transition?.offset ?: 0f
+        val target = pageDragTarget(s.position.index, offset, s.settings.mode, document.pages.size)
+        mutableState.value = s.copy(ticket = ticket, navigationFailed = false,
+            transition = PageTransition(ticket, s.position.index, target, offset, PageTransitionPhase.DRAGGING))
+        loadWindow(s.position.index, visible = listOf(target))
+        return ticket
+    }
+    fun drag(ticket: Long, delta: Float) {
+        val t = state.value.transition ?: return
+        if (closed || t.ticket != ticket || t.phase != PageTransitionPhase.DRAGGING || !delta.isFinite()) return
+        val offset = (t.offset + delta).coerceIn(-1f, 1f)
+        val target = pageDragTarget(t.from, offset, state.value.settings.mode, document.pages.size)
+        mutableState.value = state.value.copy(transition = t.copy(target = target, offset = if (target == t.from) 0f else offset))
+        loadWindow(t.from, visible = listOf(target))
+    }
+    fun releaseDrag(ticket: Long, velocity: Float) {
+        val t = state.value.transition ?: return
+        if (closed || t.ticket != ticket || t.phase != PageTransitionPhase.DRAGGING) return
+        mutableState.value = state.value.copy(transition = t.copy(phase =
+            if (t.target != t.from && pageDragCompletes(t.offset, velocity)) PageTransitionPhase.WAITING else PageTransitionPhase.RETURNING))
+    }
+    /** Only UI conversion success may arm a settle; decoder readiness/prefetch is insufficient. */
+    fun transitionReady(ticket: Long, target: Int, stamp: Long) {
+        val t = state.value.transition ?: return
+        if (closed || t.ticket != ticket || t.target != target || t.phase != PageTransitionPhase.WAITING) return
+        val frame = state.value.frames[target] as? PageFrame.Ready ?: return
+        if (frame.stamp == stamp) mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.SETTLING, targetStamp = stamp))
+    }
+    fun returnTransition(ticket: Long, failed: Boolean = false) {
+        val t = state.value.transition ?: return
+        if (closed || t.ticket != ticket) return
+        mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.RETURNING, targetStamp = null), navigationFailed = failed)
+    }
+    fun transitionOffset(ticket: Long, offset: Float) {
+        val t = state.value.transition ?: return
+        if (closed || t.ticket != ticket || !offset.isFinite() ||
+            (t.phase != PageTransitionPhase.SETTLING && t.phase != PageTransitionPhase.RETURNING)) return
+        mutableState.value = state.value.copy(transition = t.copy(offset = offset.coerceIn(-1f, 1f)))
+    }
+    fun finishTransition(ticket: Long) {
+        val s = state.value
+        val t = s.transition ?: return
+        if (closed || t.ticket != ticket) return
+        val target = when (t.phase) {
+            PageTransitionPhase.SETTLING -> {
+                val frame = s.frames[t.target] as? PageFrame.Ready ?: return
+                val goal = -pageIncomingSide(t.from, t.target, s.settings.mode).toFloat()
+                if (frame.stamp != t.targetStamp || kotlin.math.abs(t.offset - goal) > .001f) return
+                t.target
+            }
+            PageTransitionPhase.RETURNING -> { if (kotlin.math.abs(t.offset) > .001f) return; t.from }
+            else -> return
+        }
+        // Establish logical position only at rest. The new composed frame then acknowledges progress.
+        mutableState.value = s.copy(position = if (target == t.from) s.position else PagePosition(target), ticket = s.ticket + 1, transition = null)
+        loadWindow(target)
+    }
+    fun cancelTransition() {
+        if (closed || state.value.transition == null) return
+        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, transition = null)
+        loadWindow(state.value.position.index)
+    }
     fun toggleControls() {
         if (!closed) mutableState.value = state.value.copy(controlsVisible = !state.value.controlsVisible)
     }
@@ -96,7 +183,7 @@ internal class PageReaderController(
     /** Acknowledge an actually composed bitmap, not a navigation request or prefetch.
      * The UI's conversion, obsolete callbacks and closed owners cannot advance progress. */
     fun presented(ticket: Long, pageIndex: Int, stamp: Long) {
-        if (closed || ticket != state.value.ticket || pageIndex != state.value.position.index) return
+        if (closed || state.value.transition != null || ticket != state.value.ticket || pageIndex != state.value.position.index) return
         val frame = state.value.frames[pageIndex] as? PageFrame.Ready ?: return
         if (frame.stamp == stamp) changedPosition()
     }
@@ -114,18 +201,19 @@ internal class PageReaderController(
         preferences?.submit(settingsLease, settings)
         // Invalidate callbacks from the old presentation, but retain semantic position.
         flush()
-        mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1)
+        mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1, transition = null)
         loadWindow(state.value.position.index, force = true)
     }
     /** A resized viewport restores the same semantic position and retires old layout callbacks. */
     fun presentationChanged() {
         if (closed) return
         flush()
-        mutableState.value = state.value.copy(ticket = state.value.ticket + 1)
+        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, transition = null)
+        loadWindow(state.value.position.index)
     }
     fun report(ticket: Long, pageIndex: Int, fraction: Double, visiblePages: List<Int> = emptyList()) {
         if (closed || ticket != state.value.ticket || pageIndex !in document.pages.indices || !fraction.isFinite()) return
-        mutableState.value = state.value.copy(position = PagePosition(pageIndex, fraction.coerceIn(0.0, 1.0)))
+        mutableState.value = state.value.copy(position = PagePosition(pageIndex, fraction.coerceIn(0.0, 1.0)), transition = null)
         loadWindow(pageIndex, visible = visiblePages)
     }
     /** Initial/restored viewport can request frames without claiming a new reading position. */
@@ -193,7 +281,7 @@ internal class PageReaderController(
     fun close() {
         if (closed) return
         closed = true; generation++; request?.cancel(); flush(); window = emptyList()
-        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, frames = emptyMap())
+        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, frames = emptyMap(), transition = null)
         document.close()
     }
 }

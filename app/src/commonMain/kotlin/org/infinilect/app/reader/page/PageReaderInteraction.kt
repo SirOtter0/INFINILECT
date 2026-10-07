@@ -13,10 +13,3 @@ internal fun pageTapAction(fraction: Float, mode: PageReadingMode): PageTapActio
     val next = if (mode == PageReadingMode.PAGED_RTL) fraction < .3f else fraction > .7f
     return if (next) PageTapAction.NEXT else PageTapAction.PREVIOUS
 }
-
-/** Incoming-page offset sign. Only page indices are retained, never outgoing images. */
-internal fun pageTransitionSign(previous: Int?, current: Int, mode: PageReadingMode): Int {
-    if (previous == null || previous == current) return 0
-    val logical = if (current > previous) 1 else -1
-    return if (mode == PageReadingMode.PAGED_RTL) -logical else logical
-}

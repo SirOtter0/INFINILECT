@@ -292,29 +292,71 @@ The earlier vertical/webtoon and zoom/reset entries are retained, not added or e
 by this PR. Continuous modes retain scrolling and center-tap chrome; side taps do not
 request paged navigation in those modes. Chrome visibility and animation are transient.
 
-A successful incoming page receives a 140ms subtle fade/3.5%-width slide. The logical
-change and reading direction determine the slide sign. Loading/errors never animate
-as a success. A newer frame cancels the previous animation rather than queuing it.
-Only the incoming image is drawn; animation retains the last successful index, not
-an outgoing raster/bitmap. The existing three-frame controller/conversion working
-set and serialized decode mutex are unchanged. Superseded tickets/stamps and closed
-readers cannot acknowledge progress; callbacks use the existing periodic/Back-flush
-writer, not a new progress store. No native decode hard-timeout claim is added.
+Paged LTR/RTL now uses one spatial transition for taps and the existing swipe.
+At 1x, a one-finger horizontal drag moves the current page continuously; its neighbor
+is exactly one viewport away and receives the same displacement. Next enters from
+the right in LTR, from the left in RTL; Previous reverses those directions. Tap zones
+and logical buttons request an automatic version of the same movement. Center tap
+still only toggles chrome. Vertical/Webtoon scrolling is unchanged.
 
-No new swipe, zoom/pan, continuous/double-page/webtoon mode, cropping, filters,
+Release completes after 25% of a viewport, or a deliberate fling of at least 5%
+with agreeing velocity of at least 0.9 viewports/second. Otherwise it returns.
+A 180ms position-only settle starts at the exact release offset; there is no fade,
+incoming-only jitter, artificial loading delay or animation queue. Rapid requests
+coalesce into one latest target (intermediate pages may be skipped); tickets retire
+older animations/decodes. Resize, mode changes and Back invalidate the transition.
+Zoomed gestures pan/zoom; a multi-pointer gesture cannot turn a page. Explicit
+navigation buttons/taps reset zoom as before.
+
+The controller retains its existing maximum of three raster slots. During a normal
+transition these contain current and adjacent pages; a rapid request prioritizes
+current and latest target, with at most one other prefetch slot. The UI reuses its
+same stamp-filtered conversion map (at most three bitmaps); the two artwork layers
+borrow those references without copying pixels or adding a cache. Transition state
+contains indices, ticket, stamp and normalized offset only. After settling only the
+current artwork layer remains; an outgoing page may remain as ordinary bounded
+adjacent prefetch, never as a separate transition owner. Cancelled conversions and
+animation jobs release their references; platform bitmap reclamation remains GC
+managed, as before.
+
+A missing neighbor shows a bounded loading placeholder. On release it waits without
+blocking the UI until successful bitmap conversion; a failed target returns to the
+current page with a controlled message. No requested/prefetched/dragged page changes
+progress. Logical position changes only after a validated target reaches rest; the
+new composed bitmap then acknowledges progress using the existing periodic/Back-flush
+writer. Failed, reverted, obsolete and closed transitions cannot save progress.
+No hard timeout around synchronous native work is claimed.
+
+Behavioral reference: Mihon's upstream `Pager.kt`, `PagerViewer.kt` and
+`PagerViewers.kt` at
+[`7aacaa3`](https://github.com/mihonapp/mihon/tree/7aacaa349019ff42b8b05403d8beebe94c8f6dfc/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager).
+Its pager handles drag and animated tap navigation with one offscreen neighbor;
+RTL reverses logical navigation's spatial direction. INFINILECT implements this
+independently with Compose and its own bounded frames/state/progress handshake.
+No Mihon code or dependency was copied. Its exact thresholds/progress callbacks
+are not assumed to match ours.
+
+No new reader modes, zoom/pan feature, double-page mode, cropping, filters,
 brightness, image processing, arbitrary gesture or animation dependency is added.
-Further gesture/reader features and Android automatic return into a comic after
-Activity recreation remain separate work. Current recreation closes the old owner;
-opening the comic again restores the last durable successfully presented position.
+Android automatic return into a comic after Activity recreation remains separate
+work: recreation closes the old owner; reopening restores the last durable
+successfully presented page. Reading direction remains locally durable; transition
+state and chrome visibility remain transient.
 
-### Android physical acceptance for PR #21 (pending)
+### Android physical acceptance for PR #21
+
+The user reported the earlier interactions passed except the arrival animation.
+The replacement spatial transition still requires physical acceptance:
 
 1. Open an imported CBZ; verify its restored page and fitted artwork.
 2. In LTR, tap right → next; tap left → previous.
 3. Tap center → controls appear; center again → controls disappear.
 4. Use visible Previous/Next; they must not also trigger an underlying zone.
 5. Enable RTL; right tap → previous and left tap → next; buttons stay logical.
-6. Navigate rapidly; confirm no late old page flashes/replaces the latest one.
+6. Drag both ways: both pages follow the finger; short drags return and committed
+   drags/taps slide naturally into place in LTR/RTL. Navigate rapidly; confirm no
+   late old page flashes/replaces the latest one. Pan above 1x and pinch with two
+   fingers; neither turns pages. Verify missing/failed neighbors do not save progress.
 7. Close/reopen; last successfully presented page restores, including after failure.
 8. Rotate/recreate and reopen; confirm position/preference restoration, no late work.
 9. Check portrait/landscape, small heights and enlarged fonts; reach Back and Settings.
@@ -325,7 +367,7 @@ navigation and Back, resize short/wide windows, restart progress/preferences and
 native Windows/Linux/Wayland/niri presentation. Headless Compose interaction/layout
 tests and successful compilation do not establish physical or native-window acceptance.
 
-### Automated verification for PR #21
+### Original automated verification for PR #21
 
 [Focused run](https://github.com/SirOtter0/INFINILECT/actions/runs/37580430095):
 64 Desktop cases (2m31s), 59 Android host cases (1m20s), followed by successful

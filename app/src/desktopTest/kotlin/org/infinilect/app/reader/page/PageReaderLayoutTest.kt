@@ -19,7 +19,8 @@ class PageReaderLayoutTest {
     private class Fixture(val width: Int, val height: Int, fontScale: Float = 1f) : AutoCloseable {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val document = TestPageDocument(8)
-        val reader = PageReaderController(document, scope, decoder = TestRasterDecoder())
+        val decoder = TestRasterDecoder()
+        val reader = PageReaderController(document, scope, decoder = decoder)
         val scene = ImageComposeScene(width, height, Density(1f, fontScale))
         var backed = false
         private var frame = 0L
@@ -48,7 +49,7 @@ class PageReaderLayoutTest {
         fun tapZone(fraction: Float) = tap(Offset(width * fraction, height / 2f))
         fun click(label: String) { val node = text(label); reachable(node); tap(node.boundsInRoot.center) }
         fun awaitArtwork(index: Int) {
-            repeat(200) { draw(); if (artwork(index) != null) return; Thread.sleep(5) }
+            repeat(200) { draw(); if (reader.state.value.transition == null && reader.state.value.position.index == index && artwork(index) != null) return; Thread.sleep(5) }
             fail("Current page must be presented: $index")
         }
         fun awaitSettingsClosed() {
@@ -64,13 +65,13 @@ class PageReaderLayoutTest {
         Fixture(360, 420).use { f ->
             assertFalse(f.reader.state.value.controlsVisible)
             val bounds = f.canvas().boundsInRoot
-            f.tapZone(.9f); assertEquals(1, f.reader.state.value.position.index); f.awaitArtwork(1)
-            f.tapZone(.1f); assertEquals(0, f.reader.state.value.position.index); f.awaitArtwork(0)
+            f.tapZone(.9f); f.awaitArtwork(1); assertEquals(1, f.reader.state.value.position.index)
+            f.tapZone(.1f); f.awaitArtwork(0); assertEquals(0, f.reader.state.value.position.index)
             f.tapZone(.5f); assertTrue(f.reader.state.value.controlsVisible)
             assertEquals(bounds, f.canvas().boundsInRoot)
-            f.click("Next"); assertEquals(1, f.reader.state.value.position.index); f.awaitArtwork(1)
+            f.click("Next"); f.awaitArtwork(1); assertEquals(1, f.reader.state.value.position.index)
             assertTrue(f.reader.state.value.controlsVisible)
-            f.click("Previous"); assertEquals(0, f.reader.state.value.position.index)
+            f.click("Previous"); f.awaitArtwork(0); assertEquals(0, f.reader.state.value.position.index)
             f.tapZone(.5f); assertFalse(f.reader.state.value.controlsVisible)
             assertEquals(0, f.reader.state.value.position.index)
         }
@@ -81,10 +82,10 @@ class PageReaderLayoutTest {
             assertEquals(PageReadingMode.PAGED_RTL, f.reader.state.value.settings.mode)
             // Let Material's exiting popup retire its hit-test layer before canvas input.
             f.awaitSettingsClosed()
-            f.tapZone(.1f); assertEquals(1, f.reader.state.value.position.index)
-            f.tapZone(.9f); assertEquals(0, f.reader.state.value.position.index)
-            f.click("Next"); assertEquals(1, f.reader.state.value.position.index)
-            f.click("Previous"); assertEquals(0, f.reader.state.value.position.index)
+            f.tapZone(.1f); f.awaitArtwork(1); assertEquals(1, f.reader.state.value.position.index)
+            f.tapZone(.9f); f.awaitArtwork(0); assertEquals(0, f.reader.state.value.position.index)
+            f.click("Next"); f.awaitArtwork(1); assertEquals(1, f.reader.state.value.position.index)
+            f.click("Previous"); f.awaitArtwork(0); assertEquals(0, f.reader.state.value.position.index)
             f.click("Back"); assertTrue(f.backed); assertTrue(f.reader.state.value.frames.isEmpty())
         }
     }
@@ -93,7 +94,7 @@ class PageReaderLayoutTest {
             Fixture(width, height, scale).use { f ->
                 f.tapZone(.5f)
                 for (label in listOf("Back", "Hide", "Previous", "Settings", "Next", "1 / 8")) f.reachable(f.text(label))
-                f.click("Next"); assertEquals(1, f.reader.state.value.position.index)
+                f.click("Next"); f.awaitArtwork(1); assertEquals(1, f.reader.state.value.position.index)
                 f.click("Hide"); assertFalse(f.reader.state.value.controlsVisible)
                 f.tapZone(.5f); assertTrue(f.reader.state.value.controlsVisible)
             }
@@ -105,11 +106,72 @@ class PageReaderLayoutTest {
             f.reachable(f.text("Next"))
             val actions = f.canvas().config[SemanticsActions.CustomActions]
             assertTrue(actions.first { it.label == "Next page" }.action()); f.draw()
-            assertEquals(1, f.reader.state.value.position.index)
+            f.awaitArtwork(1); assertEquals(1, f.reader.state.value.position.index)
             assertTrue(actions.first { it.label == "Previous page" }.action()); f.draw()
+            f.awaitArtwork(0); assertEquals(0, f.reader.state.value.position.index)
+        }
+    }
+    @Test fun dragMovesBothPagesAndOnlyReleaseSettlesTheTarget() {
+        for (mode in listOf(PageReadingMode.PAGED_LTR, PageReadingMode.PAGED_RTL)) {
+            Fixture(360, 420).use { f ->
+                f.reader.mode(mode); f.awaitArtwork(0)
+                val sign = if (mode == PageReadingMode.PAGED_LTR) -1 else 1
+                val start = Offset(f.width * .5f, f.height * .5f)
+                f.scene.sendPointerEvent(PointerEventType.Press, start)
+                f.scene.sendPointerEvent(PointerEventType.Move, start + Offset(sign * f.width * .35f, 0f))
+                f.draw()
+                val t = assertNotNull(f.reader.state.value.transition)
+                assertEquals(PageTransitionPhase.DRAGGING, t.phase)
+                assertEquals(0, f.reader.state.value.position.index)
+                assertEquals(1, t.target)
+                assertTrue(t.offset * sign > 0)
+                f.reachable(assertNotNull(f.artwork(0)))
+                f.reachable(assertNotNull(f.artwork(1)))
+                f.scene.sendPointerEvent(PointerEventType.Release, start + Offset(sign * f.width * .35f, 0f))
+                f.awaitArtwork(1)
+                assertNull(f.artwork(0))
+            }
+        }
+    }
+    @Test fun shortDragReturnsAndZoomedPanDoesNotNavigate() {
+        Fixture(360, 420).use { f ->
+            val start = Offset(f.width * .5f, f.height * .5f)
+            f.scene.sendPointerEvent(PointerEventType.Press, start)
+            f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .08f, 0f))
+            f.draw()
+            assertEquals(PageTransitionPhase.DRAGGING, f.reader.state.value.transition?.phase)
+            // Hold before release: this is a short drag, not a deliberate fling.
+            repeat(3) { f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .08f, 0f)); f.draw(20) }
+            f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(f.width * .08f, 0f))
+            f.awaitArtwork(0)
+            f.tapZone(.5f); f.click("Settings"); f.click("Zoom in"); f.awaitSettingsClosed()
+            f.scene.sendPointerEvent(PointerEventType.Press, start)
+            f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .4f, 0f))
+            f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(f.width * .4f, 0f))
+            f.draw(20)
+            assertNull(f.reader.state.value.transition)
             assertEquals(0, f.reader.state.value.position.index)
         }
     }
+    @Test fun failedTargetReturnsToCurrentAndRapidTurnsKeepOnlyLatestArtwork() {
+        Fixture(360, 420).use { f ->
+            f.decoder.action = { error("Target unavailable") }
+            f.reader.next(); f.reader.next()
+            f.awaitArtwork(0)
+            assertTrue(f.reader.state.value.navigationFailed)
+            assertNull(f.artwork(2))
+            f.decoder.action = {}
+            f.reader.next(); f.reader.next(); f.reader.next()
+            f.awaitArtwork(3)
+            assertNull(f.artwork(0)); assertNull(f.artwork(1)); assertNull(f.artwork(2))
+            assertTrue(f.reader.retainedPages <= 3)
+            f.reader.next(); f.reader.close(); f.draw(20)
+            assertTrue(f.reader.state.value.frames.isEmpty())
+            assertNull(f.reader.state.value.transition)
+            assertNull(f.artwork(4))
+        }
+    }
+
     @Test fun rapidNavigationAndDisposalDoNotKeepAnOutgoingArtworkLayer() {
         Fixture(360, 420).use { f ->
             f.reader.navigate(2); f.reader.navigate(4); f.reader.navigate(6)

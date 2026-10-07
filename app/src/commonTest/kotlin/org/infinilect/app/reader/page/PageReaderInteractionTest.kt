@@ -51,19 +51,19 @@ class PageReaderInteractionTest {
         reader.tap(.5f); assertTrue(reader.state.value.controlsVisible)
         reader.tap(.5f); assertFalse(reader.state.value.controlsVisible)
         assertEquals(ticket, reader.state.value.ticket)
-        reader.tap(.9f); assertEquals(1, reader.state.value.position.index)
+        reader.tap(.9f); runCurrent(); reader.settlePageTurn(); assertEquals(1, reader.state.value.position.index)
         reader.mode(PageReadingMode.PAGED_RTL)
-        reader.tap(.9f); assertEquals(0, reader.state.value.position.index)
-        reader.tap(.1f); assertEquals(1, reader.state.value.position.index)
-        reader.next(); assertEquals(2, reader.state.value.position.index)
-        reader.previous(); assertEquals(1, reader.state.value.position.index)
+        reader.tap(.9f); runCurrent(); reader.settlePageTurn(); assertEquals(0, reader.state.value.position.index)
+        reader.tap(.1f); runCurrent(); reader.settlePageTurn(); assertEquals(1, reader.state.value.position.index)
+        reader.next(); runCurrent(); reader.settlePageTurn(); assertEquals(2, reader.state.value.position.index)
+        reader.previous(); runCurrent(); reader.settlePageTurn(); assertEquals(1, reader.state.value.position.index)
         reader.navigate(7); reader.tap(.1f); assertEquals(7, reader.state.value.position.index)
-        reader.navigate(0); reader.tap(.9f); assertEquals(0, reader.state.value.position.index)
+        reader.navigate(0); reader.tap(.9f); runCurrent(); reader.settlePageTurn(); assertEquals(0, reader.state.value.position.index)
     } }
     @Test fun decodingAloneDoesNotSaveAndSuccessfulPresentationCommitsOnce() = runTest { withReader { reader, _, store ->
         reader.show(); reader.flush(); runCurrent(); assertTrue(store.writes.isEmpty())
         reader.next(); runCurrent(); reader.flush(); runCurrent(); assertNull(store.index)
-        reader.show(); reader.show(); reader.flush(); runCurrent(); assertEquals(1, store.index)
+        reader.settlePageTurn(); reader.show(); reader.show(); reader.flush(); runCurrent(); assertEquals(1, store.index)
         assertEquals(1, store.writes.size)
     } }
     @Test fun failedPageAndReopenKeepLastSuccessfullyPresentedPosition() = runTest { withReader { reader, decoder, store ->
@@ -114,11 +114,11 @@ class PageReaderInteractionTest {
         finally { recreated.close() }
     } }
     @Test fun transitionDirectionUsesSuccessfulIndicesAndReadingDirection() {
-        assertEquals(0, pageTransitionSign(null, 0, PageReadingMode.PAGED_LTR))
-        assertEquals(0, pageTransitionSign(2, 2, PageReadingMode.PAGED_RTL))
-        assertEquals(1, pageTransitionSign(1, 3, PageReadingMode.PAGED_LTR))
-        assertEquals(-1, pageTransitionSign(3, 1, PageReadingMode.PAGED_LTR))
-        assertEquals(-1, pageTransitionSign(1, 3, PageReadingMode.PAGED_RTL))
-        assertEquals(1, pageTransitionSign(3, 1, PageReadingMode.PAGED_RTL))
+        assertEquals(0, pageIncomingSide(0, 0, PageReadingMode.PAGED_LTR))
+        assertEquals(0, pageIncomingSide(2, 2, PageReadingMode.PAGED_RTL))
+        assertEquals(1, pageIncomingSide(1, 3, PageReadingMode.PAGED_LTR))
+        assertEquals(-1, pageIncomingSide(3, 1, PageReadingMode.PAGED_LTR))
+        assertEquals(-1, pageIncomingSide(1, 3, PageReadingMode.PAGED_RTL))
+        assertEquals(1, pageIncomingSide(3, 1, PageReadingMode.PAGED_RTL))
     }
 }

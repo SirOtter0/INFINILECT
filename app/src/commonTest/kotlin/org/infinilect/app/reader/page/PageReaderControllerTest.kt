@@ -52,13 +52,13 @@ class PageReaderControllerTest {
         }
     }
     @Test fun nextPreviousAndEdgesAreSafe()=runTest { reader(TestPageDocument(3)) {
-        it.previous();assertEquals(0,it.state.value.position.index);it.next();it.next();it.next();assertEquals(2,it.state.value.position.index)
-        it.previous();assertEquals(1,it.state.value.position.index)
+        it.previous();assertEquals(0,it.state.value.position.index);it.next();it.next();it.next();assertEquals(0,it.state.value.position.index);runCurrent();it.settlePageTurn();assertEquals(2,it.state.value.position.index)
+        it.previous();runCurrent();it.settlePageTurn();assertEquals(1,it.state.value.position.index)
     } }
     @Test fun rtlAndLtrSwipesUseLogicalOrder()=runTest { reader {
         it.mode(PageReadingMode.PAGED_RTL)
-        it.swipe(true);assertEquals(1,it.state.value.position.index);it.swipe(false);assertEquals(0,it.state.value.position.index)
-        it.mode(PageReadingMode.PAGED_LTR);it.swipe(false);assertEquals(1,it.state.value.position.index);it.swipe(true);assertEquals(0,it.state.value.position.index)
+        it.swipe(true);runCurrent();it.settlePageTurn();assertEquals(1,it.state.value.position.index);it.swipe(false);runCurrent();it.settlePageTurn();assertEquals(0,it.state.value.position.index)
+        it.mode(PageReadingMode.PAGED_LTR);it.swipe(false);runCurrent();it.settlePageTurn();assertEquals(1,it.state.value.position.index);it.swipe(true);runCurrent();it.settlePageTurn();assertEquals(0,it.state.value.position.index)
     } }
     @Test fun everyModePreservesPageAndIntraPageFractionAndInvalidatesOldCallbacks()=runTest { reader {
         it.report(it.state.value.ticket,57,.4)
