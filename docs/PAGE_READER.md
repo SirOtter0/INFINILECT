@@ -304,7 +304,9 @@ with agreeing velocity of at least 0.9 viewports/second. Otherwise it returns.
 A 180ms position-only settle starts at the exact release offset; there is no fade,
 incoming-only jitter, artificial loading delay or animation queue. Rapid requests
 coalesce into one latest target (intermediate pages may be skipped); tickets retire
-older animations/decodes. Resize, mode changes and Back invalidate the transition.
+older animations/decodes. Grabbing an interrupted turn preserves its incoming
+identity until the finger crosses the origin. Resize, mode changes and Back
+invalidate the transition.
 Zoomed gestures pan/zoom; a multi-pointer gesture cannot turn a page. Explicit
 navigation buttons/taps reset zoom as before.
 
@@ -394,3 +396,41 @@ XML counts were independently checked after downloading artifact `11463938768`
 `b8ee3090f89edbef78f71b00a2ef268b1d0598df6a7a491dc0d1315048d93435`.
 Temporary feature-specific automation is removed from the final tree. Compilation
 and host/headless checks do not replace the physical/graphical checklist above.
+
+### Spatial-transition follow-up verification
+
+[Final follow-up run](https://github.com/SirOtter0/INFINILECT/actions/runs/37625944475)
+at `7ec959c3d004c85064d9d6fb4c59a5951d675c20` passed focused Desktop (79 cases,
+2m27s) and Android host (71 cases, 1m23s) before the final all-app regression:
+852 Desktop + 807 Android host, zero failures/errors/skips, and successful
+Android/Desktop application compilation (`BUILD SUCCESSFUL in 52s`).
+Production and tests are unchanged after that run; the final commit records this
+evidence and removes temporary automation. The broader app run was justified by
+moving logical page establishment from navigation request to validated settle.
+No repository-wide clean matrix or signing/APK work was performed in this follow-up.
+
+Each focused target used these filters (plus the flags below):
+`--tests '*PageReader*Test' --tests '*PageTransitionTest' --tests '*PageSettingsPersistenceTest' --tests '*FilePageReaderSettingsStoreTest' --tests '*PageProgressDurabilityTest'`.
+Targets were `:app:desktopTest` and `:app:testAndroidHostTest`; the final command was:
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+Twelve deterministic transition cases cover directions, threshold/velocity,
+bounds, zoom exclusion, coalesced/interrupted turns, stale decode/callbacks,
+failure/cancellation/progress/reopen, Back, resize and mode changes. Eight real
+headless Compose layout/input cases include three new drag/dual-artwork,
+short-return/zoom-pan, and failed/rapid-turn/disposal cases. Existing controller,
+center-tap/accessibility, settings, file-progress and app regressions remain green.
+The first development run exposed one incorrect boundary-test expectation;
+it was corrected before the successful runs.
+
+Artifact `11484516372` (seven-day retention) XML totals and focused selection were
+independently checked; ZIP SHA-256:
+`90d1684a0c21c5c93b56d4c66b9bf523db5026c5a3558d21bae1bb813a80fef9`.
+`git diff --check` and tracked signing-file/private-key/attachment-path checks
+passed. The final tree contains no feature-specific workflow or signing material.
+The physical checklist above must be repeated for the new spatial transition;
+host/headless tests do not establish real-device animation, touch/pinch, or native
+Desktop window behavior.
