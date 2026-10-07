@@ -14,6 +14,7 @@ internal data class PageTransition(
     val offset: Float = 0f,
     val phase: PageTransitionPhase,
     val targetStamp: Long? = null,
+    val targetStamps: Map<Int, Long> = emptyMap(),
 )
 
 internal fun pagedMode(mode: PageReadingMode) = mode == PageReadingMode.PAGED_LTR || mode == PageReadingMode.PAGED_RTL

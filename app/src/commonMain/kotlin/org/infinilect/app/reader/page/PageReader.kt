@@ -20,16 +20,14 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.infinilect.app.media.rasterImageBitmap
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-
-private data class PresentedPage(val stamp: Long, val bitmap: ImageBitmap?)
 
 private class PageTransform {
     var zoom by mutableFloatStateOf(1f)
@@ -42,24 +40,17 @@ private class PageTransform {
 internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String) {
     val state by reader.state.collectAsState()
     val settingsFailed by reader.settingsSaveFailed.collectAsState()
-    val conversionLock = remember(reader) { Mutex() }
     val readyFrames = state.frames.filterValues { it is PageFrame.Ready }
-    val presented by produceState<Map<Int, PresentedPage>>(emptyMap(), reader, readyFrames) {
-        value = value.filter { (index, old) -> (readyFrames[index] as? PageFrame.Ready)?.stamp == old.stamp }
-        for ((index, frame) in readyFrames) {
-            if (frame !is PageFrame.Ready || index in value) continue
-            val bitmap = try { conversionLock.withLock { currentCoroutineContext().ensureActive(); rasterImageBitmap(frame.raster) } }
-                catch (error: CancellationException) { throw error }
-                catch (_: Exception) { null }
-            currentCoroutineContext().ensureActive()
-            value = value + (index to PresentedPage(frame.stamp, bitmap))
-        }
+    val conversionFrames by rememberUpdatedState(readyFrames)
+    val presented by produceState<Map<Int, PageConversion<ImageBitmap>>>(emptyMap(), reader) {
+        convertPageFrames(snapshotFlow { conversionFrames.mapValues { (_, frame) -> (frame as PageFrame.Ready).stamp } },
+            { conversionFrames }, ::rasterImageBitmap) { value = it }
     }
     // Never flash an obsolete frame during the coroutine/recomposition handover.
     val validConversions = presented.filter { (index, old) -> (readyFrames[index] as? PageFrame.Ready)?.stamp == old.stamp }
     val bitmaps = validConversions.filterValues { it.bitmap != null }.mapValues { it.value.bitmap!! }
     val failedConversions = validConversions.filterValues { it.bitmap == null }.keys
-    val transform = remember(reader, state.position.index, state.settings.mode) { PageTransform() }
+    val transform = remember(reader, state.position.index, state.settings) { PageTransform() }
     Box(Modifier.fillMaxSize()) {
         val continuous = state.settings.mode == PageReadingMode.VERTICAL || state.settings.mode == PageReadingMode.WEBTOON
         if (continuous) ContinuousPages(reader, state, bitmaps, Modifier.fillMaxSize())
@@ -83,19 +74,23 @@ private fun modeLabel(mode: PageReadingMode) = when (mode) {
 private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, failedConversions: Set<Int>, transform: PageTransform, modifier: Modifier) {
     var zoom by transform::zoom
     var pan by transform::pan
-    val sourceStamp by rememberUpdatedState((state.frames[state.position.index] as? PageFrame.Ready)?.stamp.takeIf { bitmaps[state.position.index] != null })
+    val current = reader.spread(state.position.index)
+    fun stamps(spread: PageSpread): Map<Int, Long>? = spread.indices.associateWith { index ->
+        (state.frames[index] as? PageFrame.Ready)?.stamp?.takeIf { bitmaps[index] != null } ?: return null
+    }
+    val sourceStamp by rememberUpdatedState(stamps(current)?.get(current.anchor))
     val transition = state.transition
-    val targetFrame = transition?.let { state.frames[it.target] }
-    val targetBitmap = transition?.let { bitmaps[it.target] }
-    val targetFailed = targetFrame is PageFrame.Unavailable || transition?.target in failedConversions
-    LaunchedEffect(reader, transition?.ticket, transition?.phase, (targetFrame as? PageFrame.Ready)?.stamp, targetBitmap, targetFailed, zoom) {
+    val target = transition?.let { reader.spread(it.target) }
+    val targetStamps = target?.let(::stamps)
+    val targetFailed = target?.indices?.any { state.frames[it] is PageFrame.Unavailable || it in failedConversions } == true
+    LaunchedEffect(reader, transition?.ticket, transition?.phase, targetStamps, targetFailed, zoom) {
         val t = transition ?: return@LaunchedEffect
         if (zoom != 1f) { reader.cancelTransition(); return@LaunchedEffect }
         if ((t.phase == PageTransitionPhase.WAITING || t.phase == PageTransitionPhase.SETTLING) && targetFailed) {
             reader.returnTransition(t.ticket, failed = true); return@LaunchedEffect
         }
         when (t.phase) {
-            PageTransitionPhase.WAITING -> if (targetBitmap != null && targetFrame is PageFrame.Ready) reader.transitionReady(t.ticket, t.target, targetFrame.stamp)
+            PageTransitionPhase.WAITING -> if (targetStamps != null) reader.transitionReady(t.ticket, t.target, targetStamps)
             PageTransitionPhase.SETTLING, PageTransitionPhase.RETURNING -> {
                 // Begin at the exact release offset; one effect/job, superseded by the next ticket.
                 val goal = if (t.phase == PageTransitionPhase.SETTLING) -pageIncomingSide(t.from, t.target, state.settings.mode).toFloat() else 0f
@@ -109,7 +104,7 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
     BoxWithConstraints(modifier.clipToBounds()) {
         val width = maxWidth
         // A resized canvas retires callbacks from the previous spatial presentation.
-        DisposableEffect(reader, width) { reader.presentationChanged(); onDispose {} }
+        DisposableEffect(reader, width, maxHeight) { transform.reset(); reader.presentationChanged(); onDispose {} }
         Box(Modifier.fillMaxSize().semantics {
             onClick(label = "Toggle reader controls") { reader.toggleControls(); true }
             customActions = listOf(CustomAccessibilityAction("Previous page") { transform.reset(); reader.previous(); true },
@@ -158,30 +153,48 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                     reader.releaseDrag(dragTicket!!, velocity.calculateVelocity().x / size.width); dragTicket = null
                 } else if (!multiplePointers && !moved && !consumed && size.width > 0) {
                     val fraction = down.position.x / size.width
-                    if (pageTapAction(fraction, reader.state.value.settings.mode) != PageTapAction.CONTROLS) transform.reset()
-                    reader.tap(fraction)
+                    val action = pageTapAction(fraction, reader.state.value.settings.mode)
+                    if (action == PageTapAction.CONTROLS || zoom == 1f || reader.state.value.settings.layout == PageLayout.SINGLE) {
+                        if (action != PageTapAction.CONTROLS) transform.reset()
+                        reader.tap(fraction)
+                    }
                 }
                 } finally { dragTicket?.let { reader.returnTransition(it) } }
             }
         }, contentAlignment = Alignment.Center) {
-            fun frame(index: Int): PageFrame? = state.frames[index].let {
-                if (it is PageFrame.Ready && bitmaps[index] == null && index !in failedConversions) PageFrame.Loading else it
-            }
             val offset = transition?.offset ?: 0f
-            PageArtwork(bitmaps[state.position.index], frame(state.position.index), state.position.index, reader.document.pages.size,
+            SpreadArtwork(current, state, bitmaps, failedConversions, reader.document.pages.size,
                 Modifier.fillMaxSize().graphicsLayer {
                     scaleX = zoom; scaleY = zoom; translationX = pan.x + size.width * offset; translationY = pan.y
                 })
-            if (transition != null && transition.target != transition.from) {
+            if (transition != null && transition.target != transition.from && target != null) {
                 val side = pageIncomingSide(transition.from, transition.target, state.settings.mode)
-                PageArtwork(bitmaps[transition.target], frame(transition.target), transition.target, reader.document.pages.size,
+                SpreadArtwork(target, state, bitmaps, failedConversions, reader.document.pages.size,
                     Modifier.fillMaxSize().graphicsLayer { translationX = size.width * (offset + side) })
-                if (transition.phase == PageTransitionPhase.WAITING && targetBitmap == null && !targetFailed) Text("Loading page ${transition.target + 1}", Modifier.align(Alignment.BottomCenter))
+                if (transition.phase == PageTransitionPhase.WAITING && targetStamps == null && !targetFailed)
+                    Text("Loading ${target.indicator(reader.document.pages.size)}", Modifier.align(Alignment.BottomCenter))
             }
-            if (transition == null && bitmaps[state.position.index] != null) (state.frames[state.position.index] as? PageFrame.Ready)?.let { frame ->
-                SideEffect { reader.presented(state.ticket, state.position.index, frame.stamp) }
+            if (transition == null) stamps(current)?.let { ready ->
+                SideEffect { reader.presented(state.ticket, current.anchor, ready) }
             }
         }
+    }
+}
+
+/** One canvas/layer per spread; both halves borrow the same conversion map.
+ * A partial pair is never presented as a successful spread. */
+@Composable
+private fun SpreadArtwork(spread: PageSpread, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, failed: Set<Int>, count: Int, modifier: Modifier) {
+    if (spread.second == null) {
+        val frame = state.frames[spread.anchor].let { if (it is PageFrame.Ready && bitmaps[spread.anchor] == null && spread.anchor !in failed) PageFrame.Loading else it }
+        PageArtwork(bitmaps[spread.anchor], frame, spread.anchor, count, modifier)
+    } else Box(modifier, contentAlignment = Alignment.Center) {
+        if (spread.indices.any { state.frames[it] is PageFrame.Unavailable || it in failed }) Text("Requested pages unavailable or unsupported")
+        else if (spread.indices.all { bitmaps[it] != null }) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Row(Modifier.fillMaxSize()) {
+                for (index in spread.visualOrder(state.settings.mode)) PageArtwork(bitmaps[index], state.frames[index], index, count, Modifier.weight(1f).fillMaxHeight())
+            }
+        } else Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text("Loading ${spread.indicator(count)}") }
     }
 }
 
@@ -205,7 +218,7 @@ private fun BoxScope.PageReaderChrome(reader: PageReaderController, state: PageR
         Spacer(Modifier.weight(1f))
         Surface(Modifier.heightIn(max = bottomLimit).verticalScroll(rememberScrollState()), color = MaterialTheme.colors.surface.copy(alpha = .94f)) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                Text("${state.position.index + 1} / ${reader.document.pages.size}", Modifier.align(Alignment.CenterHorizontally))
+                Text(reader.spread(state.position.index).indicator(reader.document.pages.size), Modifier.align(Alignment.CenterHorizontally))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     TextButton(enabled = navigationIndex > 0, onClick = { transform.reset(); reader.previous() }) { Text("Previous") }
                     var settings by remember { mutableStateOf(false) }
@@ -223,13 +236,24 @@ private fun BoxScope.PageReaderChrome(reader: PageReaderController, state: PageR
                             }
                             if (state.settings.mode == PageReadingMode.PAGED_LTR || state.settings.mode == PageReadingMode.PAGED_RTL) {
                                 Divider()
-                                DropdownMenuItem(onClick = { transform.zoom = (transform.zoom - .5f).coerceAtLeast(1f); transform.pan = Offset.Zero; settings = false }) { Text("Zoom out") }
-                                DropdownMenuItem(onClick = { transform.zoom = (transform.zoom + .5f).coerceAtMost(4f); settings = false }) { Text("Zoom in") }
-                                DropdownMenuItem(onClick = { transform.reset(); settings = false }) { Text("Reset zoom") }
+                                Text("Page layout", Modifier.padding(12.dp), style = MaterialTheme.typography.subtitle2)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                    for (layout in PageLayout.entries) {
+                                        TextButton(onClick = { reader.layout(layout); settings = false }, modifier = Modifier.semantics { selected = state.settings.layout == layout }) {
+                                            Text(if (layout == PageLayout.SINGLE) "Single page" else "Double page")
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                    TextButton(onClick = { transform.zoom = (transform.zoom - .5f).coerceAtLeast(1f); transform.pan = Offset.Zero; settings = false }) { Text("Zoom out") }
+                                    TextButton(onClick = { transform.zoom = (transform.zoom + .5f).coerceAtMost(4f); settings = false }) { Text("Zoom in") }
+                                    TextButton(onClick = { transform.reset(); settings = false }) { Text("Reset zoom") }
+                                }
                             }
                         }
                     }
-                    TextButton(enabled = navigationIndex < reader.document.pages.lastIndex, onClick = { transform.reset(); reader.next() }) { Text("Next") }
+                    TextButton(enabled = reader.spread(navigationIndex).indices.last() < reader.document.pages.lastIndex, onClick = { transform.reset(); reader.next() }) { Text("Next") }
                 }
                 if (saveFailed) Text("Reading position could not be saved on this device.")
                 if (settingsFailed) Text("Page reader preferences could not be saved on this device.")

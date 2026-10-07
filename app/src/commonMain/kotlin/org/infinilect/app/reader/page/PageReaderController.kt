@@ -17,7 +17,7 @@ private val pageDecodeLock = Mutex()
 
 internal sealed interface PageFrame {
     data object Loading : PageFrame
-    data class Ready(val raster: Raster, val stamp: Long) : PageFrame
+    data class Ready(val raster: Raster, val stamp: Long, val paired: Boolean = false) : PageFrame
     data object Unavailable : PageFrame
 }
 internal data class PagePosition(val index: Int, val fraction: Double = 0.0)
@@ -32,7 +32,7 @@ internal data class PageReaderState(
 )
 
 /** UI-thread commands and immutable state. One serialized acquisition/decode worker,
- * at most three slots, prioritizing current and latest target. Generations reject late results.
+ * three Single/continuous slots or four Double slots, prioritizing current and latest target. Generations reject late results.
  * This owner knows neither source, transport, EPUB, filesystem nor platform image types. */
 internal class PageReaderController(
     val document: PageDocument,
@@ -50,6 +50,17 @@ internal class PageReaderController(
     private var timer: Job? = null
     private var generation = 0L
     private var window: List<Int> = emptyList()
+    private var spreads = pageSpreads(document.pages, PageReaderSettings())
+    fun spread(index: Int = state.value.position.index): PageSpread = spreads.first { index in it.indices }
+    private fun neighbor(index: Int, direction: Int): Int? = spreads.getOrNull(spreads.indexOf(spread(index)) + direction)?.anchor
+    private fun dragTarget(index: Int, offset: Float): Int {
+        if (offset == 0f) return index
+        val direction = if ((offset < 0) == (state.value.settings.mode == PageReadingMode.PAGED_LTR)) 1 else -1
+        return neighbor(index, direction) ?: index
+    }
+    private fun paired(index: Int) = spread(index).second != null
+    private fun normalize(position: PagePosition) = if (state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode))
+        PagePosition(spread(position.index).anchor) else position
     private var closed = false
     private var settingsLease = 0L
     private var pending: ReadingProgress? = null
@@ -73,11 +84,17 @@ internal class PageReaderController(
         lastTimestamp = saved?.updatedAtEpochMillis ?: 0
         lastLocator = locator(position)
         settingsLease = preferences?.claimReader() ?: 0
-        mutableState.value = PageReaderState(position, preferences?.settings?.value ?: PageReaderSettings(), 1)
-        loadWindow(position.index)
+        val settings = preferences?.settings?.value ?: PageReaderSettings()
+        spreads = pageSpreads(document.pages, settings)
+        mutableState.value = PageReaderState(position, settings, 1)
+        mutableState.value = state.value.copy(position = normalize(position))
+        loadWindow(state.value.position.index)
     }
     fun navigate(index: Int) {
         if (closed || index !in document.pages.indices) return
+        if (state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)) {
+            requestTurn(spread(index).anchor); return
+        }
         mutableState.value = state.value.copy(position = PagePosition(index), ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
         loadWindow(index)
     }
@@ -90,8 +107,13 @@ internal class PageReaderController(
         // Coalesce rapid requests into one latest target, never an animation queue.
         val old = s.transition
         val base = old?.takeIf { it.phase != PageTransitionPhase.RETURNING }?.target ?: s.position.index
-        val target = base + direction
-        if (target !in document.pages.indices) return
+        val target = neighbor(base, direction) ?: return
+        requestTurn(target)
+    }
+    private fun requestTurn(target: Int) {
+        val s = state.value
+        val old = s.transition
+        if (target == s.position.index && old == null) return
         val side = pageIncomingSide(s.position.index, target, s.settings.mode)
         val offset = old?.offset?.takeIf { side == 0 || it * side <= 0 } ?: 0f
         val ticket = s.ticket + 1
@@ -104,12 +126,12 @@ internal class PageReaderController(
         if (closed || zoom != 1f || !pagedMode(state.value.settings.mode)) return null
         val s = state.value
         val source = s.frames[s.position.index] as? PageFrame.Ready ?: return null
-        if (sourceStamp != source.stamp) return null
+        if (sourceStamp != source.stamp || spread().indices.any { s.frames[it] !is PageFrame.Ready }) return null
         val ticket = s.ticket + 1
         val old = s.transition
         val offset = old?.offset ?: 0f
         val target = old?.target?.takeIf { pageIncomingSide(s.position.index, it, s.settings.mode) * offset < 0 }
-            ?: pageDragTarget(s.position.index, offset, s.settings.mode, document.pages.size)
+            ?: dragTarget(s.position.index, offset)
         mutableState.value = s.copy(ticket = ticket, navigationFailed = false,
             transition = PageTransition(ticket, s.position.index, target, offset, PageTransitionPhase.DRAGGING))
         loadWindow(s.position.index, visible = listOf(target))
@@ -122,7 +144,7 @@ internal class PageReaderController(
         // Grabbing an in-flight coalesced turn keeps its authoritative incoming page
         // until the finger crosses the origin; it must not flash a different neighbor.
         val target = t.target.takeIf { pageIncomingSide(t.from, it, state.value.settings.mode) * offset < 0 }
-            ?: pageDragTarget(t.from, offset, state.value.settings.mode, document.pages.size)
+            ?: dragTarget(t.from, offset)
         mutableState.value = state.value.copy(transition = t.copy(target = target, offset = if (target == t.from) 0f else offset))
         loadWindow(t.from, visible = listOf(target))
     }
@@ -134,15 +156,22 @@ internal class PageReaderController(
     }
     /** Only UI conversion success may arm a settle; decoder readiness/prefetch is insufficient. */
     fun transitionReady(ticket: Long, target: Int, stamp: Long) {
+        if (!closed && target in document.pages.indices && spread(target).second == null) transitionReady(ticket, target, mapOf(target to stamp))
+    }
+    private fun validStamps(index: Int, stamps: Map<Int, Long>): Boolean =
+        stamps.keys == spread(index).indices.toSet() && stamps.all { (page, stamp) ->
+            (state.value.frames[page] as? PageFrame.Ready)?.stamp == stamp
+        }
+    fun transitionReady(ticket: Long, target: Int, stamps: Map<Int, Long>) {
         val t = state.value.transition ?: return
         if (closed || t.ticket != ticket || t.target != target || t.phase != PageTransitionPhase.WAITING) return
-        val frame = state.value.frames[target] as? PageFrame.Ready ?: return
-        if (frame.stamp == stamp) mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.SETTLING, targetStamp = stamp))
+        if (validStamps(target, stamps)) mutableState.value = state.value.copy(transition =
+            t.copy(phase = PageTransitionPhase.SETTLING, targetStamp = stamps[target], targetStamps = stamps.toMap()))
     }
     fun returnTransition(ticket: Long, failed: Boolean = false) {
         val t = state.value.transition ?: return
         if (closed || t.ticket != ticket) return
-        mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.RETURNING, targetStamp = null), navigationFailed = failed)
+        mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.RETURNING, targetStamp = null, targetStamps = emptyMap()), navigationFailed = failed)
     }
     fun transitionOffset(ticket: Long, offset: Float) {
         val t = state.value.transition ?: return
@@ -156,9 +185,8 @@ internal class PageReaderController(
         if (closed || t.ticket != ticket) return
         val target = when (t.phase) {
             PageTransitionPhase.SETTLING -> {
-                val frame = s.frames[t.target] as? PageFrame.Ready ?: return
                 val goal = -pageIncomingSide(t.from, t.target, s.settings.mode).toFloat()
-                if (frame.stamp != t.targetStamp || kotlin.math.abs(t.offset - goal) > .001f) return
+                if (!validStamps(t.target, t.targetStamps) || kotlin.math.abs(t.offset - goal) > .001f) return
                 t.target
             }
             PageTransitionPhase.RETURNING -> { if (kotlin.math.abs(t.offset) > .001f) return; t.from }
@@ -188,9 +216,11 @@ internal class PageReaderController(
     /** Acknowledge an actually composed bitmap, not a navigation request or prefetch.
      * The UI's conversion, obsolete callbacks and closed owners cannot advance progress. */
     fun presented(ticket: Long, pageIndex: Int, stamp: Long) {
+        if (pageIndex in document.pages.indices && spread(pageIndex).second == null) presented(ticket, pageIndex, mapOf(pageIndex to stamp))
+    }
+    fun presented(ticket: Long, pageIndex: Int, stamps: Map<Int, Long>) {
         if (closed || state.value.transition != null || ticket != state.value.ticket || pageIndex != state.value.position.index) return
-        val frame = state.value.frames[pageIndex] as? PageFrame.Ready ?: return
-        if (frame.stamp == stamp) changedPosition()
+        if (validStamps(pageIndex, stamps)) changedPosition()
     }
     /** Positive horizontal swipe advances in RTL; negative advances in LTR. */
     fun swipe(right: Boolean) {
@@ -200,13 +230,15 @@ internal class PageReaderController(
             else -> Unit
         }
     }
-    fun mode(mode: PageReadingMode) {
-        if (closed || mode == state.value.settings.mode) return
-        val settings = PageReaderSettings(mode)
+    fun mode(mode: PageReadingMode) = settings(state.value.settings.copy(mode = mode))
+    fun layout(layout: PageLayout) = settings(state.value.settings.copy(layout = layout))
+    private fun settings(settings: PageReaderSettings) {
+        if (closed || settings == state.value.settings) return
         preferences?.submit(settingsLease, settings)
-        // Invalidate callbacks from the old presentation, but retain semantic position.
         flush()
-        mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1, transition = null)
+        spreads = pageSpreads(document.pages, settings)
+        mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
+        mutableState.value = state.value.copy(position = normalize(state.value.position))
         loadWindow(state.value.position.index, force = true)
     }
     /** A resized viewport restores the same semantic position and retires old layout callbacks. */
@@ -217,7 +249,8 @@ internal class PageReaderController(
         loadWindow(state.value.position.index)
     }
     fun report(ticket: Long, pageIndex: Int, fraction: Double, visiblePages: List<Int> = emptyList()) {
-        if (closed || ticket != state.value.ticket || pageIndex !in document.pages.indices || !fraction.isFinite()) return
+        if (closed || ticket != state.value.ticket || pageIndex !in document.pages.indices || !fraction.isFinite() ||
+            state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)) return
         mutableState.value = state.value.copy(position = PagePosition(pageIndex, fraction.coerceIn(0.0, 1.0)), transition = null)
         loadWindow(pageIndex, visible = visiblePages)
     }
@@ -238,14 +271,19 @@ internal class PageReaderController(
     }
     private fun loadWindow(center: Int, force: Boolean = false, visible: List<Int> = emptyList()) {
         // Visible pages take precedence over adjacent prefetch. Large viewports still have
-        // at most three decoded slots; no job/map is allocated for all publication pages.
-        val wanted = (listOf(center) + visible.take(PagePolicy.RETAINED) + listOf(center - PagePolicy.PREFETCH, center + PagePolicy.PREFETCH))
+        // at most three Single/continuous or four Double slots; no decode/map for the whole book.
+        val double = state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)
+        val wanted = if (double) {
+            val target = visible.firstOrNull { it != center } ?: neighbor(center, 1)
+            (spread(center).indices + target?.let { spread(it).indices }.orEmpty()).distinct().take(PagePolicy.SPREAD_RETAINED)
+        } else (listOf(center) + visible.take(PagePolicy.RETAINED) + listOf(center - PagePolicy.PREFETCH, center + PagePolicy.PREFETCH))
             .filter { it in document.pages.indices }.distinct().take(PagePolicy.RETAINED)
         if (!force && wanted == window) return
         window = wanted
+        val pairPolicy = wanted.associateWith(::paired)
         val work = ++generation
         request?.cancel()
-        mutableState.value = state.value.copy(frames = wanted.associateWith { state.value.frames[it] ?: PageFrame.Loading })
+        mutableState.value = state.value.copy(frames = wanted.associateWith { index -> state.value.frames[index]?.takeUnless { it is PageFrame.Ready && it.paired != paired(index) } ?: PageFrame.Loading })
         request = scope.launch {
             for (index in wanted) {
                 if (closed || work != generation) return@launch
@@ -265,10 +303,12 @@ internal class PageReaderController(
                                 } finally { content.close() }
                                 val dimensions = inspectRaster(bytes, page.resource.mediaType)
                                 require(dimensions == (page.dimensions.width to page.dimensions.height))
-                                val raster = decoder.decode(bytes, page.resource.mediaType)
+                                val inPair = pairPolicy.getValue(index)
+                                val raster = decoder.decodePage(bytes, page.resource.mediaType, inPair)
                                 currentCoroutineContext().ensureActive()
-                                require(raster.width == dimensions.first && raster.height == dimensions.second)
-                                PageFrame.Ready(raster, work)
+                                require((raster.width == dimensions.first && raster.height == dimensions.second) ||
+                                    inPair && raster.width in maxOf(1, dimensions.first / 2)..(dimensions.first + 1) / 2 && raster.height in maxOf(1, dimensions.second / 2)..(dimensions.second + 1) / 2)
+                                PageFrame.Ready(raster, work, inPair)
                             }
                         }
                     }

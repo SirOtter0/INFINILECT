@@ -1,7 +1,8 @@
-# First bounded page-reader foundation
+# Bounded comic PageReader
 
-Draft PR #17 adds comic/page reading on Android and Desktop. This is a controlled
-development slice, not manga-site, Mihon, CBZ or generic image-viewer compatibility.
+PR #17 introduced the bounded comic/page foundation on Android and Desktop.
+CBZ import was added in PR #18; optional spreads are described under PR #23 below.
+This remains a controlled development slice, not manga-site or Mihon compatibility.
 No production source policy changes. Gutenberg stays experimental OPDS2 catalog-only;
 Archive stays public CC0 TEXT with fresh authorization and revision=null.
 
@@ -46,9 +47,9 @@ page acquisition backend does not rewrite page progress/session/source contracts
 - WEBTOON: same bounded lazy implementation with no gap. Distinct semantic preference.
 
 Paged canvas fits the page, supports 1–4× pinch zoom/pan and visible zoom/reset controls.
-Swipe navigation requires a predominantly horizontal ≥48dp gesture at 1×. A gesture
+Spatial navigation requires a predominantly horizontal gesture at 1× (PR #21 below). A gesture
 that ever uses multiple fingers/zoom cannot change page; panning while zoomed never
-advances. Page navigation resets transient zoom/pan. No spreads/stitching.
+advances. Page navigation resets transient zoom/pan. PR #23 adds optional spreads below; no source stitching.
 Controls are collapsible; accessible labels describe controls and “Page N of M”,
 without pretending OCR descriptions exist. Existing launcher insets remain in use.
 
@@ -69,10 +70,10 @@ until they enter the working window; memory bounds take priority over eager deco
 | Encoded page | Known size 1–2 MiB; bounded read plus overflow probe and exact EOF/count |
 | Raster | ≤2048 per dimension, ≤1,048,576 pixels, ≤4 MiB owned ARGB |
 | Aspect | width/height 0.125–8, preventing extreme reserved-layout heights |
-| Retained decoded pages | At most 3 (≤12 MiB owned pixel payload), including prefetch |
+| Retained decoded pages | Single/continuous: 3; Double paged: 4 (ownership detail below) |
 | Work | One serialized acquisition/decode across page-reader replacements, cooperative 10s deadline per page |
-| Prefetch | Current ±1; up to 3 visible pages take precedence over neighbors |
-| UI bitmaps | At most 3 current raster identities; sequential conversion, stale identities hidden |
+| Prefetch | Single/continuous: current ±1 / visible priority; Double: current + next/latest target only |
+| UI bitmaps | Single/continuous: 3; Double: 4; serialized conversion, stale identities hidden |
 | Zoom | 1–4× presentation transform; no higher-resolution decode or persisted zoom |
 
 Preflight retains PR #16 static 8-bit PNG/chunk CRC policy and baseline/progressive
@@ -81,12 +82,14 @@ PNG, SVG, GIF/WebP, arbitrary metadata/profiles and unsupported color depths fai
 to placeholders. The same restrictive raster decoder applies to both readers.
 Long multiplication precedes allocation; compressed byte bounds alone are insufficient.
 
-At peak, 3 controller frames plus 3 UI bitmap copies total ≤24 MiB pixel payload,
+For the original Single/continuous pipeline, at peak, 3 controller frames plus 3 UI bitmap copies total ≤24 MiB pixel payload,
 with one ≤4 MiB decoder buffer and one ≤4 MiB conversion scratch buffer. Encoded
 read/chunk assembly is ≤4 MiB plus 8 KiB; desktop provider encoded caching can add
 ≤2 MiB. Budget roughly 38 MiB payload/scratch in steady handover; an old, cancelling UI
 conversion may temporarily retain its previous three-frame input (another ≤12 MiB),
-so allow roughly 50 MiB bounded application payload during replacement, plus platform-provider,
+so allow roughly 50 MiB bounded application payload during replacement; these historic
+estimates do not include every retiring bitmap/native-owner reference (see the explicit
+PR #23 handover bounds below), plus platform-provider,
 GPU, object/metadata and GC overhead. This is a structural retention bound, **not**
 an exact process-heap ceiling or promise of immediate native GC. Cancellation is
 cooperative around synchronous provider calls; the shared page decode mutex prevents overlapping
@@ -126,8 +129,9 @@ drains it. Newer timestamps win across owners; failed writes report a fixed mess
 never pretend RAM proves durability. Missing/corrupt/future records safely use LTR.
 Existing valid RTL/vertical/webtoon records retain their original meaning and encoding.
 
-FilePageReaderSettingsStore uses one fixed 56-byte version1 record: magic, schema,
-mode enum, nonnegative timestamp, SHA-256 checksum. Private same-directory temporary
+FilePageReaderSettingsStore uses one fixed 56-byte record: magic, schema,
+mode/layout choice, nonnegative timestamp, SHA-256 checksum. Legacy Single encoding
+remains version1; Double uses the canonical version2 form described below. Private same-directory temporary
 file + force + atomic replacement; a failed commit preserves the previous record.
 Owned stale temps only are cleaned; no destructive recovery or storage permission.
 
@@ -202,8 +206,9 @@ inspection accepts only the existing static PNG/JPEG policy and checks dimension
 one 8 KiB transfer buffer and at most one encoded page (2 MiB) at a time. It verifies
 all ZIP entry streams/CRCs without retaining page payloads, then validates each
 raster's signature/geometry without decoding it to ARGB. PageReader retains at most
-three decoded frames, with one serialized decoder and one-page prefetch. At four MiB
-maximum ARGB per frame, three retained frames plus one in-flight decode are bounded
+three decoded frames in Single/continuous (four in Double, PR #23 below), with one
+serialized decoder and bounded prefetch. At four MiB
+maximum ARGB per frame, Single's three retained frames plus one in-flight decode are bounded
 to 16 MiB ARGB, plus at most one 2 MiB encoded page. The preparer allows at most two
 open prepared documents and three live page handles per document.
 
@@ -310,7 +315,7 @@ invalidate the transition.
 Zoomed gestures pan/zoom; a multi-pointer gesture cannot turn a page. Explicit
 navigation buttons/taps reset zoom as before.
 
-The controller retains its existing maximum of three raster slots. During a normal
+In Single mode the controller retains its existing maximum of three raster slots. During a normal
 transition these contain current and adjacent pages; a rapid request prioritizes
 current and latest target, with at most one other prefetch slot. The UI reuses its
 same stamp-filtered conversion map (at most three bitmaps); the two artwork layers
@@ -338,7 +343,7 @@ independently with Compose and its own bounded frames/state/progress handshake.
 No Mihon code or dependency was copied. Its exact thresholds/progress callbacks
 are not assumed to match ours.
 
-No new reader modes, zoom/pan feature, double-page mode, cropping, filters,
+PR #21 added no new reader modes, zoom/pan feature, double-page mode, cropping, filters,
 brightness, image processing, arbitrary gesture or animation dependency is added.
 Android automatic return into a comic after Activity recreation remains separate
 work: recreation closes the old owner; reopening restores the last durable
@@ -444,3 +449,131 @@ The final spatial transition subsequently received the user-reported physical
 Android acceptance recorded above. Automated evidence remains distinct from that
 report; native Desktop graphical acceptance, including Windows/Linux/Wayland/niri,
 remains pending. No Desktop physical/graphical verification is claimed.
+
+## Double-page presentation (PR #23)
+
+Single page remains the default. In paged LTR/RTL, Settings → Page layout offers
+Single page and Double page using the existing preference store and writer. Double
+is retained but ignored in Vertical/Webtoon; those modes keep their individual-page
+layout, fraction progress, spacing and three-slot window. No orientation-based
+automatic selection is implemented.
+
+`PageSpread(anchor, second?)` contains logical indices, not copied PageEntry metadata
+or pixels. Grouping scans the logical sequence once: page 0 is always alone (fixed
+cover policy); source **width > height** is wide and always alone; other pages,
+including square pages, pair with the next non-wide page. A page immediately before
+a wide page remains alone. Pairing restarts after each wide page. Unmatched final
+pages remain alone. Thus portrait/wide sequence P,P,W,P,P becomes `[0],[1],[2],[3,4]`.
+Geometry comes from the existing verified preparation/preflight pipeline. There is
+no image analysis, splitting, joining or cover-content heuristic.
+
+For logical pair A then B, LTR places A left/B right; RTL places B left/A right.
+Logical numbering, Previous/Next semantics and publication identity do not reverse.
+Pairs share one fit-page viewport with equal-width halves, no gutter, aspect-preserving
+centering and no default crop. Wide/single pages use the full viewport. The indicator
+uses logical 1-based numbers (`2–3 / 10` or `1 / 10`). Navigation advances between
+non-overlapping spreads, with safe first/last boundaries.
+
+PR #21's authoritative spatial pager now moves the entire spread as one unit:
+current spread follows the finger and incoming spread starts one viewport away;
+release threshold/velocity and the 180ms settle remain unchanged. Side taps,
+accessibility actions and semantic Previous/Next share that transition. The center
+40% toggles controls; side zones remain 30% each. Rapid requests coalesce into one
+latest target. Pair pages have no independent animation or zoom state. The complete
+canvas zooms/pans at 1–4×; above 1× one-finger input pans, and multi-pointer/pinch
+input cannot turn a spread. Returning to 1× restores paged navigation.
+
+### Progress and interruption
+
+A spread's anchor is its first logical page in reading order, regardless of RTL
+placement. Progress remains `ReadingLocator.Page` with existing identity/schema.
+Request, prefetch, decode, conversion and animation start do not save. All pages'
+current raster stamps and successful bitmap conversions must authorize the target;
+only the complete spread composed at rest can acknowledge its logical anchor. If
+either page fails, the target never commits and the previous spread/progress remain.
+Conversion failure uses the same controlled unavailable behavior, never half-success.
+
+Reopening a saved second page reconstructs its containing spread, but normalization
+alone does not write progress. After successful presentation the anchor can be saved.
+Single → Double resolves the containing spread; Double → Single retains the anchor.
+Settings change, Back/close or viewport width/height change retire the old ticket,
+transition offset and obsolete work. Old callbacks cannot commit after such a change.
+Rotation/resize never changes the saved layout preference. Activity recreation still
+requires reopening the publication; automatic reader-session restoration is deferred.
+
+### Explicit ownership bounds
+
+| Application ownership | Single / continuous | Double paged |
+| --- | --- | --- |
+| Controller decoded raster slots | 3 | 4 |
+| Current converted bitmap identities | 3 | 4 |
+| Spread artwork layers | Single paged: 2 | 2 (current + incoming) |
+| Paged artwork image children | 2 | 4 |
+| Source/read/decode jobs inside native permit | 1 globally | 1 globally |
+| Bitmap conversions inside native permit | 1 globally | 1 globally |
+
+Four slots are sufficient for current pair + latest target pair. At rest the next
+spread may occupy target slots; there is no additional previous/next spread cache.
+Existing identities are borrowed by both presentation layers, never converted twice
+for layering. Navigation speed and publication length (still ≤512 pages) cannot
+increase the slot count. Input/cache bounds are encoded in the converter and window;
+100 rapid replacement requests, 8/512-page documents, cancelled non-cooperative work,
+identity reuse and Back/reopen serialization are tested.
+
+During cancellation/handover, one converter may borrow its retiring input of at most
+four rasters while the controller holds four new rasters and one serialized decode
+produces a result: **at most nine application-held raster identities**, including
+transient work (Single-only bound seven). The current bitmap cache plus its one
+conversion result is at most **five** identities. Allowing four borrowed identities from a retiring reader owner gives
+**nine bitmap identities during owner handover** (Single-only seven). Conversion
+byte scratch is a separate bounded buffer. `collectLatest` cancels and joins before
+replacing conversion work; upstream change signals contain stamps only, with latest rasters read after
+retiring work joins, so pending signals cannot retain an extra intermediate window.
+Shared decode/conversion mutexes also serialize across Back/reopen owners.
+Cancelled mutex waiters do not become another cache. These are ownership/active-work
+bounds, not an exact process-heap/GC/GPU ceiling or immediate native reclamation claim.
+Provider decode buffers, bitmap-conversion scratch, encoded read buffers and framework
+snapshots/native/GPU overhead remain additional bounded pipeline/allocator costs.
+
+Paired native pages use factor-two source sampling in both dimensions before ARGB
+allocation (Android BitmapFactory / Desktop ImageIO). Each gets half the viewport;
+standalone pages keep the original decode policy. Sampling is opt-in for PageReader;
+EPUB and other raster callers retain their existing decode path. Original source
+preflight still enforces 2 MiB encoded, 2048 per dimension and 1,048,576 source pixels;
+no global image/source limit increases. Odd source sizes allow codec rounding only
+within half-size floor/ceil. Injected decoders may return the original already-bounded
+size, preserving the decoder contract/test adapters; native adapters sample pairs.
+
+Preferences keep the same private path, atomic writer and fixed 56-byte record.
+Single writes the unchanged canonical v1 mode 0–3; Double uses v2 choice 4–7 (mode
+plus four). Both forms read into the same model; unknown/noncanonical schema/choices
+fail closed. This is a preference-format extension, not a publication/progress schema
+migration. No dependency, Android permission, signing or release change is required.
+
+### Limitations and future physical acceptance
+
+Physical Android acceptance for PR #23 is **pending**. PR #21's acceptance above
+covers its original single-page transition only. Native Desktop graphical acceptance
+is separately pending. Automated host/headless checks do not establish either.
+
+Future Android checklist:
+
+1. Verify Single remains default and its navigation/rendering still work.
+2. Select Double; verify first page alone, portrait pair, unmatched final page and
+   wide source page alone; verify pairing resumes after the wide page.
+3. Check LTR and RTL placements, logical Previous/Next and first/last boundaries.
+4. Drag forwards/backwards; verify complete spreads follow the finger, short drags
+   return and flings/side taps/buttons settle smoothly. Navigate rapidly both ways.
+5. Zoom/pan the whole spread; pinch and one-finger pan must not turn pages. Reset
+   to 1× and confirm navigation resumes.
+6. Center-tap controls, settings and logical page-range indicator remain usable.
+7. Rotate portrait/landscape during a turn and at rest; check stale offsets/work.
+8. Close/reopen; verify logical-anchor progress and retained layout preference.
+9. Check failed-page handling preserves the previous spread/progress.
+10. Check Vertical and Webtoon regressions, then return to paged Double.
+
+Deferred: automatic orientation layout, cover heuristics beyond first-page-alone,
+pairing offsets, source double-page splitting/joining, crop/margin removal, brightness,
+contrast/color filters/enhancement/image processing, new Webtoon behavior, OCR,
+translation, panel detection and guided view. CBZ preparation, import ownership,
+Library/History/Search, EPUB/PDF/TEXT, acquisition and storage identity are unchanged.

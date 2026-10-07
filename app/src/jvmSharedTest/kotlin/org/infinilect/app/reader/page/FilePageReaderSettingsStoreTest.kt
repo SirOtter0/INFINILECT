@@ -23,6 +23,26 @@ class FilePageReaderSettingsStoreTest {
         assertEquals(PAGE_SETTINGS_RECORD_BYTES.toLong(), Files.size(record))
         assertEquals(value, FilePageReaderSettingsStore(directory).load())
     }
+    @Test fun doubleLayoutSurvivesFreshPreferenceOwnerForEveryMode() = runBlocking {
+        for (mode in PageReadingMode.entries) {
+            val selected = PageReaderSettings(mode, PageLayout.DOUBLE)
+            val first = PageSettingsPersistence(FilePageReaderSettingsStore(directory), clock = ::pagePreferenceTime)
+            first.awaitLoaded(); first.submit(first.claimReader(), selected); first.close(); first.awaitClosed()
+            assertEquals(2, ByteBuffer.wrap(Files.readAllBytes(record)).getInt(8))
+            val fresh = PageSettingsPersistence(FilePageReaderSettingsStore(directory), clock = ::pagePreferenceTime)
+            try { fresh.awaitLoaded(); assertEquals(selected, fresh.settings.value) }
+            finally { fresh.close(); fresh.awaitClosed() }
+        }
+        val single = PageReaderPreferences(PageReaderSettings(), pagePreferenceTime())
+        assertTrue(FilePageReaderSettingsStore(directory).save(single))
+        assertEquals(1, ByteBuffer.wrap(Files.readAllBytes(record)).getInt(8))
+        assertEquals(single, FilePageReaderSettingsStore(directory).load())
+    }
+    @Test fun genuinelyFutureSchemaStillFailsClosed() = runBlocking {
+        assertTrue(FilePageReaderSettingsStore(directory).save(PageReaderPreferences(settings.copy(layout = PageLayout.DOUBLE), 1)))
+        mutateInt(8, 3)
+        assertEquals(PageReaderPreferences(), FilePageReaderSettingsStore(directory).load())
+    }
     @Test fun readingDirectionSurvivesEntirePreferenceOwnerRecreation() = runBlocking {
         for (mode in listOf(PageReadingMode.PAGED_RTL, PageReadingMode.PAGED_LTR)) {
             val first = PageSettingsPersistence(FilePageReaderSettingsStore(directory), clock = ::pagePreferenceTime)

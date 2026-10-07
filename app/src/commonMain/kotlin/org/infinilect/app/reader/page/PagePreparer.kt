@@ -8,6 +8,7 @@ import org.infinilect.app.media.RasterPolicy
 internal object PagePolicy {
     const val MAX_PAGES = 512
     const val RETAINED = 3 // current / first-visible page and at most two adjacent pages
+    const val SPREAD_RETAINED = 4 // current pair + latest target pair; no additional prefetch
     const val PREFETCH = 1
     const val DECODE_TIMEOUT_MILLIS = 10_000L
     fun supported(page: PageEntry): Boolean = page.resource.mediaType in setOf("image/png", "image/jpeg") &&

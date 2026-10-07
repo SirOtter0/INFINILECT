@@ -13,7 +13,11 @@ internal object RasterPolicy {
 internal class Raster(val width: Int, val height: Int, val argb: IntArray) {
     init { require(RasterPolicy.dimensions(width, height) && argb.size == width * height) }
 }
-internal interface RasterDecoder { suspend fun decode(bytes: ByteArray, mediaType: String): Raster }
+internal interface RasterDecoder {
+    suspend fun decode(bytes: ByteArray, mediaType: String): Raster
+    /** Page-reader opt-in only. Existing illustration/single-page callers are unchanged. */
+    suspend fun decodePage(bytes: ByteArray, mediaType: String, paired: Boolean): Raster = decode(bytes, mediaType)
+}
 internal expect fun defaultRasterDecoder(): RasterDecoder
 /** Header/CRC preflight, before decoder allocation. No native/framework result. */
 internal expect suspend fun inspectRaster(bytes: ByteArray, mediaType: String): Pair<Int, Int>
