@@ -219,3 +219,34 @@ Not full EPUB2/EPUB3 conformance: UTF-16 XML, DTD/entities, DTBook/non-XHTML spi
 pageList/navList/audio, fallbacks, SVG rendering, DRM/font obfuscation, signatures,
 script/forms/media execution, remote resources and browser CSS remain unsupported.
 No dependency, Android permission, acquisition policy or signing change.
+
+## PR #22 automated verification
+
+[Final CI run](https://github.com/SirOtter0/INFINILECT/actions/runs/37640027762)
+verified production/test revision `7cc5284d9266c4dbb5710ec0050dc9f424e4a9e2`
+on 2026-10-07. The final documentation/workflow-cleanup commit does not change
+that production/test tree. Original generated fixtures require no network/books.
+
+Focused command (EPUB/ZIP/CBZ/import/progress), then full app/core regression:
+
+```sh
+./gradlew :core:jvmTest --tests '*Epub*Test' :core:testAndroidHostTest --tests '*Epub*Test' :app:desktopTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test' :app:testAndroidHostTest --tests '*Epub*Test' --tests '*CbzPagePreparerTest' --tests '*LocalImport*Test' --no-daemon --console=plain --max-workers=2
+./gradlew :core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest --no-daemon --console=plain --max-workers=2
+./gradlew :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+| Suite | Focused tests | Final regression tests |
+| --- | ---: | ---: |
+| app Desktop | 271 | 872 |
+| app Android-host | 262 | 827 |
+| core JVM | 11 | 59 |
+| core Android-host | 11 | 59 |
+
+All final suites: **zero failures, errors and skipped tests** (counts verified from
+JUnit XML). Both Android/Desktop Kotlin compilation tasks passed. CBZ regressions,
+malformed import non-publication, original deletion/cache clearing/full owner
+restart, deduplication, Library/History and EPUB2/EPUB3 progress restore passed.
+`git diff --check` and tracked secret/generated-artifact scans passed. No dependency
+or signing change. Temporary per-branch verification workflow is removed from the
+final diff; the run/logs and this summary preserve evidence. These are host/compile
+checks, **not physical Android or native Desktop graphical acceptance**.
