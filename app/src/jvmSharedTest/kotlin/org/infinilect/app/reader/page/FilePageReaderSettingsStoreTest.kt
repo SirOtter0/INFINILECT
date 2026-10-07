@@ -23,6 +23,15 @@ class FilePageReaderSettingsStoreTest {
         assertEquals(PAGE_SETTINGS_RECORD_BYTES.toLong(), Files.size(record))
         assertEquals(value, FilePageReaderSettingsStore(directory).load())
     }
+    @Test fun readingDirectionSurvivesEntirePreferenceOwnerRecreation() = runBlocking {
+        for (mode in listOf(PageReadingMode.PAGED_RTL, PageReadingMode.PAGED_LTR)) {
+            val first = PageSettingsPersistence(FilePageReaderSettingsStore(directory), clock = ::pagePreferenceTime)
+            first.awaitLoaded(); first.submit(first.claimReader(), PageReaderSettings(mode)); first.close(); first.awaitClosed()
+            val fresh = PageSettingsPersistence(FilePageReaderSettingsStore(directory), clock = ::pagePreferenceTime)
+            try { fresh.awaitLoaded(); assertEquals(mode, fresh.settings.value.mode) }
+            finally { fresh.close(); fresh.awaitClosed() }
+        }
+    }
     @Test fun entireOwnerRecreationRestoresWithoutRamAfterCacheDeletion() = runBlocking {
         val first = PageSettingsPersistence(FilePageReaderSettingsStore(directory), clock = ::pagePreferenceTime)
         first.awaitLoaded(); first.submit(first.claimReader(), settings); first.close(); first.awaitClosed()

@@ -26,6 +26,7 @@ internal data class PageReaderState(
     val settings: PageReaderSettings = PageReaderSettings(),
     val ticket: Long = 0,
     val frames: Map<Int, PageFrame> = emptyMap(),
+    val controlsVisible: Boolean = false,
 )
 
 /** UI-thread commands and immutable state. One serialized acquisition/decode worker,
@@ -76,10 +77,29 @@ internal class PageReaderController(
     fun navigate(index: Int) {
         if (closed || index !in document.pages.indices) return
         mutableState.value = state.value.copy(position = PagePosition(index), ticket = state.value.ticket + 1)
-        changedPosition(); loadWindow(index)
+        loadWindow(index)
     }
     fun next() = navigate(state.value.position.index + 1)
     fun previous() = navigate(state.value.position.index - 1)
+    fun toggleControls() {
+        if (!closed) mutableState.value = state.value.copy(controlsVisible = !state.value.controlsVisible)
+    }
+    fun tap(fraction: Float) {
+        if (closed) return
+        when (pageTapAction(fraction, state.value.settings.mode)) {
+            PageTapAction.PREVIOUS -> previous()
+            PageTapAction.NEXT -> next()
+            PageTapAction.CONTROLS -> toggleControls()
+            null -> Unit
+        }
+    }
+    /** Acknowledge an actually composed bitmap, not a navigation request or prefetch.
+     * The UI's conversion, obsolete callbacks and closed owners cannot advance progress. */
+    fun presented(ticket: Long, pageIndex: Int, stamp: Long) {
+        if (closed || ticket != state.value.ticket || pageIndex != state.value.position.index) return
+        val frame = state.value.frames[pageIndex] as? PageFrame.Ready ?: return
+        if (frame.stamp == stamp) changedPosition()
+    }
     /** Positive horizontal swipe advances in RTL; negative advances in LTR. */
     fun swipe(right: Boolean) {
         when (state.value.settings.mode) {
@@ -106,7 +126,7 @@ internal class PageReaderController(
     fun report(ticket: Long, pageIndex: Int, fraction: Double, visiblePages: List<Int> = emptyList()) {
         if (closed || ticket != state.value.ticket || pageIndex !in document.pages.indices || !fraction.isFinite()) return
         mutableState.value = state.value.copy(position = PagePosition(pageIndex, fraction.coerceIn(0.0, 1.0)))
-        changedPosition(); loadWindow(pageIndex, visible = visiblePages)
+        loadWindow(pageIndex, visible = visiblePages)
     }
     /** Initial/restored viewport can request frames without claiming a new reading position. */
     fun visible(ticket: Long, pages: List<Int>) {

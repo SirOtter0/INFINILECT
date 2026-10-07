@@ -56,6 +56,7 @@ class PageReaderControllerTest {
         it.previous();assertEquals(1,it.state.value.position.index)
     } }
     @Test fun rtlAndLtrSwipesUseLogicalOrder()=runTest { reader {
+        it.mode(PageReadingMode.PAGED_RTL)
         it.swipe(true);assertEquals(1,it.state.value.position.index);it.swipe(false);assertEquals(0,it.state.value.position.index)
         it.mode(PageReadingMode.PAGED_LTR);it.swipe(false);assertEquals(1,it.state.value.position.index);it.swipe(true);assertEquals(0,it.state.value.position.index)
     } }
@@ -155,9 +156,13 @@ class PageReaderControllerTest {
         },StandardTestDispatcher(testScheduler)){10}
         val doc=TestPageDocument();val reader=PageReaderController(doc,this,persistence,decoder=TestRasterDecoder(),decodeDispatcher=StandardTestDispatcher(testScheduler))
         try {
-            reader.initialize(null);reader.report(reader.state.value.ticket,40,.6);advanceTimeBy(2000);runCurrent()
+            reader.initialize(null);reader.report(reader.state.value.ticket,40,.6);runCurrent()
+            reader.presented(reader.state.value.ticket,40,assertIs<PageFrame.Ready>(reader.state.value.frames[40]).stamp)
+            advanceTimeBy(2000);runCurrent()
             assertEquals(40,(assertNotNull(values[doc.progressId]).locator as ReadingLocator.Page).pageIndex)
-            val old=reader.state.value.ticket;reader.navigate(60);reader.report(old,1,0.0);reader.close();runCurrent()
+            val old=reader.state.value.ticket;reader.navigate(60);reader.report(old,1,0.0);runCurrent()
+            reader.presented(reader.state.value.ticket,60,assertIs<PageFrame.Ready>(reader.state.value.frames[60]).stamp)
+            reader.close();runCurrent()
             assertEquals(60,(assertNotNull(values[doc.progressId]).locator as ReadingLocator.Page).pageIndex)
         }finally{reader.close();persistence.close();persistence.awaitClosed()}
     }
