@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright © 2026 SirOtter0 and INFINILECT contributors.
+# Temporary evidence run; deleted from the final PR tree.
+name: PR 20 focused Search layout verification
+on:
+  push:
+    branches: [feature/bounded-local-pdf]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+      - name: Focused headless Search and app regressions
+        run: ./gradlew :app:desktopTest --tests '*SearchLayoutTest' --tests '*SearchControllerTest' --tests '*SearchResultsViewportTest' --tests '*ResultKeyTest' --tests '*ApplicationSessionTest' --tests '*LocalImportSessionTest' --tests '*PdfSessionTest' --no-daemon --console=plain --max-workers=2
+      - name: Focused Android host regressions
+        run: ./gradlew :app:testAndroidHostTest --tests '*SearchControllerTest' --tests '*SearchResultsViewportTest' --tests '*ResultKeyTest' --tests '*ApplicationSessionTest' --tests '*LocalImportSessionTest' --tests '*PdfSessionTest' --no-daemon --console=plain --max-workers=2
+      - name: Compile affected application targets
+        run: ./gradlew :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+      - name: Record exact focused results
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,xml.etree.ElementTree as ET
+          report={}
+          for task in ['desktopTest','testAndroidHostTest']:
+              counts={k:0 for k in ['tests','failures','errors','skipped']}
+              for file in Path('app/build/test-results',task).glob('TEST-*.xml'):
+                  root=ET.parse(file).getroot()
+                  for key in counts:counts[key]+=int(root.attrib.get(key,0))
+              report[task]=counts
+          Path('search-layout-verification.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: pr20-search-layout-verification
+          path: |
+            search-layout-verification.json
+            app/build/test-results/
+          retention-days: 7

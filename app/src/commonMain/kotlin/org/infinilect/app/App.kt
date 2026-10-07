@@ -4,6 +4,10 @@ package org.infinilect.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -114,7 +118,7 @@ fun App(
                     }
                     if(destination==Destination.SEARCH) key(session) {
                         SearchScreen(session,searchState,resultsPosition,applicationSources.options,selected,application::selectSource,
-                            application.collections,application::openSearch)
+                            application.collections,application::openSearch,modifier=Modifier.weight(1f).fillMaxWidth())
                     } else CollectionScreen(destination,application)
                 }
                 is OpenPublicationState.Ready, is OpenPublicationState.EpubReady, is OpenPublicationState.PageReady, is OpenPublicationState.PdfReady -> Column(Modifier.fillMaxSize()) {
@@ -212,7 +216,8 @@ internal fun CollectionScreen(destination: Destination, application: Application
 @OptIn(ExperimentalLayoutApi::class)
 internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPosition: LazyListState,
     sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
-    collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open) {
+    collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open,
+    modifier: Modifier = Modifier) {
     val query by session.query.collectAsState()
     val membership by collections.membership.collectAsState()
     val libraryError by collections.error.collectAsState()
@@ -224,80 +229,97 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         is SearchState.Error -> current.previous
         SearchState.Idle -> null
     }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("INFINILECT", style = MaterialTheme.typography.h4)
-        Text("Open knowledge. Infinite reading.")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            sources.forEachIndexed { index, source ->
-                Button(enabled = index != selected, onClick = { onSource(index) }) { Text(source.name) }
-            }
-        }
-        Text("Source: ${sources[selected].name}")
-        Text(if (session.textReadingEnabled && session.epubReadingEnabled && session.pageReadingEnabled) "Search your imported TEXT, EPUB, CBZ and PDF publications. Use * to list all imports."
-            else if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
-            else if (session.pageReadingEnabled) "Original development comic. No production comic acquisition is enabled."
-            else if (session.epubReadingEnabled) "Original development EPUB. No production EPUB acquisition is enabled."
-            else "Experimental catalog only. TEXT opening is unavailable for this source.")
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = session::editQuery,
-                label = { Text("Title, author, or keyword") },
-                singleLine = true,
-                enabled = !loading,
-                modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    if (!loading && query.isNotBlank()) session.submitSearch()
-                }),
-            )
-            Button(enabled = !loading && query.isNotBlank(), onClick = {
-                session.submitSearch()
-            }) { Text("Search") }
-        }
-        if (loading) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CircularProgressIndicator()
-                Text("Searching…")
-            }
-        }
-        when (val current = state) {
-            SearchState.Idle -> Text("Enter a search to discover publications.")
-            is SearchState.Error -> Text(current.message, color = MaterialTheme.colors.error)
-            else -> Unit
-        }
-        if(membership.unavailable) {
-            Text("Library storage is unavailable on this device.",color=MaterialTheme.colors.error)
-            Button(onClick=collections::refreshLibrary) { Text("Retry Library") }
-        }
-        libraryError?.let { Text(it,color=MaterialTheme.colors.error) }
-        if (displayed != null) {
-            if (displayed.page.publications.isEmpty()) Text("No publications found for “${displayed.query}”.")
-            else Text("Results for “${displayed.query}”")
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = resultsPosition,
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(displayed.page.publications, key = { it.id.resultKey() }) { publication ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(publication.title, style = MaterialTheme.typography.h6)
-                        if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
-                        if (publication.languages.isNotEmpty()) Text("Language: ${publication.languages.joinToString(", ")}")
-                        publication.rights?.let { Text(it, style = MaterialTheme.typography.caption) }
-                        FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
-                                Button(enabled = !loading, onClick = { onOpen(publication) }) { Text(if (session.pdfReadingEnabled) "Open" else if (session.pageReadingEnabled) "Open pages" else if (session.epubReadingEnabled && !session.textReadingEnabled) "Open EPUB" else "Open text") }
-                            }
-                            LibraryAction(membership.forPublication(publication.id),
-                                onToggle={ collections.toggleCatalogLibrary(publication) })
-                        }
-                        Divider()
+    BoxWithConstraints(modifier.fillMaxSize().padding(24.dp)) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Long headers/source rows may scroll, but can never consume the result viewport.
+            Column(Modifier.fillMaxWidth().heightIn(max = maxHeight / 2)
+                .verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("INFINILECT", style = MaterialTheme.typography.h4)
+                Text("Open knowledge. Infinite reading.")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    sources.forEachIndexed { index, source ->
+                        Button(enabled = index != selected, onClick = { onSource(index) }) { Text(source.name) }
                     }
                 }
+                Text("Source: ${sources[selected].name}")
+                Text(if (session.textReadingEnabled && session.epubReadingEnabled && session.pageReadingEnabled) "Search your imported TEXT, EPUB, CBZ and PDF publications. Use * to list all imports."
+                    else if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
+                    else if (session.pageReadingEnabled) "Original development comic. No production comic acquisition is enabled."
+                    else if (session.epubReadingEnabled) "Original development EPUB. No production EPUB acquisition is enabled."
+                    else "Experimental catalog only. TEXT opening is unavailable for this source.")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = session::editQuery,
+                        label = { Text("Title, author, or keyword") },
+                        singleLine = true,
+                        enabled = !loading,
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = {
+                            if (!loading && query.isNotBlank()) session.submitSearch()
+                        }),
+                    )
+                    Button(enabled = !loading && query.isNotBlank(), onClick = {
+                        session.submitSearch()
+                    }) { Text("Search") }
+                }
             }
-            if (displayed.page.nextPageToken != null) {
-                Button(enabled = !loading, onClick = session::nextPage) { Text("Next page") }
+            // Keep one bounded lazy viewport for results and every feedback/pagination state.
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = resultsPosition,
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item(key = "search-status") {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (loading) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                CircularProgressIndicator()
+                                Text("Searching…")
+                            }
+                        }
+                        when (val current = state) {
+                            SearchState.Idle -> Text("Enter a search to discover publications.")
+                            is SearchState.Error -> Text(current.message, color = MaterialTheme.colors.error)
+                            else -> Unit
+                        }
+                        if(membership.unavailable) {
+                            Text("Library storage is unavailable on this device.",color=MaterialTheme.colors.error)
+                            Button(onClick=collections::refreshLibrary) { Text("Retry Library") }
+                        }
+                        libraryError?.let { Text(it,color=MaterialTheme.colors.error) }
+                        if (displayed != null) {
+                            if (displayed.page.publications.isEmpty()) Text("No publications found for “${displayed.query}”.")
+                            else Text("Results for “${displayed.query}”")
+                        }
+                    }
+                }
+                if (displayed != null) {
+                    items(displayed.page.publications, key = { it.id.resultKey() }) { publication ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(publication.title, style = MaterialTheme.typography.h6)
+                            if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
+                            if (publication.languages.isNotEmpty()) Text("Language: ${publication.languages.joinToString(", ")}")
+                            publication.rights?.let { Text(it, style = MaterialTheme.typography.caption) }
+                            FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
+                                    Button(enabled = !loading, onClick = { onOpen(publication) }) { Text(if (session.pdfReadingEnabled) "Open" else if (session.pageReadingEnabled) "Open pages" else if (session.epubReadingEnabled && !session.textReadingEnabled) "Open EPUB" else "Open text") }
+                                }
+                                LibraryAction(membership.forPublication(publication.id),
+                                    onToggle={ collections.toggleCatalogLibrary(publication) })
+                            }
+                            Divider()
+                        }
+                    }
+                }
+                if (displayed?.page?.nextPageToken != null) {
+                    item(key = "search-pagination") {
+                        Button(enabled = !loading, onClick = session::nextPage) { Text("Next page") }
+                    }
+                }
+                item(key = "search-notice") {
+                    Text("Availability does not establish rights in every country. Reading position is saved locally; reopening still checks the source.", style = MaterialTheme.typography.caption)
+                }
             }
         }
-        Text("Availability does not establish rights in every country. Reading position is saved locally; reopening still checks the source.", style = MaterialTheme.typography.caption)
     }
 }
 
