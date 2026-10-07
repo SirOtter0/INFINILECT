@@ -380,8 +380,8 @@ cases and six real-file progress/durability cases. Each test target used:
 [Final affected-module run](https://github.com/SirOtter0/INFINILECT/actions/runs/37580953953)
 at `abb245ef4f4a18be81acd25876e8a393cb05ac12` ran all `app` tests: 837 Desktop
 and 795 Android host, zero failures/errors/skips, plus both application targets.
-`BUILD SUCCESSFUL in 2m 38s`; all 36 tasks executed. Production/tests are identical
-to the final PR tree; subsequent changes only record evidence and remove the
+`BUILD SUCCESSFUL in 2m 38s`; all 36 tasks executed. Production/tests were identical
+to the original PR #21 tree at `cb122e6`; subsequent changes in that run only recorded evidence and removed the
 temporary workflow. No repository-wide clean matrix, signing operation or APK
 build was performed for this PR.
 

@@ -89,6 +89,18 @@ class PageTransitionTest {
         r.settlePageTurn(); assertEquals(5, r.state.value.position.index); assertNull(r.state.value.transition)
         assertTrue(r.retainedPages <= 3); assertTrue(r.state.value.frames.size <= 3)
     } }
+    @Test fun grabbingACoalescedTurnKeepsIncomingIdentityUntilCrossingOrigin() = runTest { reader { r ->
+        r.next(); r.next(); runCurrent()
+        val old = assertNotNull(r.state.value.transition)
+        val ready = assertIs<PageFrame.Ready>(r.state.value.frames[5])
+        r.transitionReady(old.ticket, 5, ready.stamp); r.transitionOffset(old.ticket, -.4f)
+        val drag = assertNotNull(r.dragStart())
+        assertEquals(5, r.state.value.transition?.target)
+        assertEquals(-.4f, r.state.value.transition?.offset)
+        r.drag(drag, -.1f); assertEquals(5, r.state.value.transition?.target)
+        r.drag(drag, 1f); assertEquals(2, r.state.value.transition?.target)
+        r.finishTransition(old.ticket); assertEquals(3, r.state.value.position.index)
+    } }
     @Test fun reverseRequestCancelsToOriginalAndCenterTapDoesNotRetireTransition() = runTest { reader { r ->
         r.next(); val next = assertNotNull(r.state.value.transition)
         r.tap(.5f); assertTrue(r.state.value.controlsVisible); assertEquals(next, r.state.value.transition)

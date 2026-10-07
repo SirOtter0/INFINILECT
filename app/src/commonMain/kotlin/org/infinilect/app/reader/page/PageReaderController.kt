@@ -32,7 +32,7 @@ internal data class PageReaderState(
 )
 
 /** UI-thread commands and immutable state. One serialized acquisition/decode worker,
- * current page +/- one only. Decoder work is off UI; generations reject late results.
+ * at most three slots, prioritizing current and latest target. Generations reject late results.
  * This owner knows neither source, transport, EPUB, filesystem nor platform image types. */
 internal class PageReaderController(
     val document: PageDocument,
@@ -106,8 +106,10 @@ internal class PageReaderController(
         val source = s.frames[s.position.index] as? PageFrame.Ready ?: return null
         if (sourceStamp != source.stamp) return null
         val ticket = s.ticket + 1
-        val offset = s.transition?.offset ?: 0f
-        val target = pageDragTarget(s.position.index, offset, s.settings.mode, document.pages.size)
+        val old = s.transition
+        val offset = old?.offset ?: 0f
+        val target = old?.target?.takeIf { pageIncomingSide(s.position.index, it, s.settings.mode) * offset < 0 }
+            ?: pageDragTarget(s.position.index, offset, s.settings.mode, document.pages.size)
         mutableState.value = s.copy(ticket = ticket, navigationFailed = false,
             transition = PageTransition(ticket, s.position.index, target, offset, PageTransitionPhase.DRAGGING))
         loadWindow(s.position.index, visible = listOf(target))
@@ -117,7 +119,10 @@ internal class PageReaderController(
         val t = state.value.transition ?: return
         if (closed || t.ticket != ticket || t.phase != PageTransitionPhase.DRAGGING || !delta.isFinite()) return
         val offset = (t.offset + delta).coerceIn(-1f, 1f)
-        val target = pageDragTarget(t.from, offset, state.value.settings.mode, document.pages.size)
+        // Grabbing an in-flight coalesced turn keeps its authoritative incoming page
+        // until the finger crosses the origin; it must not flash a different neighbor.
+        val target = t.target.takeIf { pageIncomingSide(t.from, it, state.value.settings.mode) * offset < 0 }
+            ?: pageDragTarget(t.from, offset, state.value.settings.mode, document.pages.size)
         mutableState.value = state.value.copy(transition = t.copy(target = target, offset = if (target == t.from) 0f else offset))
         loadWindow(t.from, visible = listOf(target))
     }
