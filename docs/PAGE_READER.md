@@ -781,6 +781,26 @@ zoom/pan. Pan-first bounds, edge-only velocity, zoomed side-tap exclusion, compa
 geometry, grouping and raster/bitmap/job limits are unchanged. The separate
 orientation/menu state-reset issue remains outside scope.
 
+**AUTOMATED CONSECUTIVE-GESTURE VERIFICATION:** Production/test revision
+`378f7a20610dd90b5f0e4081e08a21f5662724f0` passed **205 focused Desktop +
+160 focused Android-host PageReader tests**, then **964 full Desktop app +
+886 full Android-host app tests**, zero failures/errors/skips in the passing runs.
+Eight new common tests and seven controlled-clock headless Compose tests cover
+all active phases, both directions/layouts/zoom states, offset continuity, waiting
+on conversion, reversal, pinch, stale callbacks, progress and retirement. A
+1000-grab test retains one flat continuation, at most four decoded slots and no
+request queue; existing bitmap/resource tests and PR #21/#23 assertions remain.
+Android (`:androidApp:compileDebugKotlin`) and Desktop (`:desktopApp:compileKotlin`)
+application compilation passed. Core/dependencies are unchanged; core suites were
+not repeated. The first 886-case Android-host run reproduced the previously
+documented, unchanged PDF cleanup race in `concurrentRenderRequestsRemainSerialized`
+(`FilePdfPreparer.close()` concurrent set snapshot, `NoSuchElementException`).
+The isolated test and full 886-case retry passed. PDF code/tests remain untouched;
+that intermittent issue remains outside scope. Incremental diff review and
+`git diff --check` passed; the tree is clean and the scan found no signing secrets,
+attachment paths, generated acceptance artifacts or temporary CI. The following
+commit records this verification only; production/tests remain the verified tree.
+
 **Physical Android re-acceptance is PENDING. Native Desktop graphical acceptance
 is PENDING. Keep PR #23 DRAFT and unmerged.** Check consecutive Next/Previous
 swipes during motion at 1× and zoomed, in LTR/RTL and Single/Double; also check
