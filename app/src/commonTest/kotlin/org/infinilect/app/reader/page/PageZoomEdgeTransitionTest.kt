@@ -100,4 +100,37 @@ class PageZoomEdgeTransitionTest {
         }
         r.close(); assertNull(r.beginEdgeDrag(1))
     } }
+    @Test fun twoCancelledFastAttemptsThenOneQualifyingTurnKeepPresentationOnlyProgress() = runTest { reader { r, _, _, saved ->
+        for ((distance, reversal) in listOf(20f to false, 60f to true, 80f to false)) {
+            val v = PageEdgeVelocity(1000); v.add(1008, -distance)
+            if (reversal) v.add(1016, -40f) else v.add(1016, -distance)
+            val t = r.edge(); val offset = -(if (reversal) 40f else distance) / 640
+            r.drag(t, offset); r.releaseDrag(t, v.pixelsPerSecond() / 640); runCurrent()
+            r.flush(); runCurrent(); assertEquals(1, saved.size)
+            if (distance < 80) {
+                assertEquals(PageTransitionPhase.RETURNING, r.state.value.transition?.phase)
+                r.settleSpread(); assertEquals(3, r.state.value.position.index)
+            } else {
+                assertEquals(PageTransitionPhase.WAITING, r.state.value.transition?.phase)
+                r.settleSpread(); assertEquals(5, r.state.value.position.index)
+                r.flush(); runCurrent(); assertEquals(1, saved.size)
+                r.presented(r.state.value.ticket, 5, r.spreadStamps()); r.flush(); runCurrent()
+                assertEquals(2, saved.size); assertEquals(5, (saved.last().locator as ReadingLocator.Page).pageIndex)
+            }
+        }
+    } }
+    @Test fun rapidFastEdgeReplacementCannotFinishStaleAnimationOrAdvanceProgress() = runTest { reader { r, _, _, saved ->
+        var obsolete: Long? = null
+        repeat(30) {
+            val t = r.edge(); val v = PageEdgeVelocity(1000); v.add(1016, -80f)
+            r.drag(t, -.125f); r.releaseDrag(t, v.pixelsPerSecond() / 640); runCurrent()
+            r.transitionReady(t, 5, r.spreadStamps(5)); r.transitionOffset(t, -.2f)
+            obsolete?.let { old -> r.transitionOffset(old, -1f); r.finishTransition(old) }
+            assertEquals(3, r.state.value.position.index); assertTrue(r.retainedPages <= 4)
+            obsolete = t
+        }
+        val t = assertNotNull(r.state.value.transition).ticket
+        r.returnTransition(t); r.settleSpread(); r.flush(); runCurrent()
+        assertEquals(3, r.state.value.position.index); assertEquals(1, saved.size)
+    } }
 }

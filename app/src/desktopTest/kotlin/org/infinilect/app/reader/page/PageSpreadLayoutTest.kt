@@ -368,4 +368,120 @@ class PageSpreadLayoutTest {
         }
     }
 
+    @Test fun fastEdgeSwipesDoNotNeedRepeatedAttemptsWhenFinalMovementArrivesOnPointerUp() {
+        val positions = mutableListOf<Int>()
+        for (moveDistance in listOf(20f, 20f, 180f)) Fixture().use { f ->
+            f.reader.layout(PageLayout.DOUBLE); f.await(0); f.reader.next(); f.await(1); f.zoom()
+            val start = Offset(320f, 210f)
+            // Consume the 102px real pan range in a separate gesture, leaving the image at Next's edge.
+            f.scene.sendPointerEvent(PointerEventType.Press, start, type = PointerType.Touch, timeMillis = 1000L)
+            f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(102f, 0f), type = PointerType.Touch, timeMillis = 1100L)
+            f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(102f, 0f), type = PointerType.Touch, timeMillis = 1120L)
+            f.await(1)
+            f.scene.sendPointerEvent(PointerEventType.Press, start, type = PointerType.Touch, timeMillis = 1200L)
+            f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(moveDistance, 0f), type = PointerType.Touch, timeMillis = 1208L)
+            f.draw()
+            assertNotNull(f.reader.state.value.transition, "Swipe visibly moves before release")
+            // The first two deliver most of the actual outward movement with the up event.
+            f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(maxOf(moveDistance, 80f), 0f), type = PointerType.Touch, timeMillis = 1216L)
+            repeat(60) { f.draw() }
+            positions += f.reader.state.value.position.index
+        }
+        assertEquals(listOf(3, 3, 3), positions, "Every qualifying fast edge swipe should turn once")
+    }
+
+    private fun Fixture.touch(type: PointerEventType, at: Offset, time: Long) {
+        scene.sendPointerEvent(type, at, type = PointerType.Touch, timeMillis = time)
+    }
+    private fun Fixture.panToEdge(sign: Float, zoom: Float = 2f) {
+        val fit = fitPageSpread(reader.spread().indices.map { doc.pages[it].dimensions },
+            androidx.compose.ui.geometry.Size(width.toFloat(), height.toFloat()), 2f)
+        val bound = pagePanBounds(fit.size, androidx.compose.ui.geometry.Size(width.toFloat(), height.toFloat()), zoom).x
+        val start = Offset(width / 2f, height / 2f)
+        touch(PointerEventType.Press, start, 1000)
+        touch(PointerEventType.Move, start + Offset(sign * bound, 0f), 1100)
+        touch(PointerEventType.Release, start + Offset(sign * bound, 0f), 1120)
+        await(reader.state.value.position.index)
+        assertNull(reader.state.value.transition)
+    }
+    @Test fun sparseFastTouchAtEitherEdgeTurnsOnceInBothLayoutsAndReadingDirections() {
+        for (layout in PageLayout.entries) for (mode in listOf(PageReadingMode.PAGED_LTR, PageReadingMode.PAGED_RTL))
+            for (next in listOf(false, true)) for (moveEvent in listOf(false, true)) Fixture().use { f ->
+                f.reader.layout(layout); f.reader.mode(mode); f.await(0); f.reader.navigate(3); f.await(3); f.zoom()
+                val target = if (next) { if (layout == PageLayout.DOUBLE) 5 else 4 } else { if (layout == PageLayout.DOUBLE) 1 else 2 }
+                val sign = -pageIncomingSide(3, target, mode).toFloat(); f.panToEdge(sign)
+                val start = Offset(320f, 210f)
+                f.touch(PointerEventType.Press, start, 2000)
+                if (moveEvent) { f.touch(PointerEventType.Move, start + Offset(sign * 20, 0f), 2008); f.draw() }
+                f.touch(PointerEventType.Release, start + Offset(sign * 80, 0f), 2016)
+                f.await(target)
+                assertTrue(f.reader.retainedPages <= if (layout == PageLayout.DOUBLE) 4 else 3)
+                // Successful turn uses the canonical 1x state; a semantic side tap can turn again.
+                f.tap(if (mode == PageReadingMode.PAGED_LTR) .9f else .1f)
+                f.await(target + if (layout == PageLayout.DOUBLE) 2 else 1)
+            }
+    }
+    @Test fun fastTouchMayReachEdgeAndTurnInOneGestureButPanAndInsufficientExcessReturn() {
+        for ((distance, target) in listOf(80f to 1, 122f to 1, 182f to 3)) Fixture().use { f ->
+            f.reader.layout(PageLayout.DOUBLE); f.await(0); f.reader.next(); f.await(1); f.zoom()
+            val start = Offset(320f, 210f)
+            f.touch(PointerEventType.Press, start, 1000)
+            f.touch(PointerEventType.Move, start - Offset(40f, 0f), 1008); f.draw()
+            assertNull(f.reader.state.value.transition, "Pan always has priority")
+            f.touch(PointerEventType.Release, start - Offset(distance, 0f), 1016); f.await(target)
+            if (target == 1) {
+                f.tap(.9f); assertNull(f.reader.state.value.transition)
+                assertEquals(1, f.reader.state.value.position.index, "Cancelled turn retained zoom")
+            }
+        }
+    }
+    @Test fun timedFastEdgeReversalAndFailedAdjacentPairDoNotAdvanceOrResetZoom() {
+        for (fail in listOf(false, true)) Fixture().use { f ->
+            if (fail) f.failed = 4
+            f.reader.layout(PageLayout.DOUBLE); f.await(0); f.reader.next(); f.await(1); f.zoom(); f.panToEdge(-1f)
+            val start = Offset(320f, 210f)
+            f.touch(PointerEventType.Press, start, 2000)
+            f.touch(PointerEventType.Move, start - Offset(100f, 0f), 2008); f.draw()
+            f.touch(PointerEventType.Release, start - Offset(if (fail) 100f else 60f, 0f), 2016)
+            f.await(1)
+            assertEquals(fail, f.reader.state.value.navigationFailed)
+            f.tap(.9f); assertNull(f.reader.state.value.transition); assertEquals(1, f.reader.state.value.position.index)
+        }
+    }
+    @Test fun timedFastHandoffCannotCommitAfterAnotherTouchPointerJoins() {
+        Fixture().use { f ->
+            f.reader.layout(PageLayout.DOUBLE); f.await(0); f.reader.next(); f.await(1); f.zoom(); f.panToEdge(-1f)
+            fun send(type: PointerEventType, x: Float, first: Boolean, second: Boolean, time: Long) {
+                f.scene.sendPointerEvent(type, listOf(ComposeScenePointer(PointerId(1), Offset(x, 210f), first, PointerType.Touch),
+                    ComposeScenePointer(PointerId(2), Offset(440f, 210f), second, PointerType.Touch)), timeMillis = time)
+                f.draw()
+            }
+            send(PointerEventType.Press, 320f, true, false, 2000)
+            send(PointerEventType.Move, 240f, true, false, 2008)
+            val old = assertNotNull(f.reader.state.value.transition)
+            send(PointerEventType.Press, 240f, true, true, 2010); assertNull(f.reader.state.value.transition)
+            send(PointerEventType.Move, 200f, true, true, 2014)
+            send(PointerEventType.Release, 160f, false, false, 2016)
+            f.reader.finishTransition(old.ticket); f.await(1); assertNull(f.reader.state.value.transition)
+        }
+    }
+    @Test fun grabbingFastSettleReplacesTicketAndQualifiedReleaseStillCompletes() {
+        Fixture().use { f ->
+            f.reader.layout(PageLayout.DOUBLE); f.await(0); f.reader.next(); f.await(1); f.zoom(); f.panToEdge(-1f)
+            val start = Offset(320f, 210f)
+            f.touch(PointerEventType.Press, start, 2000)
+            f.touch(PointerEventType.Release, start - Offset(80f, 0f), 2016); f.draw(1)
+            val old = assertNotNull(f.reader.state.value.transition)
+            assertTrue(old.phase == PageTransitionPhase.WAITING || old.phase == PageTransitionPhase.SETTLING)
+            f.touch(PointerEventType.Press, start, 2024); f.draw(1)
+            val replacement = assertNotNull(f.reader.state.value.transition)
+            assertTrue(replacement.ticket > old.ticket); assertEquals(old.target, replacement.target)
+            f.reader.transitionOffset(old.ticket, -1f); f.reader.finishTransition(old.ticket)
+            assertEquals(1, f.reader.state.value.position.index)
+            f.touch(PointerEventType.Release, start - Offset(80f, 0f), 2040); f.await(3)
+            f.tap(.9f); f.await(5)
+        }
+    }
+
+
 }

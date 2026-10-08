@@ -671,3 +671,42 @@ Focused re-acceptance with the same CBZ:
 5. **Pinch:** multi-touch/pinch must not turn, including after handoff starts.
 6. **Regression:** 1× drags/side taps, center controls and grouping
    [1] [2,3] [4] [5,6] [7]; wide PAGE 4 remains alone.
+
+### Fast zoomed edge swipe follow-up
+
+**USER-REPORTED PHYSICAL ANDROID:** After testing the updated APK, the user
+reports that compact Double positioning, zoomed edge navigation and other
+previously tested reader behavior work as expected. Very fast zoomed swipes
+sometimes move the spread and return; approximately two attempts may return
+before a third turns. This is reported behavior, not final physical acceptance.
+
+A timed headless **touch** reproduction confirmed one cause of this pattern:
+`calculatePan()` excludes a lifted pointer, dropping actual movement delivered
+on pointer-up. At an existing edge, down at 0ms, move 20px at 8ms and up at 80px
+at 16ms retained only 20px, below the 32px minimum on a 640px viewport. Two such
+attempts returned, while a third with 180px before up turned. The same test
+now turns on all three attempts. A physical event trace would be needed to
+attribute every reported failed swipe to this specific cause.
+
+Zoomed one-finger input now consumes the primary pointer's measured delta,
+including up, through the unchanged pan-first bounds/handoff before release.
+Pager velocity uses measured, controller-clamped overscroll positions, rather
+than full finger/pan positions: signed recent displacement / elapsed time, at
+most eight scalar samples over 100ms. Pan-only samples reset the zero seed;
+a mixed pan/edge segment credits only excess over its measured time. Reversal
+discards earlier outward velocity; a 40ms stationary tail yields zero velocity.
+Two timed samples suffice; equal/backwards timestamps or non-finite inputs do
+not invent velocity. Grabbing an animation seeds its offset without crediting
+inherited animation movement as finger velocity.
+
+Completion still requires **25% displacement**, or **at least 5% actual pager
+displacement plus agreeing ≥0.9 viewports/second velocity**, with **180ms** settle.
+No threshold was lowered and no distance or velocity boost was added. 1× input
+and its existing VelocityTracker, pan bounds, compact layout, grouping, modes,
+side-tap/pinch exclusion, tickets/animation and presentation-only progress remain
+unchanged. Successful turns reset to fit; cancelled/failed turns retain zoom/pan.
+The raster/bitmap/job bounds are unchanged; the scalar history owns no artwork.
+The separate orientation/menu state-reset issue is outside this follow-up.
+
+**Physical Android re-acceptance of this fast-swipe fix is PENDING. Native
+Desktop graphical acceptance remains PENDING. Keep PR #23 DRAFT and unmerged.**

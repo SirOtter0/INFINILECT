@@ -135,6 +135,7 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                     transform.edgeTicket = dragTicket
                     edgePan.overscroll = oldEdge.offset * size.width
                 }
+                val edgeVelocity = PageEdgeVelocity(down.uptimeMillis, edgePan.overscroll)
                 try {
                 do {
                     val event = awaitPointerEvent()
@@ -153,7 +154,10 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                         val bounds = pagePanBounds(fit.size, viewport, zoom)
                         pan = Offset((pan.x + delta.x).coerceIn(-bounds.x, bounds.x), (pan.y + delta.y).coerceIn(-bounds.y, bounds.y))
                     } else if (zoom > 1f) {
-                        pan = edgePan.move(pan, delta, pagePanBounds(fit.size, viewport, zoom))
+                        // calculatePan excludes a lifted touch pointer. Its final measured
+                        // movement still belongs to this one-finger gesture, before release.
+                        val fingerDelta = primary?.let { it.position - it.previousPosition } ?: Offset.Zero
+                        pan = edgePan.move(pan, fingerDelta, pagePanBounds(fit.size, viewport, zoom))
                         if (!consumed && size.width > 0) {
                             if (dragTicket == null && edgePan.canHandoff) {
                                 dragTicket = reader.beginEdgeDrag(sourceStamp)
@@ -167,6 +171,7 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                                 }
                             }
                         }
+                        primary?.let { edgeVelocity.add(it.uptimeMillis, edgePan.overscroll) }
                     } else {
                         horizontal += delta.x; vertical += delta.y
                         if (!consumed && size.width > 0) {
@@ -181,7 +186,8 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                 val releasedTicket = dragTicket
                 if (releasedTicket != null && !multiplePointers && size.width > 0) {
                     if (zoom > 1f && !edgePan.horizontalMotion) reader.returnTransition(releasedTicket)
-                    else reader.releaseDrag(releasedTicket, velocity.calculateVelocity().x / size.width)
+                    else reader.releaseDrag(releasedTicket,
+                        (if (zoom > 1f) edgeVelocity.pixelsPerSecond() else velocity.calculateVelocity().x) / size.width)
                     dragTicket = null
                 } else if (!multiplePointers && !moved && !consumed && size.width > 0) {
                     val fraction = down.position.x / size.width
