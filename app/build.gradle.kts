@@ -41,6 +41,8 @@ kotlin {
             dependsOn(jvmSharedMain)
             dependencies {
                 implementation("io.ktor:ktor-client-java:3.6.0")
+                // Retained session ownership uses Main independently of a Compose scene.
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
                 implementation("app.cash.sqldelight:sqlite-driver:2.4.0")
                 implementation("org.apache.pdfbox:pdfbox:3.0.8")
             }

@@ -345,9 +345,9 @@ are not assumed to match ours.
 
 PR #21 added no new reader modes, zoom/pan feature, double-page mode, cropping, filters,
 brightness, image processing, arbitrary gesture or animation dependency is added.
-Android automatic return into a comic after Activity recreation remains separate
-work: recreation closes the old owner; reopening restores the last durable
-successfully presented page. Reading direction remains locally durable; transition
+PR #24 now retains the live session across Android configuration recreation.
+After process death, explicitly reopening restores the last durable successfully
+presented page. Reading direction remains locally durable; transition
 state and chrome visibility remain transient.
 
 ### Android physical acceptance for PR #21
@@ -497,11 +497,16 @@ Conversion failure uses the same controlled unavailable behavior, never half-suc
 
 Reopening a saved second page reconstructs its containing spread, but normalization
 alone does not write progress. After successful presentation the anchor can be saved.
-Single → Double resolves the containing spread; Double → Single retains the anchor.
+Single → Double resolves the containing spread without replacing the session’s exact
+page/fraction. Returning to Single or continuous mode restores that exact position
+if no genuine navigation changed it. A successful spread turn replaces the session
+position with the new spread anchor; durable Double progress still saves anchors.
 Settings change, Back/close or viewport width/height change retire the old ticket,
 transition offset and obsolete work. Old callbacks cannot commit after such a change.
-Rotation/resize never changes the saved layout preference. Activity recreation still
-requires reopening the publication; automatic reader-session restoration is deferred.
+Rotation/resize never changes the saved layout preference. PR #24 retains the live
+reader across Android configuration recreation; resize/mode changes retire transient
+tickets/zoom offsets while preserving semantic position. A new open after exit or
+process death uses durable progress, not an old session’s exact-page hint.
 
 ### Explicit ownership bounds
 

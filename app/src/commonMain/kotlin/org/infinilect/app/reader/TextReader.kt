@@ -13,6 +13,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.first
+import kotlin.math.ceil
 
 /** Only visible bounded windows are composed. Filesystem IO stays behind document.window().
  * Persist the visible line's global code-point position, never LazyList/layout coordinates.
@@ -23,7 +24,13 @@ internal fun TextReader(
     onBack: () -> Unit, backLabel: String = "Back to results",
 ) {
     // Remembered viewport, jobs and layouts belong to this document, never to a reused Ready slot.
-    key(document) { TextReaderContent(document, reading, saveFailed, onBack, backLabel) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        // Pixel offsets belong to one text geometry. Reflow restores the live code point.
+        key(document, constraints.maxWidth, density.density, density.fontScale, MaterialTheme.typography.body1) {
+            TextReaderContent(document, reading, saveFailed, onBack, backLabel)
+        }
+    }
 }
 
 @Composable
@@ -44,8 +51,11 @@ private fun TextReaderContent(
     LaunchedEffect(document) {
         val (window, layout) = snapshotFlow { layouts[initialWindow] }.first { it != null }!!
         val local = window.locations.utf16Offset((initialOffset - window.startCodePoint).toLong())
-        val lineTop = layout.getLineTop(layout.getLineForOffset(local)).toInt().coerceAtLeast(0)
-        list.scrollToItem(initialWindow, lineTop)
+        val line = layout.getLineForOffset(local)
+        // Integer offsets at a rounded shared boundary can select the previous line.
+        // Restore just inside the semantic line (at most two pixels past its top).
+        val lineTop = ceil(layout.getLineTop(line)).toInt().coerceAtLeast(0)
+        list.scrollToItem(initialWindow, lineTop + if (line > 0) 1 else 0)
         restored = true
     }
     LaunchedEffect(loader, list) {

@@ -51,6 +51,8 @@ internal class PageReaderController(
     private var generation = 0L
     private var window: List<Int> = emptyList()
     private var spreads = pageSpreads(document.pages, PageReaderSettings())
+    // Exact session page/fraction. state.position is its current presentation projection.
+    private var semanticPosition = PagePosition(0)
     fun spread(index: Int = state.value.position.index): PageSpread = spreads.first { index in it.indices }
     private fun neighbor(index: Int, direction: Int): Int? = spreads.getOrNull(spreads.indexOf(spread(index)) + direction)?.anchor
     private fun dragTarget(index: Int, offset: Float): Int {
@@ -87,6 +89,7 @@ internal class PageReaderController(
         val settings = preferences?.settings?.value ?: PageReaderSettings()
         spreads = pageSpreads(document.pages, settings)
         mutableState.value = PageReaderState(position, settings, 1)
+        semanticPosition = position
         mutableState.value = state.value.copy(position = normalize(position))
         loadWindow(state.value.position.index)
     }
@@ -95,7 +98,8 @@ internal class PageReaderController(
         if (state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)) {
             requestTurn(spread(index).anchor); return
         }
-        mutableState.value = state.value.copy(position = PagePosition(index), ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
+        semanticPosition = PagePosition(index)
+        mutableState.value = state.value.copy(position = semanticPosition, ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
         loadWindow(index)
     }
     fun next() = turn(1)
@@ -220,6 +224,7 @@ internal class PageReaderController(
             else -> return
         }
         // Establish logical position only at rest. The new composed frame then acknowledges progress.
+        if (target != t.from) semanticPosition = PagePosition(target)
         mutableState.value = s.copy(position = if (target == t.from) s.position else PagePosition(target), ticket = s.ticket + 1, transition = null)
         loadWindow(target)
     }
@@ -265,7 +270,7 @@ internal class PageReaderController(
         flush()
         spreads = pageSpreads(document.pages, settings)
         mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
-        mutableState.value = state.value.copy(position = normalize(state.value.position))
+        mutableState.value = state.value.copy(position = normalize(semanticPosition))
         loadWindow(state.value.position.index, force = true)
     }
     /** A resized viewport restores the same semantic position and retires old layout callbacks. */
@@ -278,7 +283,8 @@ internal class PageReaderController(
     fun report(ticket: Long, pageIndex: Int, fraction: Double, visiblePages: List<Int> = emptyList()) {
         if (closed || ticket != state.value.ticket || pageIndex !in document.pages.indices || !fraction.isFinite() ||
             state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)) return
-        mutableState.value = state.value.copy(position = PagePosition(pageIndex, fraction.coerceIn(0.0, 1.0)), transition = null)
+        semanticPosition = PagePosition(pageIndex, fraction.coerceIn(0.0, 1.0))
+        mutableState.value = state.value.copy(position = semanticPosition, transition = null)
         loadWindow(pageIndex, visible = visiblePages)
     }
     /** Initial/restored viewport can request frames without claiming a new reading position. */

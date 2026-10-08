@@ -64,6 +64,7 @@ required by Compose/Ktor. Gradle 9.7.1's official tagged
 | Gradle / wrapper | 9.7.1 | Build tooling, including checked-in wrapper | [Apache-2.0](https://github.com/gradle/gradle/blob/master/LICENSE) |
 | Ktor client core and Java engine | 3.6.0 | Desktop HTTP/OPDS transport | [Apache-2.0](https://github.com/ktorio/ktor/blob/3.6.0/LICENSE) |
 | kotlinx.coroutines core | 1.11.0 | Search state, cancellation and request serialization | [Apache-2.0](https://github.com/Kotlin/kotlinx.coroutines/blob/1.11.0/LICENSE.txt) |
+| kotlinx.coroutines Swing | 1.11.0 | Desktop UI dispatcher for retained reader-session ownership | Same upstream Apache-2.0 license |
 | Ktor MockEngine; kotlinx.coroutines test | 3.6.0; 1.11.0 | Deterministic tests only | Same upstream Apache-2.0 licenses |
 | kotlinx.serialization JSON (shared JVM/Android) | 1.11.0 | Bounded Archive/Gutenberg JSON metadata; existing serialization-core reused | [Apache-2.0, exact tag](https://github.com/Kotlin/kotlinx.serialization/blob/v1.11.0/LICENSE.txt) |
 

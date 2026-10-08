@@ -36,7 +36,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -57,8 +56,7 @@ fun App(
     backHandler: @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit = { _, _ -> },
     localFilePicker: org.infinilect.app.imports.LocalFilePicker? = null,
 ) {
-    val scope=rememberCoroutineScope()
-    val application=remember(applicationSources) { ApplicationSession(applicationSources,scope) }
+    val application=remember(applicationSources) { applicationSources.applicationSession() }
     // Save only owned identity for Android recreation; never an external acquisition URI.
     var savedPdfId by rememberSaveable { mutableStateOf<String?>(null) }
     var savedPdfPage by rememberSaveable { mutableStateOf(0) }
@@ -67,9 +65,9 @@ fun App(
     LaunchedEffect(application) {
         initialPdfId?.let { application.restoreLocalPdf(it,savedPdfDestination,savedPdfPage) }
     }
-    DisposableEffect(applicationSources,application) {
-        applicationSources.attach(application)
-        onDispose { applicationSources.detach(application) }
+    DisposableEffect(application) {
+        // Presentation replacement flushes legitimate work, but does not close the session.
+        onDispose { application.flushProgress() }
     }
     val session by application.searchSession.collectAsState()
     val searchState by key(session) { session.search.state.collectAsState() }

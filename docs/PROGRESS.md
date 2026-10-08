@@ -193,9 +193,9 @@ not silently claimed durable; recent in-memory restoration is not proof of disk 
 Closing cancels source/session work first, submits final progress, closes the write
 queue for draining, then releases existing cache/source clients. Idempotent close
 never blocks the Android main thread. Background draining retains records/path only,
-no Activity or live reader. Android onStop flushes pending state; onDestroy closes.
-Recreation loses query/results/document, but the saved locator restores after a new
-explicit search/open and valid acquisition. Desktop window close awaits draining up
+no Activity or live reader. Android onStop flushes pending state; final ViewModel
+clearing closes sources. Configuration recreation retains the session/document;
+process death restores durable progress after a new valid open. Desktop window close awaits draining up
 to 3 seconds before exit. Abrupt process death may lose the most recent window or a
 pending write; no final callback guarantee. Periodic saves reduce that loss.
 
@@ -270,3 +270,47 @@ regardless of external filename or location. Reader/session recreation, original
 file deletion and cache cleanup retain the owned publication and semantic progress.
 Library row removal/History clearing do not delete imports or progress. No progress
 serialization or SQL schema migration is introduced. [Ownership](LOCAL_IMPORT.md).
+
+## Presentation continuity (PR #24)
+
+An active reading session outlives its presentation. ApplicationSources owns one
+ApplicationSession and UI coroutine scope; Android's ViewModel retains only
+application-context sources across configuration changes. The Activity, picker and
+Compose UI are recreated. Desktop retains the same owner until window close.
+Desktop supplies the standard coroutines Swing Main dispatcher (the same 1.11.0
+version as existing coroutines); the session never retains a scene dispatcher.
+
+| State | Owner / lifetime | Presentation change |
+| --- | --- | --- |
+| Publication identity / owned document | Active session | Retained; no reopen or source reacquisition |
+| Semantic position | Reader controller / TextReadingProgress | Live state wins over older persisted progress |
+| Visual spread / line layout | Current presentation | Reconstructed from semantic position |
+| Gesture, zoom, transition tickets | Presentation/controller generation | May reset; obsolete callbacks cannot commit |
+| Durable locator | Existing progress writer/store | Loaded on a new open; valid progress flushes on exit |
+
+CBZ keeps its exact session page/fraction separately from the visual Double anchor.
+Switching back restores that exact page unless real navigation replaced it; a
+Double spread still persists only its validated logical anchor. EPUB restores the
+latest semantic locator on remount/reflow. TEXT restores the line containing its
+Unicode code-point offset after reflow. PDF keeps its page and existing fit-only
+render; it has no intra-page pan position. Identity and persistence schemas do not
+change, and preparation/resource bounds remain unchanged.
+
+Confirmed regressions before the fix: Double normalization discarded the second
+page/fraction; App remount closed the reader; EPUB remount restored chapter entry
+instead of its newer locator; TEXT width reflow retained pixels and changed the
+visible code-point region. Stable Single-mode horizontal/vertical changes did not
+reset to page zero in the controlled reproduction. The user's Android symptom is
+evidence to investigate, not proof that every reader/mode shares one root cause.
+
+Final platform-owner close flushes legitimate pending progress before cancelling
+owned work and draining writers. Replacing UI flushes without closing the session.
+A requested/decoded/animated target remains insufficient for comic progress; the
+existing complete-presentation validation and stale-ticket rejection still apply.
+Full process death is distinct from configuration recreation: durable progress is
+restored on explicit reopening (local PDF retains its existing saved-state reopen
+path). Abrupt death can lose uncommitted writes. No automatic non-PDF process-death
+reopen, new storage schema, global session, or platform rendering engine is added.
+
+Physical Android and native Desktop graphical acceptance of PR #24 are pending.
+Headless layout tests do not establish Activity/device lifecycle correctness.

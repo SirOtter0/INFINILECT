@@ -103,6 +103,9 @@ using the new layout. They never persist pixels/indices, reparse the chapter or 
 loading layouts. Theme/style changes do not mutate chapter content. Restoration is
 approximate within a passage; stable 200dp image space prevents delayed decoding from
 moving the viewport. Whole percentages remain chapter-weighted approximations.
+PR #24 also retickets a newly mounted presentation from the controller’s latest
+live locator, rather than its older chapter-entry position. Configuration recreation
+retains that controller/document; no chapter reparse or progress reload is required.
 
 ### Durable global EPUB preferences (PR #16 physical-test follow-up)
 

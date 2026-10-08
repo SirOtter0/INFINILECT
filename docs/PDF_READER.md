@@ -110,9 +110,11 @@ after that page renders successfully and its ticket is still current. Failed,
 cancelled or obsolete targets never advance durable progress. Back/reopen and a
 new source/writer restore the last successful index, clamped to inspected page
 count, without an initial reset write. Resize/recomposition keeps position.
-Android recreation saves only the owned publication digest, last successfully
-rendered page index and return destination in Compose saved state, then re-resolves
-the local source and existing progress; no external permission or engine is retained.
+Android configuration recreation now retains the controller/document in the common
+session and restores fit-page presentation without source reacquisition or another
+render. The existing owned digest/last successful index/return-destination saved-state
+path remains for process-death reopening. No external permission is retained.
+There is no PDF pan/intra-page semantic position in the current fit-only reader.
 Sudden termination before the asynchronous writer commits can lose the last change,
 as with existing readers. Restoration requires available private storage.
 

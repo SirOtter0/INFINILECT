@@ -30,9 +30,15 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlin.math.ceil
 
 @Composable
 internal fun EpubReader(reader: EpubReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String) {
+    DisposableEffect(reader) {
+        // A new presentation restores the controller's live locator, not chapter entry.
+        reader.presentationChanged()
+        onDispose { reader.flush() }
+    }
     val state by reader.state.collectAsState()
     val progression by reader.progression.collectAsState()
     val settings by reader.settings.collectAsState()
@@ -160,7 +166,9 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
             val layout = snapshotFlow { layouts[block] }.filterNotNull().first()
             val utf16 = ready.chapter.blocks[block].text.epubUtf16(points) + epubListPrefix(ready.chapter.blocks[block]).length
             val line = layout.getLineForOffset(utf16.coerceAtMost(layout.layoutInput.text.length))
-            list.scrollToItem(block, layout.getLineTop(line).toInt().coerceAtLeast(0))
+            // Restore inside the semantic line, not a rounded boundary shared with its predecessor.
+            val lineTop = ceil(layout.getLineTop(line)).toInt().coerceAtLeast(0)
+            list.scrollToItem(block, lineTop + if (line > 0) 1 else 0)
         }
         restored = true
     }

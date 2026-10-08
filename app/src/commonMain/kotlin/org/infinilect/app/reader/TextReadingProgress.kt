@@ -18,7 +18,7 @@ internal const val PROGRESS_SAVE_INTERVAL_MILLIS = 2_000L
 internal class TextReadingProgress(
     private val document: TextDocument,
     restored: ReadingProgress?,
-    private val persistence: ProgressPersistence,
+    private val persistence: ProgressPersistence?,
     private val scope: CoroutineScope,
 ) {
     private val mutableOffset = MutableStateFlow(document.restore(restored))
@@ -30,12 +30,14 @@ internal class TextReadingProgress(
 
     fun report(codePointOffset: Int) {
         if (!active) return
-        val id = document.progressId ?: return
         val offset = codePointOffset.coerceIn(0, document.codePoints)
         val locator = ReadingLocator.Text(offset.toLong(), document.codePoints.toLong())
         if (offset == mutableOffset.value) return
         mutableOffset.value = offset
-        val now = persistence.clock().coerceAtLeast(0)
+        // Session continuity does not depend on durable storage being available.
+        val id = document.progressId ?: return
+        val writer = persistence ?: return
+        val now = writer.clock().coerceAtLeast(0)
         lastTimestamp = maxOf(now, if (lastTimestamp == Long.MAX_VALUE) lastTimestamp else lastTimestamp + 1)
         pending = ReadingProgress(id, locator, document.progression(offset), lastTimestamp)
         if (timer?.isActive != true) timer = scope.launch {
@@ -46,7 +48,7 @@ internal class TextReadingProgress(
 
     fun flush() {
         timer?.cancel(); timer = null
-        pending?.let(persistence::submit)
+        pending?.let { persistence?.submit(it) }
         pending = null
     }
     fun close() { if (active) { active = false; flush() } }

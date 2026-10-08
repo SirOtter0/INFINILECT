@@ -127,7 +127,7 @@ internal class OpenPublicationController(
                     val loaded = loadTextDocument(details, resource, loader, decodingDispatcher, preparer).also { prepared = it }
                     val stored = loaded.progressId?.let { progress?.get(it) }
                     return OpenPublicationState.Ready(loaded,
-                        progress?.let { TextReadingProgress(loaded, stored, it, scope) }, details)
+                        TextReadingProgress(loaded, stored, progress, scope), details)
                 }
                 // Synchronous PDF parsing/rendering has no reliable interruption deadline.
                 // Cancellation is result-safe through adapter ownership and generation checks.
