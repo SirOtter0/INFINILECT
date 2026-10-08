@@ -1,7 +1,8 @@
-# First bounded page-reader foundation
+# Bounded comic PageReader
 
-Draft PR #17 adds comic/page reading on Android and Desktop. This is a controlled
-development slice, not manga-site, Mihon, CBZ or generic image-viewer compatibility.
+PR #17 introduced the bounded comic/page foundation on Android and Desktop.
+CBZ import was added in PR #18; optional spreads are described under PR #23 below.
+This remains a controlled development slice, not manga-site or Mihon compatibility.
 No production source policy changes. Gutenberg stays experimental OPDS2 catalog-only;
 Archive stays public CC0 TEXT with fresh authorization and revision=null.
 
@@ -46,9 +47,9 @@ page acquisition backend does not rewrite page progress/session/source contracts
 - WEBTOON: same bounded lazy implementation with no gap. Distinct semantic preference.
 
 Paged canvas fits the page, supports 1–4× pinch zoom/pan and visible zoom/reset controls.
-Swipe navigation requires a predominantly horizontal ≥48dp gesture at 1×. A gesture
+Spatial navigation requires a predominantly horizontal gesture at 1× (PR #21 below). A gesture
 that ever uses multiple fingers/zoom cannot change page; panning while zoomed never
-advances. Page navigation resets transient zoom/pan. No spreads/stitching.
+advances. Page navigation resets transient zoom/pan. PR #23 adds optional spreads below; no source stitching.
 Controls are collapsible; accessible labels describe controls and “Page N of M”,
 without pretending OCR descriptions exist. Existing launcher insets remain in use.
 
@@ -69,10 +70,10 @@ until they enter the working window; memory bounds take priority over eager deco
 | Encoded page | Known size 1–2 MiB; bounded read plus overflow probe and exact EOF/count |
 | Raster | ≤2048 per dimension, ≤1,048,576 pixels, ≤4 MiB owned ARGB |
 | Aspect | width/height 0.125–8, preventing extreme reserved-layout heights |
-| Retained decoded pages | At most 3 (≤12 MiB owned pixel payload), including prefetch |
+| Retained decoded pages | Single/continuous: 3; Double paged: 4 (ownership detail below) |
 | Work | One serialized acquisition/decode across page-reader replacements, cooperative 10s deadline per page |
-| Prefetch | Current ±1; up to 3 visible pages take precedence over neighbors |
-| UI bitmaps | At most 3 current raster identities; sequential conversion, stale identities hidden |
+| Prefetch | Single/continuous: current ±1 / visible priority; Double: current + next/latest target only |
+| UI bitmaps | Single/continuous: 3; Double: 4; serialized conversion, stale identities hidden |
 | Zoom | 1–4× presentation transform; no higher-resolution decode or persisted zoom |
 
 Preflight retains PR #16 static 8-bit PNG/chunk CRC policy and baseline/progressive
@@ -81,12 +82,14 @@ PNG, SVG, GIF/WebP, arbitrary metadata/profiles and unsupported color depths fai
 to placeholders. The same restrictive raster decoder applies to both readers.
 Long multiplication precedes allocation; compressed byte bounds alone are insufficient.
 
-At peak, 3 controller frames plus 3 UI bitmap copies total ≤24 MiB pixel payload,
+For the original Single/continuous pipeline, at peak, 3 controller frames plus 3 UI bitmap copies total ≤24 MiB pixel payload,
 with one ≤4 MiB decoder buffer and one ≤4 MiB conversion scratch buffer. Encoded
 read/chunk assembly is ≤4 MiB plus 8 KiB; desktop provider encoded caching can add
 ≤2 MiB. Budget roughly 38 MiB payload/scratch in steady handover; an old, cancelling UI
 conversion may temporarily retain its previous three-frame input (another ≤12 MiB),
-so allow roughly 50 MiB bounded application payload during replacement, plus platform-provider,
+so allow roughly 50 MiB bounded application payload during replacement; these historic
+estimates do not include every retiring bitmap/native-owner reference (see the explicit
+PR #23 handover bounds below), plus platform-provider,
 GPU, object/metadata and GC overhead. This is a structural retention bound, **not**
 an exact process-heap ceiling or promise of immediate native GC. Cancellation is
 cooperative around synchronous provider calls; the shared page decode mutex prevents overlapping
@@ -126,8 +129,9 @@ drains it. Newer timestamps win across owners; failed writes report a fixed mess
 never pretend RAM proves durability. Missing/corrupt/future records safely use LTR.
 Existing valid RTL/vertical/webtoon records retain their original meaning and encoding.
 
-FilePageReaderSettingsStore uses one fixed 56-byte version1 record: magic, schema,
-mode enum, nonnegative timestamp, SHA-256 checksum. Private same-directory temporary
+FilePageReaderSettingsStore uses one fixed 56-byte record: magic, schema,
+mode/layout choice, nonnegative timestamp, SHA-256 checksum. Legacy Single encoding
+remains version1; Double uses the canonical version2 form described below. Private same-directory temporary
 file + force + atomic replacement; a failed commit preserves the previous record.
 Owned stale temps only are cleaned; no destructive recovery or storage permission.
 
@@ -202,8 +206,9 @@ inspection accepts only the existing static PNG/JPEG policy and checks dimension
 one 8 KiB transfer buffer and at most one encoded page (2 MiB) at a time. It verifies
 all ZIP entry streams/CRCs without retaining page payloads, then validates each
 raster's signature/geometry without decoding it to ARGB. PageReader retains at most
-three decoded frames, with one serialized decoder and one-page prefetch. At four MiB
-maximum ARGB per frame, three retained frames plus one in-flight decode are bounded
+three decoded frames in Single/continuous (four in Double, PR #23 below), with one
+serialized decoder and bounded prefetch. At four MiB
+maximum ARGB per frame, Single's three retained frames plus one in-flight decode are bounded
 to 16 MiB ARGB, plus at most one 2 MiB encoded page. The preparer allows at most two
 open prepared documents and three live page handles per document.
 
@@ -310,7 +315,7 @@ invalidate the transition.
 Zoomed gestures pan/zoom; a multi-pointer gesture cannot turn a page. Explicit
 navigation buttons/taps reset zoom as before.
 
-The controller retains its existing maximum of three raster slots. During a normal
+In Single mode the controller retains its existing maximum of three raster slots. During a normal
 transition these contain current and adjacent pages; a rapid request prioritizes
 current and latest target, with at most one other prefetch slot. The UI reuses its
 same stamp-filtered conversion map (at most three bitmaps); the two artwork layers
@@ -338,7 +343,7 @@ independently with Compose and its own bounded frames/state/progress handshake.
 No Mihon code or dependency was copied. Its exact thresholds/progress callbacks
 are not assumed to match ours.
 
-No new reader modes, zoom/pan feature, double-page mode, cropping, filters,
+PR #21 added no new reader modes, zoom/pan feature, double-page mode, cropping, filters,
 brightness, image processing, arbitrary gesture or animation dependency is added.
 Android automatic return into a comic after Activity recreation remains separate
 work: recreation closes the old owner; reopening restores the last durable
@@ -444,3 +449,359 @@ The final spatial transition subsequently received the user-reported physical
 Android acceptance recorded above. Automated evidence remains distinct from that
 report; native Desktop graphical acceptance, including Windows/Linux/Wayland/niri,
 remains pending. No Desktop physical/graphical verification is claimed.
+
+## Double-page presentation (PR #23)
+
+Single page remains the default. In paged LTR/RTL, Settings → Page layout offers
+Single page and Double page using the existing preference store and writer. Double
+is retained but ignored in Vertical/Webtoon; those modes keep their individual-page
+layout, fraction progress, spacing and three-slot window. No orientation-based
+automatic selection is implemented.
+
+`PageSpread(anchor, second?)` contains logical indices, not copied PageEntry metadata
+or pixels. Grouping scans the logical sequence once: page 0 is always alone (fixed
+cover policy); source **width > height** is wide and always alone; other pages,
+including square pages, pair with the next non-wide page. A page immediately before
+a wide page remains alone. Pairing restarts after each wide page. Unmatched final
+pages remain alone. Thus portrait/wide sequence P,P,W,P,P becomes `[0],[1],[2],[3,4]`.
+Geometry comes from the existing verified preparation/preflight pipeline. There is
+no image analysis, splitting, joining or cover-content heuristic.
+
+For logical pair A then B, LTR places A left/B right; RTL places B left/A right.
+Logical numbering, Previous/Next semantics and publication identity do not reverse.
+Pairs use one common fit scale, a fixed 2dp gutter and adjacent aspect-preserving
+page rectangles; their combined rectangle is centered with no default crop.
+Wide/single pages use the full viewport. The indicator
+uses logical 1-based numbers (`2–3 / 10` or `1 / 10`). Navigation advances between
+non-overlapping spreads, with safe first/last boundaries.
+
+PR #21's authoritative spatial pager now moves the entire spread as one unit:
+current spread follows the finger and incoming spread starts one viewport away;
+release threshold/velocity and the 180ms settle remain unchanged. Side taps,
+accessibility actions and semantic Previous/Next share that transition. The center
+40% toggles controls; side zones remain 30% each. Rapid requests coalesce into one
+latest target. Pair pages have no independent animation or zoom state. The complete
+canvas zooms/pans at 1–4×. Above 1×, one-finger movement pans first; deliberate
+horizontal excess at a real pan boundary can hand off to the same spatial pager.
+Multi-pointer/pinch input cannot turn a spread, and zoomed side taps do not navigate.
+
+### Progress and interruption
+
+A spread's anchor is its first logical page in reading order, regardless of RTL
+placement. Progress remains `ReadingLocator.Page` with existing identity/schema.
+Request, prefetch, decode, conversion and animation start do not save. All pages'
+current raster stamps and successful bitmap conversions must authorize the target;
+only the complete spread composed at rest can acknowledge its logical anchor. If
+either page fails, the target never commits and the previous spread/progress remain.
+Conversion failure uses the same controlled unavailable behavior, never half-success.
+
+Reopening a saved second page reconstructs its containing spread, but normalization
+alone does not write progress. After successful presentation the anchor can be saved.
+Single → Double resolves the containing spread; Double → Single retains the anchor.
+Settings change, Back/close or viewport width/height change retire the old ticket,
+transition offset and obsolete work. Old callbacks cannot commit after such a change.
+Rotation/resize never changes the saved layout preference. Activity recreation still
+requires reopening the publication; automatic reader-session restoration is deferred.
+
+### Explicit ownership bounds
+
+| Application ownership | Single / continuous | Double paged |
+| --- | --- | --- |
+| Controller decoded raster slots | 3 | 4 |
+| Current converted bitmap identities | 3 | 4 |
+| Spread artwork layers | Single paged: 2 | 2 (current + incoming) |
+| Paged artwork image children | 2 | 4 |
+| Source/read/decode jobs inside native permit | 1 globally | 1 globally |
+| Bitmap conversions inside native permit | 1 globally | 1 globally |
+
+Four slots are sufficient for current pair + latest target pair. At rest the next
+spread may occupy target slots; there is no additional previous/next spread cache.
+Existing identities are borrowed by both presentation layers, never converted twice
+for layering. Navigation speed and publication length (still ≤512 pages) cannot
+increase the slot count. Input/cache bounds are encoded in the converter and window;
+100 rapid replacement requests, 8/512-page documents, cancelled non-cooperative work,
+identity reuse and Back/reopen serialization are tested.
+
+During cancellation/handover, one converter may borrow its retiring input of at most
+four rasters while the controller holds four new rasters and one serialized decode
+produces a result: **at most nine application-held raster identities**, including
+transient work (Single-only bound seven). The current bitmap cache plus its one
+conversion result is at most **five** identities. Allowing four borrowed identities from a retiring reader owner gives
+**nine bitmap identities during owner handover** (Single-only seven). Conversion
+byte scratch is a separate bounded buffer. `collectLatest` cancels and joins before
+replacing conversion work; upstream change signals contain stamps only, with latest rasters read after
+retiring work joins, so pending signals cannot retain an extra intermediate window.
+Shared decode/conversion mutexes also serialize across Back/reopen owners.
+Cancelled mutex waiters do not become another cache. These are ownership/active-work
+bounds, not an exact process-heap/GC/GPU ceiling or immediate native reclamation claim.
+Provider decode buffers, bitmap-conversion scratch, encoded read buffers and framework
+snapshots/native/GPU overhead remain additional bounded pipeline/allocator costs.
+
+Paired native pages use factor-two source sampling in both dimensions before ARGB
+allocation (Android BitmapFactory / Desktop ImageIO). Pair pages share the fitted spread;
+standalone pages keep the original decode policy. Sampling is opt-in for PageReader;
+EPUB and other raster callers retain their existing decode path. Original source
+preflight still enforces 2 MiB encoded, 2048 per dimension and 1,048,576 source pixels;
+no global image/source limit increases. Odd source sizes allow codec rounding only
+within half-size floor/ceil. Injected decoders may return the original already-bounded
+size, preserving the decoder contract/test adapters; native adapters sample pairs.
+
+Preferences keep the same private path, atomic writer and fixed 56-byte record.
+Single writes the unchanged canonical v1 mode 0–3; Double uses v2 choice 4–7 (mode
+plus four). Both forms read into the same model; unknown/noncanonical schema/choices
+fail closed. This is a preference-format extension, not a publication/progress schema
+migration. No dependency, Android permission, signing or release change is required.
+
+### Limitations and future physical acceptance
+
+Physical Android acceptance for PR #23 is **pending**. PR #21's acceptance above
+covers its original single-page transition only. Native Desktop graphical acceptance
+is separately pending. Automated host/headless checks do not establish either.
+
+Future Android checklist:
+
+1. Verify Single remains default and its navigation/rendering still work.
+2. Select Double; verify first page alone, portrait pair, unmatched final page and
+   wide source page alone; verify pairing resumes after the wide page.
+3. Check LTR and RTL placements, logical Previous/Next and first/last boundaries.
+4. Drag forwards/backwards; verify complete spreads follow the finger, short drags
+   return and flings/side taps/buttons settle smoothly. Navigate rapidly both ways.
+5. Zoom/pan the whole spread; pinch and one-finger pan must not turn pages. Reset
+   to 1× and confirm navigation resumes.
+6. Center-tap controls, settings and logical page-range indicator remain usable.
+7. Rotate portrait/landscape during a turn and at rest; check stale offsets/work.
+8. Close/reopen; verify logical-anchor progress and retained layout preference.
+9. Check failed-page handling preserves the previous spread/progress.
+10. Check Vertical and Webtoon regressions, then return to paged Double.
+
+Deferred: automatic orientation layout, cover heuristics beyond first-page-alone,
+pairing offsets, source double-page splitting/joining, crop/margin removal, brightness,
+contrast/color filters/enhancement/image processing, new Webtoon behavior, OCR,
+translation, panel detection and guided view. CBZ preparation, import ownership,
+Library/History/Search, EPUB/PDF/TEXT, acquisition and storage identity are unchanged.
+
+### Initial automated PR #23 verification
+
+Production/test revision `e4b02795e31a72b9d380b8dbdebbb0061e7f1bb0` passed
+all app regressions: **906 Desktop + 851 Android-host tests**, zero failures,
+errors or skips. PageReader-focused coverage comprises 147 Desktop cases within
+that Desktop run and a separate 125-case Android-host focused run. This includes
+all existing PR #21 assertions plus grouping, both placement directions, complete
+spread progress/failure handshakes, mode/reopen behavior, rapid/obsolete work,
+conversion/decode ownership, persisted preferences, real PNG/JPEG sampling and
+headless paired layout/drag/zoom/pinch/resize checks.
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :androidApp:compileDebugKotlin :desktopApp:compileKotlin --no-daemon --console=plain --max-workers=2
+```
+
+Both application compilation targets passed. The final command reused the current
+successful full Desktop result and ran the full Android-host suite. Core is unchanged,
+so unrelated core suites were not repeated. XML totals were checked independently;
+`git diff --check`, the final scope review and signing-secret/generated-artifact scan
+passed. Headless native-library setup was external to the repository; no temporary
+CI, signing configuration, dependency or generated acceptance artifact was added.
+The subsequent commit only records this evidence. Physical Android and native
+Desktop graphical acceptance remain pending.
+
+### Physical Android pre-fix findings and UX follow-up
+
+**USER-REPORTED PHYSICAL ANDROID PRE-FIX FINDINGS:** The user tested the PR #23
+APK and `PR23-double-page-acceptance.cbz`. Intended Double grouping/navigation
+otherwise behaved as expected, but landscape pairs had excessive internal page
+separation and zoom >1× prevented page/spread navigation by drag. The user supplied
+a screenshot as spacing reproduction evidence. These findings triggered this
+follow-up; they are not final physical acceptance. No device model/version or other
+individual checklist observations are inferred.
+
+The old pair fit each page separately inside half the viewport. Height-limited
+pages therefore left a large artificial gap. Now a common scale is
+`min((viewportWidth - gutter) / (widthA + widthB), viewportHeight / max(heightA, heightB))`.
+Scaled rectangles sit directly adjacent in a centered row, with a **2dp gutter**
+(capped at 10% of width only for exceptionally tiny viewports). Each page is vertically
+centered; unused space lies outside the pair. LTR/RTL placement and grouping are
+unchanged; standalone artwork still uses ordinary fit-page.
+
+Zoomed pan bounds now use the actual fitted content rectangle: horizontal/vertical
+half-range is `max(0, (fittedExtent * zoom - viewportExtent) / 2)`. A 0.5-pixel
+near-edge epsilon avoids float jitter. One finger consumes available pan first;
+only additional outward horizontal movement reaches the pager, in the same gesture.
+Horizontal intent must exceed touch slop and dominate vertical movement by 1.2×;
+vertical-first gestures remain pan-only. Content narrower than the viewport has zero
+horizontal pan range, allowing deliberate overscroll without fake pan distance.
+Reversal consumes pager displacement first, then resumes pan inside the content.
+
+The existing authoritative transition/ticket, target preparation and presentation
+handshake are reused. Thresholds remain **25% viewport excess**, or **at least 5%
+excess plus agreeing velocity ≥0.9 viewports/second**; settle remains **180ms**.
+Zoomed side taps stay non-navigating; center tap and explicit Previous/Next retain
+their semantics. Another pointer cancels the handoff and gives pinch exclusive
+ownership for the remainder of the gesture. Successful turns present the new spread
+at fit/1×; returned, reversed or failed turns retain current zoom/pan. Resize/mode
+change retires old tickets and restores fit, as in the existing reader. No progress
+is saved during pan, overscroll, target preparation or animation; only the validated
+complete target composed at rest can persist its logical anchor. Resource/cache
+bounds, decoding, grouping, progress identity and continuous modes are unchanged.
+
+**AUTOMATED FOLLOW-UP VERIFICATION:** Production/test revision
+`35d9e89722238e1f2fd54893fbd3164d0ce9fb49` passed **172 focused Desktop +
+140 focused Android-host PageReader tests**, then **931 full Desktop app +
+866 full Android-host app tests**, all with zero failures/errors/skips. Android
+application (`:androidApp:compileDebugKotlin`) and Desktop application
+(`:desktopApp:compileKotlin`) compilation passed. Existing PR #21/#23 assertions
+remain intact; two pan fixtures now zoom enough to have real fitted-content pan
+range. Core and dependencies are unchanged; no unrelated core suites were run.
+The complete incremental diff was reviewed and `git diff --check` passed. The
+repository scan found no signing secrets, attachment paths, generated acceptance
+artifacts or temporary CI; native headless test setup remains external. The
+subsequent commit only records this verification and adjusts documentation wrapping.
+
+**Physical Android re-acceptance is PENDING. Native Desktop graphical acceptance
+is PENDING. PR #23 remains DRAFT and must not be merged.**
+
+Focused re-acceptance with the same CBZ:
+
+1. **Landscape pair:** inspect [2,3]/[5,6]; tiny gutter, centered complete pair, no
+   giant gap; check both LTR and RTL.
+2. **Pan:** zoom >1× and drag within real pan range; content pans without turning.
+3. **Next/Previous edges:** pan to the appropriate boundary and continue outward;
+   short excess returns, qualifying excess turns, in both directions.
+4. **Cancel:** begin an edge turn and reverse/release below threshold; current
+   spread and coherent zoom/pan remain. Successful turns reset the new spread to 1×.
+5. **Pinch:** multi-touch/pinch must not turn, including after handoff starts.
+6. **Regression:** 1× drags/side taps, center controls and grouping
+   [1] [2,3] [4] [5,6] [7]; wide PAGE 4 remains alone.
+
+### Fast zoomed edge swipe follow-up
+
+**USER-REPORTED PHYSICAL ANDROID:** After testing the updated APK, the user
+reports that compact Double positioning, zoomed edge navigation and other
+previously tested reader behavior work as expected. Very fast zoomed swipes
+sometimes move the spread and return; approximately two attempts may return
+before a third turns. This is reported behavior, not final physical acceptance.
+
+A timed headless **touch** reproduction confirmed one cause of this pattern:
+`calculatePan()` excludes a lifted pointer, dropping actual movement delivered
+on pointer-up. At an existing edge, down at 0ms, move 20px at 8ms and up at 80px
+at 16ms retained only 20px, below the 32px minimum on a 640px viewport. Two such
+attempts returned, while a third with 180px before up turned. The same test
+now turns on all three attempts. A physical event trace would be needed to
+attribute every reported failed swipe to this specific cause.
+
+Zoomed one-finger input now consumes the primary pointer's measured delta,
+including up, through the unchanged pan-first bounds/handoff before release.
+Pager velocity uses measured, controller-clamped overscroll positions, rather
+than full finger/pan positions: signed recent displacement / elapsed time, at
+most eight scalar samples over 100ms. Pan-only samples reset the zero seed;
+a mixed pan/edge segment credits only excess over its measured time. Reversal
+discards earlier outward velocity; a 40ms stationary tail yields zero velocity.
+Two timed samples suffice; equal/backwards timestamps or non-finite inputs do
+not invent velocity. Grabbing an animation seeds its offset without crediting
+inherited animation movement as finger velocity.
+
+Completion still requires **25% displacement**, or **at least 5% actual pager
+displacement plus agreeing ≥0.9 viewports/second velocity**, with **180ms** settle.
+No threshold was lowered and no distance or velocity boost was added. 1× input
+and its existing VelocityTracker, pan bounds, compact layout, grouping, modes,
+side-tap/pinch exclusion, tickets/animation and presentation-only progress remain
+unchanged. Successful turns reset to fit; cancelled/failed turns retain zoom/pan.
+The raster/bitmap/job bounds are unchanged; the scalar history owns no artwork.
+The separate orientation/menu state-reset issue is outside this follow-up.
+
+**AUTOMATED FAST-SWIPE VERIFICATION:** Production/test revision
+`e8f20398037481b4a5c1383629dfc999f00c622a` passed the focused PageReader run
+(189 Desktop + 151 Android-host cases), followed by the completed 10-case
+pager-velocity suite on each host. Final full app results are **949 Desktop +
+878 Android-host tests**, zero failures/errors/skips in the passing runs.
+Android (`:androidApp:compileDebugKotlin`) and Desktop (`:desktopApp:compileKotlin`)
+application compilation passed. Core/dependencies are unchanged; no core suites
+were repeated. Existing PR #21/#23 assertions remain unchanged.
+
+The first full Android-host run had one failure in unchanged PDF cleanup:
+`FilePdfPreparer.close()` raised `NoSuchElementException` while snapshotting a
+concurrently shrinking set during `concurrentRenderRequestsRemainSerialized`.
+The isolated test and then the full 878-case retry passed. PDF production/tests
+were not changed; this intermittent cleanup race remains outside this follow-up.
+Incremental diff review and `git diff --check` passed; the repository scan found
+no secrets, signing material, generated acceptance artifacts or temporary CI.
+The subsequent commit changes documentation only.
+
+**Physical Android re-acceptance of this fast-swipe fix is PENDING. Native
+Desktop graphical acceptance remains PENDING. Keep PR #23 DRAFT and unmerged.**
+
+On an APK built from the updated HEAD, check:
+
+- One fast outward swipe at Next/Previous edges in LTR/RTL, Single/Double.
+- Pan to the edge and continue within one swipe; pan-only movement must not turn.
+- Insufficient/reversed movement returns with coherent zoom/pan; pinch never
+  turns. A successful turn resets the new spread to fit.
+
+### Consecutive gestures during active transitions
+
+**USER-REPORTED PHYSICAL ANDROID:** Compact spreads and zoomed edge navigation
+work on the latest tested APK, but a second swipe before settlement sometimes
+moves then returns; repeated attempts eventually turn. The user also perceives
+restricted rapid 1× gestures and an additional delay. These observations triggered
+this follow-up; physical acceptance of the new fix is not claimed.
+
+Controlled coroutine/render-clock touch tests reproduced two defects without
+wall-clock sleeps. Zoomed: at logical anchor 3, a partly settled [3,4] → [5,6]
+transition was grabbed at approximately −0.495 viewport offset. The next 2px
+movement, below touch slop, erased the inherited overscroll to zero and reassigned
+the incoming identity to the source; a short continuation then returned. At 1×,
+pointer-down did not pause settlement until slop was crossed. Settlement could
+change the logical page and replace the pointer handler before that second
+gesture established intent. This is deterministic software reproduction, not a
+claim that every device failure has been attributed from physical event traces.
+
+Both paths now grab an active transition immediately on pointer-down, preserving
+its source, incoming target and exact visual offset under a new authoritative
+ticket. Inherited zoomed overscroll survives slop recognition. Same-direction
+movement continues the already accepted target; it does not restart from zero,
+skip another spread or enqueue a turn. After complete validated settlement, a
+fresh gesture can immediately address the next neighbor. Explicit Previous/Next
+requests retain their existing latest-target coalescing policy. Opposite movement
+unwinds the offset; below-threshold release returns, while crossing the origin
+can select the opposite logical neighbor with the existing LTR/RTL mapping.
+A touch without horizontal intent resumes the interrupted accepted turn or
+return, and a center tap still toggles controls. Fresh gestures retain the 25%
+threshold, or ≥5% with agreeing ≥0.9 viewports/second velocity. Settle remains
+180ms from the preserved offset; no navigation cooldown was added or found.
+The existing 2000ms timer batches durable progress writes, not input eligibility.
+Target decoding/bitmap conversion readiness still gates presentation; no separate
+post-settlement delay was reproduced by the controlled test.
+
+One flat continuation record contains scalar interrupted intent, never a nested
+transition/queue, artwork or job. Old animation/edge tickets cannot change or
+finish newer work. Resumption must validate all target conversion stamps again;
+interrupted animation alone cannot advance position or progress. Pinch cancels
+the handoff; Back/resize/mode changes retire tickets. Successful presentation
+resets the incoming spread to fit/1×, while returned/failed turns preserve current
+zoom/pan. Pan-first bounds, edge-only velocity, zoomed side-tap exclusion, compact
+geometry, grouping and raster/bitmap/job limits are unchanged. The separate
+orientation/menu state-reset issue remains outside scope.
+
+**AUTOMATED CONSECUTIVE-GESTURE VERIFICATION:** Production/test revision
+`378f7a20610dd90b5f0e4081e08a21f5662724f0` passed **205 focused Desktop +
+160 focused Android-host PageReader tests**, then **964 full Desktop app +
+886 full Android-host app tests**, zero failures/errors/skips in the passing runs.
+Eight new common tests and seven controlled-clock headless Compose tests cover
+all active phases, both directions/layouts/zoom states, offset continuity, waiting
+on conversion, reversal, pinch, stale callbacks, progress and retirement. A
+1000-grab test retains one flat continuation, at most four decoded slots and no
+request queue; existing bitmap/resource tests and PR #21/#23 assertions remain.
+Android (`:androidApp:compileDebugKotlin`) and Desktop (`:desktopApp:compileKotlin`)
+application compilation passed. Core/dependencies are unchanged; core suites were
+not repeated. The first 886-case Android-host run reproduced the previously
+documented, unchanged PDF cleanup race in `concurrentRenderRequestsRemainSerialized`
+(`FilePdfPreparer.close()` concurrent set snapshot, `NoSuchElementException`).
+The isolated test and full 886-case retry passed. PDF code/tests remain untouched;
+that intermittent issue remains outside scope. Incremental diff review and
+`git diff --check` passed; the tree is clean and the scan found no signing secrets,
+attachment paths, generated acceptance artifacts or temporary CI. The following
+commit records this verification only; production/tests remain the verified tree.
+
+**Physical Android re-acceptance is PENDING. Native Desktop graphical acceptance
+is PENDING. Keep PR #23 DRAFT and unmerged.** Check consecutive Next/Previous
+swipes during motion at 1× and zoomed, in LTR/RTL and Single/Double; also check
+opposite-direction cancellation, pinch, coherent zoom/pan and close/reopen progress.

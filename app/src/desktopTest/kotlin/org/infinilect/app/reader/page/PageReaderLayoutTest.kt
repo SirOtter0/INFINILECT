@@ -144,7 +144,9 @@ class PageReaderLayoutTest {
             repeat(3) { f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .04f, 0f)); f.draw(20) }
             f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(f.width * .04f, 0f))
             f.awaitArtwork(0)
-            f.tapZone(.5f); f.click("Settings"); f.click("Zoom in"); f.awaitSettingsClosed()
+            f.tapZone(.5f)
+            // Use real fitted-image pan range, rather than the old full-viewport synthetic bounds.
+            repeat(4) { f.click("Settings"); f.click("Zoom in"); f.awaitSettingsClosed() }
             f.scene.sendPointerEvent(PointerEventType.Press, start)
             f.scene.sendPointerEvent(PointerEventType.Move, start - Offset(f.width * .4f, 0f))
             f.scene.sendPointerEvent(PointerEventType.Release, start - Offset(f.width * .4f, 0f))

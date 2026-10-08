@@ -6,6 +6,10 @@ import kotlin.math.abs
 
 internal enum class PageTransitionPhase { DRAGGING, WAITING, SETTLING, RETURNING }
 
+/** One interrupted intent, never another transition/queue or a reading position. */
+internal data class PageDragContinuation(val target: Int, val phase: PageTransitionPhase,
+    val offset: Float, val navigationFailed: Boolean)
+
 /** Only logical identity and viewport-relative position. Never owns pixels or a job. */
 internal data class PageTransition(
     val ticket: Long,
@@ -14,6 +18,8 @@ internal data class PageTransition(
     val offset: Float = 0f,
     val phase: PageTransitionPhase,
     val targetStamp: Long? = null,
+    val targetStamps: Map<Int, Long> = emptyMap(),
+    val continuation: PageDragContinuation? = null,
 )
 
 internal fun pagedMode(mode: PageReadingMode) = mode == PageReadingMode.PAGED_LTR || mode == PageReadingMode.PAGED_RTL

@@ -103,9 +103,9 @@ internal class FilePageReaderSettingsStore(
         }
         private fun encode(record: PageReaderPreferences): ByteArray {
             val buffer = ByteBuffer.allocate(PAGE_SETTINGS_RECORD_BYTES)
-            buffer.putLong(magic).putInt(1)
+            buffer.putLong(magic).putInt(if (record.settings.layout == PageLayout.DOUBLE) 2 else 1)
             val settings = record.settings
-            buffer.putInt(when (settings.mode) { PageReadingMode.PAGED_RTL -> 0; PageReadingMode.PAGED_LTR -> 1; PageReadingMode.VERTICAL -> 2; PageReadingMode.WEBTOON -> 3 })
+            buffer.putInt((if (settings.layout == PageLayout.DOUBLE) 4 else 0) + when (settings.mode) { PageReadingMode.PAGED_RTL -> 0; PageReadingMode.PAGED_LTR -> 1; PageReadingMode.VERTICAL -> 2; PageReadingMode.WEBTOON -> 3 })
             buffer.putLong(record.updatedAtEpochMillis)
             buffer.put(MessageDigest.getInstance("SHA-256").digest(buffer.array().copyOfRange(0, 24)))
             return buffer.array()
@@ -113,9 +113,13 @@ internal class FilePageReaderSettingsStore(
         private fun decode(bytes: ByteArray): PageReaderPreferences {
             require(MessageDigest.isEqual(bytes.copyOfRange(24, 56), MessageDigest.getInstance("SHA-256").digest(bytes.copyOfRange(0, 24))))
             val input = ByteBuffer.wrap(bytes)
-            require(input.long == magic && input.int == 1)
-            val mode = when (input.int) { 0 -> PageReadingMode.PAGED_RTL; 1 -> PageReadingMode.PAGED_LTR; 2 -> PageReadingMode.VERTICAL; 3 -> PageReadingMode.WEBTOON; else -> error("Unsupported preference") }
-            return PageReaderPreferences(PageReaderSettings(mode), input.long)
+            require(input.long == magic)
+            val version = input.int
+            val choice = input.int
+            require(version == 1 && choice in 0..3 || version == 2 && choice in 4..7)
+            val layout = if (version == 2) PageLayout.DOUBLE else PageLayout.SINGLE
+            val mode = when (choice % 4) { 0 -> PageReadingMode.PAGED_RTL; 1 -> PageReadingMode.PAGED_LTR; 2 -> PageReadingMode.VERTICAL; 3 -> PageReadingMode.WEBTOON; else -> error("Unsupported preference") }
+            return PageReaderPreferences(PageReaderSettings(mode, layout), input.long)
         }
     }
 }

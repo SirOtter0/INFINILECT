@@ -3,7 +3,8 @@
 package org.infinilect.app.reader.page
 
 internal enum class PageReadingMode { PAGED_RTL, PAGED_LTR, VERTICAL, WEBTOON }
-internal data class PageReaderSettings(val mode: PageReadingMode = PageReadingMode.PAGED_LTR)
+internal enum class PageLayout { SINGLE, DOUBLE }
+internal data class PageReaderSettings(val mode: PageReadingMode = PageReadingMode.PAGED_LTR, val layout: PageLayout = PageLayout.SINGLE)
 internal data class PageReaderPreferences(val settings: PageReaderSettings = PageReaderSettings(), val updatedAtEpochMillis: Long = 0) {
     init { require(updatedAtEpochMillis >= 0) }
 }
