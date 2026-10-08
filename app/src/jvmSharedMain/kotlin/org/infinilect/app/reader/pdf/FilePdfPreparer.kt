@@ -15,6 +15,12 @@ import org.infinilect.core.*
 
 internal const val PDF_PREPARATION_DIRECTORY = "pdf-preparation-v1"
 
+/** Concurrent owner sets have no atomic size/iterator pair. Traverse with hasNext,
+ * never Collection.toList's size=1 shortcut, while keeping callbacks outside traversal. */
+internal fun <T> pdfOwnerSnapshot(owners: Collection<T>): List<T> = buildList {
+    for (owner in owners) add(owner)
+}
+
 /** Infrastructure-only synchronous seam, also used for ownership/cancellation host tests. */
 internal fun interface PdfEngine { fun open(path: Path): PdfEngineDocument }
 internal interface PdfEngineDocument {
@@ -159,11 +165,11 @@ internal class FilePdfPreparer(
             try {
                 return withContext(io) { pdfEngineLock.withLock {
                     currentCoroutineContext().ensureActive()
-                    if (retired.get()) throw PdfException(PdfFailure.CLOSED)
+                    if (closed.get() || retired.get()) throw PdfException(PdfFailure.CLOSED)
                     val raster = native.render(pageIndex,size)
                     acquired = raster
                     currentCoroutineContext().ensureActive()
-                    if (retired.get()) throw PdfException(PdfFailure.CLOSED)
+                    if (closed.get() || retired.get()) throw PdfException(PdfFailure.CLOSED)
                     if (raster.size.width > size.width || raster.size.height > size.height) throw PdfException(PdfFailure.RENDER)
                     raster
                 } }
@@ -190,12 +196,12 @@ internal class FilePdfPreparer(
     }
     override fun close() {
         if (!closed.compareAndSet(false,true)) return
-        jobs.toList().forEach { it.cancel() }
-        documents.toList().forEach { it.close() }
+        pdfOwnerSnapshot(jobs).forEach { it.cancel() }
+        pdfOwnerSnapshot(documents).forEach { it.close() }
         shutdown = cleanup.launch {
-            jobs.toList().joinAll()
+            pdfOwnerSnapshot(jobs).joinAll()
             // A parser may have produced a document between the snapshots above.
-            documents.toList().forEach { it.close() }
+            pdfOwnerSnapshot(documents).forEach { it.close() }
             val self = currentCoroutineContext().job
             cleanup.coroutineContext.job.children.filter { it !== self }.toList().joinAll()
             pdfEngineLock.withLock {

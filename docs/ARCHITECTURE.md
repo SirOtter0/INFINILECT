@@ -59,8 +59,11 @@ OAPEN diagnostics and live CLI checks remain Desktop-only.
 manifest/insets/Android Back and APK packaging. Neither owns source policies.
 Platform factories create ApplicationSources without initiating requests. It
 attaches the active ApplicationSession (owning ReadingSessions) and cancels it before closing both clients,
-idempotently. Composition disposal detaches/cancels sessions; Activity destruction
-and Desktop disposal close sources. No Activity/Context is retained by adapters.
+idempotently. ApplicationSources lazily owns one UI-dispatcher session/scope;
+composition disposal flushes progress without closing it. Android retains those
+application-context sources in a ViewModel across configuration changes; final
+ViewModel clearing and Desktop window disposal close sources. Neither the Activity
+nor its picker/composition is retained by the session.
 
 The same UI defaults to public-CC0 Internet Archive TEXT reading and offers
 Gutenberg as an explicitly selected experimental catalog-only source. No simultaneous search or
@@ -271,8 +274,9 @@ reader. Back resets opening state and returns to its origin, keeping Search
 source/query/results; it does not refetch. Switching
 source closes/discards the old session, creates a fresh one and resets Compose
 collectors using a session key, so old-source results cannot flash or replace new
-results. No request is started by changing source. Disposal cancels session jobs
-and closes platform sources. Query/results are session-local; progress and library/history metadata persist
+results. No request is started by changing source. Final platform-owner disposal
+cancels session jobs and closes sources; replacing a presentation only flushes
+progress. Query/results are session-local; progress and library/history metadata persist
 independently of current Archive bytes (its revisions are null). Automatic disk-cache
 infrastructure is separate from session state. See [ADR 0012](adr/0012-bounded-text-reading.md).
 
@@ -308,10 +312,13 @@ root Search, system Back follows Activity behavior. Insets/keyboard padding belo
 to the Android launcher; source-choice buttons share available width on phones.
 TextReader's title/plain text/vertical scroll/Back remain unchanged.
 
-Recreation/configuration changes/process death lose in-memory session/document/
-pixel scroll state by design. A logical progress locator persists in filesDir and
-restores after another explicit valid open. Destruction cancels old work/closes clients;
-progress drains on a bounded independent writer. No ViewModel/SavedState is added.
+Configuration recreation retains the active session/document and semantic position
+in application-context sources owned by a ViewModel. New presentations restore from
+live reader state, not older disk progress; gesture/layout state may reset. Process
+death still loses that in-memory session. Durable locators restore on a new valid
+open; local PDF also retains its existing saved-state automatic reopen path. Final
+owner destruction cancels work/closes clients; progress drains independently. See
+[the continuity contract](PROGRESS.md#presentation-continuity-pr-24).
 Manifest denies cleartext and backup, requests INTERNET only directly, and retains
 AndroidX's generated app-scoped signature permission protecting non-exported
 receivers. It is not storage/location/identifier access. Disable EmojiCompat's

@@ -143,6 +143,18 @@ false EOF, complete owner/persistent-store restart, mixed Unicode, combining/CRL
 cuts and exact document/window boundaries. They test the model and measurement
 seam, **not Compose gesture/rendering or Android filesystem/device behavior**.
 
+## Presentation continuity (PR #24)
+
+One TextReadingProgress owns the live Unicode code-point position even when durable
+storage is unavailable. Width, density/font-scale or typography changes retire the
+old list/layout jobs and restore the containing line from that live position after
+measurement. A new presentation does the same; old pixel offsets cannot drive
+reflow. Presentation restoration alone does not report a new reading position.
+The application session/document survives Android configuration recreation. Existing
+window/resource bounds and code-point progress schema are unchanged; restoration
+is to a containing line, not an exact pixel or grapheme boundary. Without durable
+storage, session continuity works but exit/reopen cannot restore prior progress.
+
 ## Private temporary storage and lifecycle
 
 Android extracts `applicationContext.cacheDir/reader-text-v1`. No Context is retained,

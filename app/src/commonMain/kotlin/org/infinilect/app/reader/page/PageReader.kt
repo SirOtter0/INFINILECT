@@ -317,7 +317,7 @@ private fun BoxScope.PageReaderChrome(reader: PageReaderController, state: PageR
 }
 
 @Composable
-private fun ContinuousPages(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, modifier: Modifier) {
+internal fun ContinuousPages(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, modifier: Modifier) {
     BoxWithConstraints(modifier) {
         val width = maxWidth
         val density = LocalDensity.current

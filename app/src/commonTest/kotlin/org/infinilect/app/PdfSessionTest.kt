@@ -112,4 +112,36 @@ class PdfSessionTest {
             assertEquals(listOf(1),store.saves.map {(it.locator as ReadingLocator.Page).pageIndex})
         } finally {gate.complete(Unit);first.close();recreated.close();owner.close();owner.awaitProgressClosed()}
     }
+
+    @Test fun retainedApplicationSessionKeepsPdfAliveAndFinalCloseCancelsPendingRenderWithoutSavingIt() = runTest {
+        val local=Local();val store=TestPdfProgressStore()
+        val writer=ProgressPersistence(store,StandardTestDispatcher(testScheduler)){10L}
+        val document=TestPdfDocument(progressId=ReadingProgressId(local.pub.id,"content",PublicationFormat.PDF))
+        var preparations=0;var preparerCloses=0
+        val preparer=object:PdfPreparer {
+            override suspend fun prepare(publication:Publication,resource:PublicationResource,loader:ResourceLoader):PdfDocument {
+                preparations++;return document
+            }
+            override fun close(){preparerCloses++}
+            override suspend fun awaitClosed(){}
+        }
+        val owner=ApplicationSources(listOf(SourceOption("Imported files",local,pdfReadingEnabled=true)),
+            progress=writer,pdfPreparer=preparer,sessionDispatcher=StandardTestDispatcher(testScheduler)){}
+        val gate=CompletableDeferred<Unit>()
+        try {
+            val application=owner.applicationSession();application.openSearch(local.pub);runCurrent()
+            val ready=assertIs<OpenPublicationState.PdfReady>(application.opening.value);val reader=ready.reader
+            reader.next();runCurrent();assertEquals(1,reader.state.value.presentedIndex)
+            repeat(20) {
+                owner.flushProgress();assertSame(application,owner.applicationSession());assertSame(ready,application.opening.value)
+                assertEquals(0,document.closes);assertEquals(1,preparations)
+            }
+            document.action={withContext(NonCancellable){gate.await()}}
+            reader.next();runCurrent();assertIs<PdfFrame.Loading>(reader.state.value.frame)
+            owner.close();owner.close();gate.complete(Unit);runCurrent();owner.awaitProgressClosed()
+            assertEquals(1,document.closes);assertEquals(1,preparerCloses)
+            assertEquals(listOf(1),store.saves.map {(it.locator as ReadingLocator.Page).pageIndex})
+            document.rasters.forEach {assertFailsWith<PdfException>{it.argb}}
+        } finally {gate.complete(Unit);owner.close();owner.awaitProgressClosed()}
+    }
 }

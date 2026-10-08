@@ -173,7 +173,8 @@ class PageSpreadTest {
     @Test fun idleModeChangesNormalizeContainmentAndContinuousModesIgnoreRetainedPreference() = runTest { reader { r, _, _, _ ->
         r.layout(PageLayout.SINGLE); r.navigate(4); runCurrent(); r.layout(PageLayout.DOUBLE); runCurrent()
         assertEquals(3, r.state.value.position.index); assertEquals(listOf(3, 4), r.spread().indices)
-        r.layout(PageLayout.SINGLE); assertEquals(3, r.state.value.position.index)
+        // PR #24 retains the exact session page behind Double's visual anchor.
+        r.layout(PageLayout.SINGLE); assertEquals(4, r.state.value.position.index)
         r.layout(PageLayout.DOUBLE)
         for (mode in listOf(PageReadingMode.VERTICAL, PageReadingMode.WEBTOON)) {
             r.mode(mode); r.report(r.state.value.ticket, 4, .6); runCurrent()

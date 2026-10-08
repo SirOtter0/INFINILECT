@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 
 class MainActivity : ComponentActivity() {
     private lateinit var sources: ApplicationSources
@@ -20,7 +22,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        sources = createApplicationSources(applicationContext)
+        // Only application-context sources are retained. The Activity/picker/UI are not.
+        val factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass == ReaderRuntime::class.java)
+                return ReaderRuntime(createApplicationSources(applicationContext)) as T
+            }
+        }
+        sources = ViewModelProvider(this, factory)[ReaderRuntime::class.java].sources
         picker = AndroidDocumentPicker(this)
         setContent {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
@@ -37,10 +47,15 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        // Cancels the current session first; aborts streaming/client/engine afterward.
-        // Re-creation deliberately starts a new session; no retained Activity/clients.
-        if (::sources.isInitialized) sources.close()
         if (::picker.isInitialized) picker.close()
         super.onDestroy()
+    }
+
+    private class ReaderRuntime(val sources: ApplicationSources) : ViewModel() {
+        override fun onCleared() {
+            // Real finish releases readers before their providers; rotation only replaces UI.
+            sources.close()
+            super.onCleared()
+        }
     }
 }

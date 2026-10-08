@@ -2,6 +2,7 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app
 
+import kotlinx.coroutines.*
 import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.core.PublicationSource
@@ -24,10 +25,21 @@ class ApplicationSources internal constructor(
     internal val pageSettings: org.infinilect.app.reader.page.PageSettingsPersistence? = null,
     internal val localImports: org.infinilect.app.imports.LocalPublicationImporter? = null,
     internal val pdfPreparer: org.infinilect.app.reader.pdf.PdfPreparer? = null,
+    private val sessionDispatcher: CoroutineDispatcher? = null,
     private val releaseSources: () -> Unit,
 ) {
     private var session: ApplicationSessionLifetime? = null
     private var closed = false
+    private var sessionScope: CoroutineScope? = null
+
+    /** The platform owner, not a composition/viewport, owns the active session.
+     * Created lazily; one scope/session, released by close(), never an Activity. */
+    internal fun applicationSession(): ApplicationSession {
+        check(!closed) { "Application sources are closed." }
+        (session as? ApplicationSession)?.let { return it }
+        val scope = sessionScope ?: CoroutineScope(SupervisorJob() + (sessionDispatcher ?: Dispatchers.Main.immediate)).also { sessionScope = it }
+        return ApplicationSession(this, scope).also(::attach)
+    }
 
     internal fun loaderFor(source: PublicationSource): ResourceLoader {
         check(!closed && options.any { it.source === source })
@@ -57,6 +69,7 @@ class ApplicationSources internal constructor(
         closed = true
         session?.close()
         session = null
+        sessionScope?.cancel(); sessionScope = null
         localImports?.close()
         progress?.close()
         epubSettings?.close()

@@ -193,9 +193,9 @@ not silently claimed durable; recent in-memory restoration is not proof of disk 
 Closing cancels source/session work first, submits final progress, closes the write
 queue for draining, then releases existing cache/source clients. Idempotent close
 never blocks the Android main thread. Background draining retains records/path only,
-no Activity or live reader. Android onStop flushes pending state; onDestroy closes.
-Recreation loses query/results/document, but the saved locator restores after a new
-explicit search/open and valid acquisition. Desktop window close awaits draining up
+no Activity or live reader. Android onStop flushes pending state; final ViewModel
+clearing closes sources. Configuration recreation retains the session/document;
+process death restores durable progress after a new valid open. Desktop window close awaits draining up
 to 3 seconds before exit. Abrupt process death may lose the most recent window or a
 pending write; no final callback guarantee. Periodic saves reduce that loss.
 
@@ -270,3 +270,127 @@ regardless of external filename or location. Reader/session recreation, original
 file deletion and cache cleanup retain the owned publication and semantic progress.
 Library row removal/History clearing do not delete imports or progress. No progress
 serialization or SQL schema migration is introduced. [Ownership](LOCAL_IMPORT.md).
+
+## Presentation continuity (PR #24)
+
+An active reading session outlives its presentation. ApplicationSources owns one
+ApplicationSession and UI coroutine scope; Android's ViewModel retains only
+application-context sources across configuration changes. The Activity, picker and
+Compose UI are recreated. Desktop retains the same owner until window close.
+Desktop supplies the standard coroutines Swing Main dispatcher (the same 1.11.0
+version as existing coroutines); the session never retains a scene dispatcher.
+
+| State | Owner / lifetime | Presentation change |
+| --- | --- | --- |
+| Publication identity / owned document | Active session | Retained; no reopen or source reacquisition |
+| Semantic position | Reader controller / TextReadingProgress | Live state wins over older persisted progress |
+| Visual spread / line layout | Current presentation | Reconstructed from semantic position |
+| Gesture, zoom, transition tickets | Presentation/controller generation | May reset; obsolete callbacks cannot commit |
+| Durable locator | Existing progress writer/store | Loaded on a new open; valid progress flushes on exit |
+
+CBZ keeps its exact session page/fraction separately from the visual Double anchor.
+Switching back restores that exact page unless real navigation replaced it; a
+Double spread still persists only its validated logical anchor. EPUB restores the
+latest semantic locator on remount/reflow. TEXT restores the line containing its
+Unicode code-point offset after reflow. PDF keeps its page and existing fit-only
+render; it has no intra-page pan position. Identity and persistence schemas do not
+change, and preparation/resource bounds remain unchanged.
+
+Confirmed regressions before the fix: Double normalization discarded the second
+page/fraction; App remount closed the reader; EPUB remount restored chapter entry
+instead of its newer locator; TEXT width reflow retained pixels and changed the
+visible code-point region. Stable Single-mode horizontal/vertical changes did not
+reset to page zero in the controlled reproduction. The user's Android symptom is
+evidence to investigate, not proof that every reader/mode shares one root cause.
+
+Final platform-owner close flushes legitimate pending progress before cancelling
+owned work and draining writers. Replacing UI flushes without closing the session.
+A requested/decoded/animated target remains insufficient for comic progress; the
+existing complete-presentation validation and stale-ticket rejection still apply.
+Full process death is distinct from configuration recreation: durable progress is
+restored on explicit reopening (local PDF retains its existing saved-state reopen
+path). Abrupt death can lose uncommitted writes. No automatic non-PDF process-death
+reopen, new storage schema, global session, or platform rendering engine is added.
+
+Physical Android and native Desktop graphical acceptance of PR #24 are pending.
+Headless layout tests do not establish Activity/device lifecycle correctness.
+
+
+### Verification and manual acceptance
+
+Twenty-one new deterministic tests cover retained sessions, stale persisted state,
+publication isolation, exact page/fraction versus Double anchors, every transition
+phase, loading cancellation, obsolete callbacks, restore-key fallback/clamping,
+legitimate final flush, actual Compose remount/reflow, font scale, orientation-like
+resize and PDF page/raster reuse. Tests use virtual coroutine/render clocks; they
+do not sleep. The existing Double → Single expectation now asserts restoration of
+the original exact page; existing transition/progress/resource safety checks remain.
+
+Pre-follow-up automated verification of production/tests at
+`41be647af28e827a101e7b44c77481460e48ae8a`:
+
+- Focused controller/transition/progress/continuity suites: **144 Desktop / 137
+  Android-host**, no failures/errors/skips. Runtime/UI/PDF-isolation follow-up:
+  **26 Desktop / 15 Android-host**, also clean. All 21 new continuity tests passed.
+- Full Desktop app regression: **985 tests**, zero failures/errors/skips.
+- Full Android-host app regression: **900 tests, 899 passed, 1 failure**, zero
+  errors/skips, including on the full retry. The sole failure is the previously
+  documented, unchanged `concurrentRenderRequestsRemainSerialized`: PDF preparer
+  close snapshots a concurrently shrinking set at `FilePdfPreparer.kt:194` and
+  raises `NoSuchElementException`. Isolated Android and Desktop runs pass. This
+  race was unresolved at that revision; no assertion/test was removed, weakened
+  or skipped.
+- The initial Desktop attempt also exposed missing Main-dispatcher wiring; the
+  standard Swing adapter fixes it and the unchanged Search layout test now passes.
+  That attempt also reproduced the same PDF cleanup race.
+- Android and Desktop application compilation passed. Core is unchanged; unrelated
+  core suites were not run. Diff review, `git diff --check` and repository/signing
+  hygiene checks passed; no acceptance artifacts or temporary CI were added.
+
+The subsequent `99dc36d` commit recorded documentation only. A targeted PDF
+follow-up now corrects the pre-existing cleanup race without changing continuity
+ownership: iterator-driven owner snapshots replace `toList()`'s unsafe singleton
+size/iterator sequence, and final closure fences queued native renders. Existing
+mutex/atomic cleanup and document limits remain unchanged. Nine preparer tests
+and one retained-PDF-session test supplement the unchanged original regression;
+the existing headless PDF remount test also checks document/raster liveness.
+The deterministic singleton test fails before the correction and passes afterward.
+Each host additionally runs 50 repetitions of the original serialized-render
+regression and 100 mixed render/cancel/document-close/owner-close rounds (800 render
+attempts), checking exactly-once native close, zero remaining spools, at most two
+live documents and one native operation. Focused PDF verification passed:
+**34 Desktop / 25 Android-host**, zero failures/errors/skips; both application
+compilations passed.
+
+Final production/test revision `d8d8235628be0ef2626236776ad96c7385c1ce73`:
+**995 Desktop app / 910 Android-host app tests**, zero failures/errors/skips.
+The original serialized-render regression, new deterministic race test and both
+stress tests pass on each host, including in the full suites. Android and Desktop
+application compilation passed. Core remains unchanged and was not retested;
+no new dependency, resource-limit increase, acceptance artifact or temporary CI
+was added. Incremental diff review, `git diff --check` and repository/signing
+secret checks passed. The subsequent commit records these results in documentation
+only. No prior assertion was weakened or failing test disabled.
+
+Physical Android testing and native Desktop graphical acceptance remain pending.
+This Draft is not a merge-readiness claim.
+
+Manual Android acceptance is still required:
+
+1. Open the PR #23 CBZ, reach PAGE 6 in Single, alternate Vertical/Webtoon and
+   PAGED_LTR/PAGED_RTL; confirm the same page remains visible.
+2. Switch Single → Double → Single without navigation: show the containing [5,6]
+   spread, then return to PAGE 6. After real spread navigation, retain the new anchor.
+3. Rotate portrait → landscape → portrait while idle, zoomed, loading and during
+   a turn; temporary zoom/animation may reset, but the logical source must remain.
+4. Close/reopen near the end; verify saved Double anchors and direction/layout
+   preferences. Open another publication, then the original; check isolation.
+5. In a noninitial EPUB passage, change font/spacing/margins and rotate; retain the
+   closest semantic passage. Close/reopen and verify saved progress.
+6. Scroll deeply into TEXT (including Unicode), change system font scale and
+   rotate; retain the containing passage, then verify close/reopen.
+7. Reach a noninitial PDF page, rotate and return from background; keep its page.
+   Finish/relaunch and reopen each format to check legitimate pending saves.
+
+Native Desktop graphical testing remains separate: resize/reflow and reopen all
+four readers. Headless tests and compilation are not device/graphical acceptance.
