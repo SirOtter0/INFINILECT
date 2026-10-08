@@ -360,3 +360,15 @@ All five originals pass complete local semantic traversal on both hosts, includi
 Montecristo's 26 spine documents and 22 formerly oversized chapters. This is
 additional automated evidence, not physical Android or graphical Desktop acceptance.
 No original books or external diagnostic harness are committed.
+
+The performance follow-up reuses validated semantics through a session-private
+file LRU: two indexed chapters /4MiB each /8MiB per prepared document, including
+construction. Files have random owned names under the existing private locked
+session, never ZIP-entry paths; checksums and bounded ownership/field validation
+protect reads. Cancellation/close drains work and cleans files; stale unlocked
+sessions are swept and never reused. Capacity/storage failure retains the bounded
+uncached path. Import validation, archive/DTD/encryption/URI boundaries and retained
+window/image limits are unchanged. User-reported long-chapter reading works on
+Android, but multi-second navigation pauses prompted this change; re-acceptance of
+performance/recovery remains pending. See the reader's measured host results and
+updated manual checklist.

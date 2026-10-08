@@ -60,16 +60,30 @@ security boundary, rather than treating prepared HTML as trusted app content.
 
 The old whole-chapter model rejects real chapters above 2,048 blocks. The production
 reader now requests a window by semantic locator, owned anchor or transient block
-ordinal. One unchanged bounded XML tree is scanned twice: first to produce bounded
-window/anchor metadata, then to retain only the selected semantic window. No entire
-semantic chapter or whole-book index is retained. The legacy whole-model API and
-its original limit tests remain compatible.
+ordinal. The first request for a prepared chapter uses the unchanged bounded XML
+tree plus one semantic scan to write a private semantic file. Warm windows seek to
+checkpoints; anchors use bounded metadata and other locators scan record headers.
+No entire semantic chapter/tree or whole-book text index is retained in RAM. The
+legacy whole-model API keeps its original limits; unavailable cache storage falls
+back to bounded two-pass selection.
 
-Retain two windows of at most 128 blocks/65,536 UTF-16 text units/8,192 append events
-each; serialize parsing and cancel superseded requests. This trades repeated bounded
-local parsing for fixed semantic ownership. Existing bounded media is reused.
-Rolling LazyColumn keys and explicit index rebasing preserve the visible passage;
-the rebase can stop a fling, a trade-off awaiting physical acceptance. No window UI.
+Retain two windows of at most 128 blocks/65,536 UTF-16 units/8,192 append events
+each. A document's private file LRU has two chapters, 4MiB/file and 8MiB including
+construction; evict before writing, checksum/validate reads, never reuse after restart.
+Four shared file reservations cap the preparer at 16MiB even after failed deletion
+and document retirement; no failed deletion permits quota reuse.
+Close invalidates jobs, drains serialized IO and deletes files under the existing
+private session/owner-lock boundary. Existing bounded media is reused. No new dependency.
+
+User-reported Android multi-second boundary/Previous/Next pauses motivated removal
+of repeated XML/full semantic scans and cancelled duplicate prefetch. Identical
+pending destinations coalesce; an explicit request promotes matching lookahead.
+Reflow changes UI tickets without cancelling semantic preparation. Cached navigation
+is immediate; loading/error keeps the last passage/media, with a delayed thin loading
+overlay and Retry for the same failed destination. Pending targets never replace the
+last successful locator. Rolling keys/index rebasing preserve the paragraph/pixel
+position and reuse text; rebasing can still stop a fling, awaiting physical acceptance.
+There is no window UI or permanent cache setting.
 
 Global element paths, Unicode code-point offsets and chapter progression remain
 unchanged; no progress/publication identity/schema migration. Presentation intent
