@@ -133,16 +133,21 @@ internal class PageReaderController(
         val ticket = s.ticket + 1
         val old = s.transition
         val offset = old?.offset ?: 0f
-        val target = old?.target?.takeIf { pageIncomingSide(s.position.index, it, s.settings.mode) * offset < 0 }
+        val target = old?.target?.takeIf { pageIncomingSide(s.position.index, it, s.settings.mode) * offset <= 0 }
             ?: dragTarget(s.position.index, offset)
+        val continuation = old?.let {
+            if (it.phase == PageTransitionPhase.DRAGGING) it.continuation
+            else PageDragContinuation(it.target, it.phase, it.offset, s.navigationFailed)
+        }
         mutableState.value = s.copy(ticket = ticket, navigationFailed = false,
-            transition = PageTransition(ticket, s.position.index, target, offset, PageTransitionPhase.DRAGGING))
+            transition = PageTransition(ticket, s.position.index, target, offset, PageTransitionPhase.DRAGGING,
+                continuation = continuation))
         loadWindow(s.position.index, visible = listOf(target))
         return ticket
     }
     fun drag(ticket: Long, delta: Float) {
         val t = state.value.transition ?: return
-        if (closed || t.ticket != ticket || t.phase != PageTransitionPhase.DRAGGING || !delta.isFinite()) return
+        if (closed || t.ticket != ticket || t.phase != PageTransitionPhase.DRAGGING || !delta.isFinite() || delta == 0f) return
         val offset = (t.offset + delta).coerceIn(-1f, 1f)
         // Grabbing an in-flight coalesced turn keeps its authoritative incoming page
         // until the finger crosses the origin; it must not flash a different neighbor.
@@ -154,8 +159,27 @@ internal class PageReaderController(
     fun releaseDrag(ticket: Long, velocity: Float) {
         val t = state.value.transition ?: return
         if (closed || t.ticket != ticket || t.phase != PageTransitionPhase.DRAGGING) return
+        val old = t.continuation
+        // A same-direction continuation does not have to requalify an already accepted turn.
+        // Reversals still unwind the visual offset and use the normal completion rules.
+        val continues = old != null && old.phase in listOf(PageTransitionPhase.WAITING, PageTransitionPhase.SETTLING) &&
+            t.target == old.target && pageIncomingSide(t.from, t.target, state.value.settings.mode) * (t.offset - old.offset) <= 0
         mutableState.value = state.value.copy(transition = t.copy(phase =
-            if (t.target != t.from && pageDragCompletes(t.offset, velocity)) PageTransitionPhase.WAITING else PageTransitionPhase.RETURNING))
+            if (t.target != t.from && (continues || pageDragCompletes(t.offset, velocity))) PageTransitionPhase.WAITING else PageTransitionPhase.RETURNING,
+            targetStamp = null, targetStamps = emptyMap(), continuation = null))
+    }
+    /** A touch that never established horizontal intent resumes the interrupted motion.
+     * Current ticket/offset remain authoritative; conversion stamps must still validate. */
+    fun resumeDrag(ticket: Long) {
+        val t = state.value.transition ?: return
+        if (closed || t.ticket != ticket || t.phase != PageTransitionPhase.DRAGGING) return
+        val old = t.continuation
+        if (old == null || t.target != old.target) { returnTransition(ticket); return }
+        val phase = when (old.phase) {
+            PageTransitionPhase.SETTLING, PageTransitionPhase.WAITING -> PageTransitionPhase.WAITING
+            else -> PageTransitionPhase.RETURNING
+        }
+        mutableState.value = state.value.copy(transition = t.copy(phase = phase, continuation = null), navigationFailed = old.navigationFailed)
     }
     /** Only UI conversion success may arm a settle; decoder readiness/prefetch is insufficient. */
     fun transitionReady(ticket: Long, target: Int, stamp: Long) {
@@ -174,7 +198,7 @@ internal class PageReaderController(
     fun returnTransition(ticket: Long, failed: Boolean = false) {
         val t = state.value.transition ?: return
         if (closed || t.ticket != ticket) return
-        mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.RETURNING, targetStamp = null, targetStamps = emptyMap()), navigationFailed = failed)
+        mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.RETURNING, targetStamp = null, targetStamps = emptyMap(), continuation = null), navigationFailed = failed)
     }
     fun transitionOffset(ticket: Long, offset: Float) {
         val t = state.value.transition ?: return

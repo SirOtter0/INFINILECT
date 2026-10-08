@@ -735,3 +735,53 @@ On an APK built from the updated HEAD, check:
 - Pan to the edge and continue within one swipe; pan-only movement must not turn.
 - Insufficient/reversed movement returns with coherent zoom/pan; pinch never
   turns. A successful turn resets the new spread to fit.
+
+### Consecutive gestures during active transitions
+
+**USER-REPORTED PHYSICAL ANDROID:** Compact spreads and zoomed edge navigation
+work on the latest tested APK, but a second swipe before settlement sometimes
+moves then returns; repeated attempts eventually turn. The user also perceives
+restricted rapid 1× gestures and an additional delay. These observations triggered
+this follow-up; physical acceptance of the new fix is not claimed.
+
+Controlled coroutine/render-clock touch tests reproduced two defects without
+wall-clock sleeps. Zoomed: at logical anchor 3, a partly settled [3,4] → [5,6]
+transition was grabbed at approximately −0.495 viewport offset. The next 2px
+movement, below touch slop, erased the inherited overscroll to zero and reassigned
+the incoming identity to the source; a short continuation then returned. At 1×,
+pointer-down did not pause settlement until slop was crossed. Settlement could
+change the logical page and replace the pointer handler before that second
+gesture established intent. This is deterministic software reproduction, not a
+claim that every device failure has been attributed from physical event traces.
+
+Both paths now grab an active transition immediately on pointer-down, preserving
+its source, incoming target and exact visual offset under a new authoritative
+ticket. Inherited zoomed overscroll survives slop recognition. Same-direction
+movement continues the already accepted target; it does not restart from zero,
+skip another spread or enqueue a turn. After complete validated settlement, a
+fresh gesture can immediately address the next neighbor. Explicit Previous/Next
+requests retain their existing latest-target coalescing policy. Opposite movement
+unwinds the offset; below-threshold release returns, while crossing the origin
+can select the opposite logical neighbor with the existing LTR/RTL mapping.
+A touch without horizontal intent resumes the interrupted accepted turn or
+return, and a center tap still toggles controls. Fresh gestures retain the 25%
+threshold, or ≥5% with agreeing ≥0.9 viewports/second velocity. Settle remains
+180ms from the preserved offset; no navigation cooldown was added or found.
+The existing 2000ms timer batches durable progress writes, not input eligibility.
+Target decoding/bitmap conversion readiness still gates presentation; no separate
+post-settlement delay was reproduced by the controlled test.
+
+One flat continuation record contains scalar interrupted intent, never a nested
+transition/queue, artwork or job. Old animation/edge tickets cannot change or
+finish newer work. Resumption must validate all target conversion stamps again;
+interrupted animation alone cannot advance position or progress. Pinch cancels
+the handoff; Back/resize/mode changes retire tickets. Successful presentation
+resets the incoming spread to fit/1×, while returned/failed turns preserve current
+zoom/pan. Pan-first bounds, edge-only velocity, zoomed side-tap exclusion, compact
+geometry, grouping and raster/bitmap/job limits are unchanged. The separate
+orientation/menu state-reset issue remains outside scope.
+
+**Physical Android re-acceptance is PENDING. Native Desktop graphical acceptance
+is PENDING. Keep PR #23 DRAFT and unmerged.** Check consecutive Next/Previous
+swipes during motion at 1× and zoomed, in LTR/RTL and Single/Double; also check
+opposite-direction cancellation, pinch, coherent zoom/pan and close/reopen progress.

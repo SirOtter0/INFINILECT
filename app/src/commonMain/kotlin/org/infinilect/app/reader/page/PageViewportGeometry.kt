@@ -59,7 +59,12 @@ internal class PageEdgePanGesture(private val slop: Float, private val viewportW
         if (horizontalIntent == null && max(abs(horizontal), abs(vertical)) > slop)
             horizontalIntent = abs(horizontal) > abs(vertical) * 1.2f
         val step = consumePagePan(pan.x, delta.x, bounds.x, overscroll)
-        overscroll = if (horizontalIntent == true) step.second.coerceIn(-viewportWidth, viewportWidth) else 0f
+        // An inherited presentation offset survives slop arbitration. Vertical intent
+        // cannot move that offset; fresh vertical/slop gestures still have zero excess.
+        overscroll = when {
+            horizontalIntent == true || horizontalIntent == null && overscroll != 0f -> step.second.coerceIn(-viewportWidth, viewportWidth)
+            else -> overscroll
+        }
         return Offset(step.first, (pan.y + delta.y).coerceIn(-bounds.y, bounds.y))
     }
 }

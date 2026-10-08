@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.*
 import org.infinilect.app.media.rasterImageBitmap
 import org.infinilect.core.PageEntry
 
-private class PageTransform {
+internal class PageTransform {
     var zoom by mutableFloatStateOf(1f)
     var pan by mutableStateOf(Offset.Zero)
     var edgeTicket by mutableStateOf<Long?>(null)
@@ -74,7 +74,7 @@ private fun modeLabel(mode: PageReadingMode) = when (mode) {
 }
 
 @Composable
-private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, failedConversions: Set<Int>, transform: PageTransform, modifier: Modifier) {
+internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, failedConversions: Set<Int>, transform: PageTransform, modifier: Modifier) {
     var zoom by transform::zoom
     var pan by transform::pan
     val current = reader.spread(state.position.index)
@@ -126,14 +126,18 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                 var multiplePointers = false
                 var moved = false
                 var consumed = false
+                var fitDragStarted = false
                 var dragTicket: Long? = null
                 val edgePan = PageEdgePanGesture(viewConfiguration.touchSlop, size.width.toFloat())
-                // Grabbing an in-flight edge turn uses the same authoritative incoming identity.
-                val oldEdge = reader.state.value.transition?.takeIf { transform.edgeTicket == it.ticket }
+                // Freeze an active presentation before slop, so settlement cannot
+                // replace this gesture's source/transform midway through recognition.
+                val oldEdge = reader.state.value.transition?.takeIf { zoom == 1f || transform.edgeTicket == it.ticket }
                 if (oldEdge != null) {
-                    dragTicket = reader.beginEdgeDrag(sourceStamp)
-                    transform.edgeTicket = dragTicket
-                    edgePan.overscroll = oldEdge.offset * size.width
+                    dragTicket = if (zoom == 1f) reader.beginDrag(zoom, sourceStamp) else reader.beginEdgeDrag(sourceStamp)
+                    if (dragTicket != null && zoom > 1f) {
+                        transform.edgeTicket = dragTicket
+                        edgePan.overscroll = oldEdge.offset * size.width
+                    }
                 }
                 val edgeVelocity = PageEdgeVelocity(down.uptimeMillis, edgePan.overscroll)
                 try {
@@ -161,7 +165,10 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                         if (!consumed && size.width > 0) {
                             if (dragTicket == null && edgePan.canHandoff) {
                                 dragTicket = reader.beginEdgeDrag(sourceStamp)
-                                transform.edgeTicket = dragTicket
+                                if (dragTicket != null) {
+                                    transform.edgeTicket = dragTicket
+                                    edgePan.overscroll += (reader.state.value.transition?.offset ?: 0f) * size.width
+                                }
                             }
                             dragTicket?.let { ticket ->
                                 val t = reader.state.value.transition?.takeIf { it.ticket == ticket }
@@ -175,21 +182,22 @@ private fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bi
                     } else {
                         horizontal += delta.x; vertical += delta.y
                         if (!consumed && size.width > 0) {
-                            if (dragTicket == null && kotlin.math.abs(horizontal) > viewConfiguration.touchSlop && kotlin.math.abs(horizontal) > kotlin.math.abs(vertical) * 1.2f) {
-                                dragTicket = reader.beginDrag(zoom, sourceStamp)
-                                dragTicket?.let { reader.drag(it, horizontal / size.width) }
-                            } else dragTicket?.let { reader.drag(it, delta.x / size.width) }
+                            if (!fitDragStarted && kotlin.math.abs(horizontal) > viewConfiguration.touchSlop && kotlin.math.abs(horizontal) > kotlin.math.abs(vertical) * 1.2f) {
+                                if (dragTicket == null) dragTicket = reader.beginDrag(zoom, sourceStamp)
+                                dragTicket?.let { reader.drag(it, horizontal / size.width); fitDragStarted = true }
+                            } else if (fitDragStarted) dragTicket?.let { reader.drag(it, delta.x / size.width) }
                         }
                     }
                     if (multiplePointers || zoom > 1f || dragTicket != null) event.changes.forEach { it.consume() }
                 } while (event.changes.any { it.pressed })
                 val releasedTicket = dragTicket
                 if (releasedTicket != null && !multiplePointers && size.width > 0) {
-                    if (zoom > 1f && !edgePan.horizontalMotion) reader.returnTransition(releasedTicket)
+                    if (if (zoom > 1f) !edgePan.horizontalMotion else !fitDragStarted) reader.resumeDrag(releasedTicket)
                     else reader.releaseDrag(releasedTicket,
                         (if (zoom > 1f) edgeVelocity.pixelsPerSecond() else velocity.calculateVelocity().x) / size.width)
                     dragTicket = null
-                } else if (!multiplePointers && !moved && !consumed && size.width > 0) {
+                }
+                if (!multiplePointers && !moved && !consumed && size.width > 0) {
                     val fraction = down.position.x / size.width
                     val action = pageTapAction(fraction, reader.state.value.settings.mode)
                     if (action == PageTapAction.CONTROLS || zoom == 1f) {
