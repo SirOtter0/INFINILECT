@@ -546,6 +546,28 @@ Comparison proves no missing/duplicated semantic content at boundaries; it does 
 claim publisher-layout fidelity, device rendering or measured memory/performance.
 Automated object-count/text/job bounds pass; physical memory profiling remains pending.
 
+### PR #26 automated verification
+
+Verified production/test revision: `fa63da856bef2ac63d2396a3f9746c4202a9d32d`.
+The following evidence update changes documentation only. Forty-three original
+synthetic tests were added: parser16, controller23, headless Compose3 and owned-import
+integration1. The initial 3,001-paragraph reader reproduction failed with LIMIT
+before correction. Existing whole-model limit/security assertions remain intact;
+the integration failure fixture now uses an oversized individual block because
+2,049 legal paragraphs are readable.
+
+- Final focused EPUB/navigation/security/import/continuity: **329 Desktop / 315
+  Android-host**, zero failures, errors or skipped tests.
+- Complete app regression: **1,072 Desktop / 984 Android-host**, zero failures,
+  errors or skipped tests, counted from JUnit XML without the external book harness.
+- Android `:androidApp:compileDebugKotlin` and Desktop `:desktopApp:compileKotlin`
+  passed. Core is unchanged; unrelated core tests were not rerun.
+- The separate external original-book diagnostic passed **5/5 on each host** on
+  the same verified production/test revision, including complete reference comparison.
+- Full diff review, `git diff --check`, clean working tree and exact signing-secret,
+  private-key, attachment-path and generated-artifact scans passed. No new dependency,
+  schema, permissions, signing configuration or temporary CI workflow.
+
 ### Manual Android acceptance — pending
 
 1. Import Montecristo; enter all 26 spine documents and read past paragraph 2,048
