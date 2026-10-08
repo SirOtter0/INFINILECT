@@ -426,9 +426,9 @@ physical Android acceptance, which remains pending for this change.
 4. Import Montecristo and open its cover. Large chapters currently report the
    supported size/reading limit; this PR does not claim complete reading support.
    A failed chapter must not replace the last successful saved locator.
-5. Check the controlled invalid/encrypted EPUB messages with original synthetic
-   regression fixtures where available; rejection must leave no Library/History
-   item or partial import. Never use hostile fixtures on the device.
+
+Invalid/encrypted, hostile-input and failed-import cleanup cases are covered by
+synthetic automated tests; they do not require hostile files on the device.
 
 The reader preserves existing semantic locators, publication identity, progress
 schema, two-chapter retention and raster/bitmap ownership. It still does not provide

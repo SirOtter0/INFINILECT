@@ -287,6 +287,31 @@ Physical Android acceptance of PR #25 and native Desktop graphical acceptance ar
 pending. Host parsing and EPUBCheck do not establish device rendering or layout
 fidelity. Manual checks are in [the reader documentation](EPUB_READER.md#pr-25-manual-android-acceptance).
 
+### Automated verification for PR #25
+
+Verified production/test revision: `be89210897aa32c70db93d5fb82cae153f7e2fba`.
+The subsequent evidence update changes documentation only. Thirty-four original
+synthetic tests were added; the initial three numeric-ID/SVG/declaration
+reproductions all failed before the correction. Existing security and continuity
+assertions remain intact; the encryption assertion now requires its precise category.
+
+- Focused EPUB/import/CBZ/continuity: **307 Desktop / 294 Android-host**, followed
+  by **39 / 39** controller/error/progress/integration tests after the final changes.
+- Final complete app regression: **1,029 Desktop / 944 Android-host** tests,
+  **zero failures, errors or skipped tests**, verified from JUnit XML.
+- Android `:androidApp:compileDebugKotlin` and Desktop `:desktopApp:compileKotlin`
+  passed. Core is unchanged; unrelated core suites were not rerun.
+- The separate, external five-original-book diagnostic ran on both hosts:
+  **four passed / one failed per host**. Its Montecristo failure records the
+  unchanged chapter limit, not complete compatibility. It is not hidden in or
+  substituted for the green synthetic app regression.
+- Full diff review, `git diff --check` and tracked/nonignored signing-secret,
+  attachment-path and generated-artifact scans passed. No project dependency,
+  permission, schema, signing change or temporary CI workflow is included.
+
+Reproduction diagnostics and original-book/EPUBCheck reports remain outside the
+repository. No graphical or physical acceptance is inferred from these results.
+
 ## PR #22 automated verification
 
 [Final CI run](https://github.com/SirOtter0/INFINILECT/actions/runs/37640027762)
