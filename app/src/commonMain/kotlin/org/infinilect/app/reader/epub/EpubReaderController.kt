@@ -31,6 +31,13 @@ internal class EpubReaderController(
     private val paths = document.spine.map { spine -> document.manifest.single { it.id == spine.itemId }.path }
     private val mutableState = MutableStateFlow<EpubReaderState>(EpubReaderState.Loading)
     val state = mutableState.asStateFlow()
+    // A rendering snapshot of the last ready model, not another position owner. Cold
+    // navigation/errors never remove readable content; callbacks still validate state.ticket.
+    private val mutableDisplayed = MutableStateFlow<EpubReaderState.Ready?>(null)
+    val displayed = mutableDisplayed.asStateFlow()
+    private val mutableLoading = MutableStateFlow(false)
+    val loading = mutableLoading.asStateFlow()
+    private fun publish(ready: EpubReaderState.Ready) { mutableState.value = ready; mutableDisplayed.value = ready }
     private val mutableProgression = MutableStateFlow(0.0)
     val progression = mutableProgression.asStateFlow()
     private val mutableSettings = MutableStateFlow(EpubReaderSettings())
@@ -45,6 +52,14 @@ internal class EpubReaderController(
     private var presentedEpoch = -1L
     private var scrollDirection = 1
     private var failedBuffer: Pair<EpubEntryPath, Int>? = null
+    private data class Destination(val path: EpubEntryPath, val query: EpubWindowRequest, val atEnd: Boolean = false)
+    private data class Failed(val destination: Destination, val navigation: Boolean, val withinChapter: Boolean)
+    private var failed: Failed? = null
+    val canRetry get() = failed != null && !closed
+    private var workGeneration = 0L
+    private var destination: Destination? = null
+    private var navigating = false
+    private var within = false
     private var request: Job? = null
     private var timer: Job? = null
     private var generation = 0L
@@ -76,7 +91,7 @@ internal class EpubReaderController(
         lastLocator = chapter.locator(position.first, position.second)
         mutableProgression.value = (index + lastLocator!!.chapterProgression) / paths.size
         visibleBlock = chapter.startBlock + position.first
-        mutableState.value = EpubReaderState.Ready(chapter, index, position, ++generation)
+        publish(EpubReaderState.Ready(chapter, index, position, ++generation))
         buffer(1)
     }
 
@@ -108,47 +123,81 @@ internal class EpubReaderController(
     }
     private fun load(path: EpubEntryPath, query: EpubWindowRequest, withinChapter: Boolean = false, atEnd: Boolean = false) {
         if (closed) return
-        flush(); failedBuffer = null
-        if (!withinChapter) media.reset()
-        val previous = state.value as? EpubReaderState.Ready
-        val ticket = ++generation
-        request?.cancel()
-        if (!withinChapter) mutableState.value = EpubReaderState.Loading
-        request = scope.launch {
+        val target = Destination(path, query, atEnd)
+        flush(); failedBuffer = null; failed = null
+        if (request?.isActive == true && destination == target) {
+            // Promote a matching lookahead. Do not discard completed scanning or start
+            // the same parse again merely because the reader pressed Next repeatedly.
+            navigating = true; within = withinChapter; mutableLoading.value = true
+            if (!withinChapter) mutableState.value = EpubReaderState.Loading
+            return
+        }
+        request?.cancel(); request = null; destination = null; ++workGeneration
+        cached(path, query)?.let { complete(target, it); return }
+        start(target, navigation = true, withinChapter = withinChapter)
+    }
+    private fun complete(target: Destination, chapter: EpubChapter) {
+        val position = when (val query = target.query) {
+            is EpubWindowRequest.Locator -> chapter.locate(query.value)
+            is EpubWindowRequest.Anchor -> {
+                val anchor = chapter.anchors[query.value] ?: throw EpubException(org.infinilect.app.reader.EpubFailure.INVALID)
+                chapter.locate(ReadingLocator.Epub(target.path, anchor.elementPath, anchor.codePointOffset.toLong(), 0.0))
+            }
+            EpubWindowRequest.End -> chapter.blocks.lastIndex to chapter.blocks.last().codePoints
+            is EpubWindowRequest.Block -> (query.index - chapter.startBlock).coerceIn(chapter.blocks.indices) to if (target.atEnd) chapter.blocks.last().codePoints else 0
+        }
+        media.reset(); retain(chapter); visibleBlock = chapter.startBlock + position.first
+        mutableLoading.value = false
+        publish(EpubReaderState.Ready(chapter, paths.indexOf(target.path), position, ++generation))
+        // Existing small-chapter contract. Long-window targets still require the
+        // measured/restored Compose acknowledgement; requests/decodes never save them.
+        if (chapter.startBlock == 0 && chapter.endBlock == chapter.totalBlocks) report(generation, position.first, position.second)
+    }
+    private fun start(target: Destination, navigation: Boolean, withinChapter: Boolean = true) {
+        val work = ++workGeneration
+        destination = target; navigating = navigation; within = withinChapter
+        mutableLoading.value = navigation
+        if (navigation && !withinChapter) mutableState.value = EpubReaderState.Loading
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 withTimeout(15_000) {
-                    val chapter = parse(path, query)
+                    val incoming = parse(target.path, target.query)
                     currentCoroutineContext().ensureActive()
-                    if (closed || ticket != generation) return@withTimeout
-                    val position = when (query) {
-                        is EpubWindowRequest.Locator -> chapter.locate(query.value)
-                        is EpubWindowRequest.Anchor -> {
-                            val anchor = chapter.anchors[query.value] ?: throw IllegalArgumentException()
-                            chapter.locate(ReadingLocator.Epub(path, anchor.elementPath, anchor.codePointOffset.toLong(), 0.0))
-                        }
-                        EpubWindowRequest.End -> chapter.blocks.lastIndex to chapter.blocks.last().codePoints
-                        is EpubWindowRequest.Block -> (query.index - chapter.startBlock).coerceIn(chapter.blocks.indices) to if (atEnd) chapter.blocks.last().codePoints else 0
-                    }
-                    if (withinChapter) media.reset()
-                    retain(chapter); visibleBlock = chapter.startBlock + position.first
-                    mutableState.value = EpubReaderState.Ready(chapter, paths.indexOf(path), position, ticket)
-                    // Preserve the established small-chapter navigation contract. Window requests
-                    // do not save decoded/queued positions; the composed presentation acknowledges them.
-                    if (chapter.startBlock == 0 && chapter.endBlock == chapter.totalBlocks) report(ticket, position.first, position.second)
+                    if (closed || work != workGeneration) return@withTimeout
+                    if (navigating) complete(target, incoming) else append(incoming)
                 }
             } catch (error: TimeoutCancellationException) {
-                currentCoroutineContext().ensureActive(); failure(ticket, "Opening this EPUB chapter timed out.", previous.takeIf { withinChapter })
+                currentCoroutineContext().ensureActive(); failure(work, target, "Opening this EPUB chapter timed out.")
             } catch (error: CancellationException) { throw error }
-            catch (error: EpubException) {
-                currentCoroutineContext().ensureActive(); failure(ticket, error.failure.userMessage, previous.takeIf { withinChapter })
-            } catch (_: Exception) {
-                currentCoroutineContext().ensureActive(); failure(ticket, "This EPUB chapter or internal link is unsupported or unavailable.", previous.takeIf { withinChapter })
+            catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+                failure(work, target, (error as? EpubException)?.failure?.userMessage ?: "This EPUB chapter or internal link is unsupported or unavailable.")
+            } finally {
+                if (!closed && work == workGeneration) {
+                    val lookahead = !navigating
+                    request = null; destination = null; navigating = false; mutableLoading.value = false
+                    if (lookahead) buffer(scrollDirection)
+                }
             }
         }
+        request = job; job.start()
     }
-    private fun failure(ticket: Long, message: String, previous: EpubReaderState.Ready?) {
-        if (closed || ticket != generation) return
-        mutableState.value = previous?.copy(ticket = ticket, error = message) ?: EpubReaderState.Error(message)
+    private fun failure(work: Long, target: Destination, message: String) {
+        if (closed || work != workGeneration) return
+        failed = Failed(target, navigating, within)
+        if (!navigating) failedBuffer = target.path to ((target.query as? EpubWindowRequest.Block)?.index ?: -1)
+        val previous = (state.value as? EpubReaderState.Ready) ?: displayed.value
+        if (!navigating || within) previous?.let {
+            publish(it.copy(initialPosition = it.chapter.locate(liveLocator(it)), ticket = ++generation, error = message))
+        } else mutableState.value = EpubReaderState.Error(message)
+    }
+    fun retry() {
+        if (closed || request?.isActive == true) return
+        val retry = failed ?: return
+        failed = null; failedBuffer = null
+        (state.value as? EpubReaderState.Ready)?.let { publish(it.copy(error = null)) }
+        if (retry.navigation) load(retry.destination.path, retry.destination.query, retry.withinChapter, retry.destination.atEnd)
+        else start(retry.destination, navigation = false)
     }
     fun chapter(index: Int) { paths.getOrNull(index)?.let { load(it, EpubWindowRequest.Block(0)) } }
     private fun currentWindow(ready: EpubReaderState.Ready): EpubChapter = cache.values.firstOrNull {
@@ -180,41 +229,29 @@ internal class EpubReaderController(
         if (closed || request?.isActive == true) return
         val current = currentWindow(ready)
         val index = if (direction >= 0) current.endBlock else current.startBlock - 1
-        if (index !in 0 until current.totalBlocks || cached(current.path, EpubWindowRequest.Block(index)) != null || failedBuffer == current.path to index) return
-        val ticket = ++generation
-        request = scope.launch {
-            try {
-                withTimeout(15_000) {
-                    val incoming = parse(current.path, EpubWindowRequest.Block(index))
-                    currentCoroutineContext().ensureActive()
-                    if (closed || ticket != generation) return@withTimeout
-                    val latest = state.value as? EpubReaderState.Ready ?: return@withTimeout
-                    val live = currentWindow(latest)
-                    if (live.path != incoming.path || live.startBlock != incoming.endBlock && live.endBlock != incoming.startBlock) return@withTimeout
-                    cache.clear(); retain(live); retain(incoming)
-                    val windows = cache.values.sortedBy { it.startBlock }
-                    val combined = EpubChapter(live.path, windows.flatMap { it.blocks }, live.anchors, windows.first().startBlock, live.totalBlocks, live.totalCodePoints)
-                    val locator = liveLocator(latest)
-                    mutableState.value = latest.copy(chapter = combined, initialPosition = combined.locate(locator), ticket = ticket, error = null)
-                }
-            } catch (error: TimeoutCancellationException) {
-                currentCoroutineContext().ensureActive()
-                if (!closed && ticket == generation) {
-                    failedBuffer = current.path to index
-                    (state.value as? EpubReaderState.Ready)?.let { mutableState.value = it.copy(error = "Opening this EPUB chapter timed out.") }
-                }
-            } catch (error: CancellationException) { throw error }
-            catch (error: Exception) {
-                currentCoroutineContext().ensureActive()
-                if (!closed && ticket == generation) {
-                    failedBuffer = current.path to index
-                    val latest = state.value as? EpubReaderState.Ready
-                    if (latest != null) mutableState.value = latest.copy(error = (error as? EpubException)?.failure?.userMessage ?: "This EPUB chapter or internal link is unsupported or unavailable.")
-                }
-            } finally {
-                if (!closed && ticket == generation) { request = null; buffer(scrollDirection) }
-            }
-        }
+        val target = if (index in 0 until current.totalBlocks) Destination(current.path, EpubWindowRequest.Block(index), direction < 0)
+            // Preserve the short-chapter behavior. Long chapters also prepare the next
+            // spine before its boundary, using the same two-window ownership budget.
+            else if (current.totalBlocks > EpubWindowPolicy.BLOCKS) paths.getOrNull(ready.spineIndex + if (direction >= 0) 1 else -1)?.let {
+                // Existing chapter buttons enter at the chapter beginning in either
+                // direction; prepare that exact destination, not an unused End window.
+                Destination(it, EpubWindowRequest.Block(0))
+            } else null
+        if (target == null || cached(target.path, target.query) != null || failedBuffer == target.path to ((target.query as? EpubWindowRequest.Block)?.index ?: -1)) return
+        start(target, navigation = false)
+    }
+    private fun append(incoming: EpubChapter) {
+        val latest = state.value as? EpubReaderState.Ready ?: return
+        val live = currentWindow(latest)
+        if (live.path == incoming.path && live.startBlock != incoming.endBlock && live.endBlock != incoming.startBlock) return
+        if (live.path != incoming.path && kotlin.math.abs(paths.indexOf(live.path) - paths.indexOf(incoming.path)) != 1) return
+        val locator = liveLocator(latest)
+        cache.clear(); retain(live); retain(incoming)
+        val combined = if (live.path == incoming.path) {
+            val windows = cache.values.sortedBy { it.startBlock }
+            EpubChapter(live.path, windows.flatMap { it.blocks }, live.anchors, windows.first().startBlock, live.totalBlocks, live.totalCodePoints)
+        } else live
+        publish(latest.copy(chapter = combined, initialPosition = combined.locate(locator), ticket = ++generation, error = null))
     }
     fun visibleMedia(ticket: Long, images: List<EpubImage>) {
         val ready = state.value as? EpubReaderState.Ready ?: return
@@ -240,6 +277,9 @@ internal class EpubReaderController(
                 if (timer?.isActive != true) timer = scope.launch { delay(PROGRESS_SAVE_INTERVAL_MILLIS); flush() }
             }
         }
+        if (request?.isActive == true && !navigating) {
+            mutableLoading.value = if (scrollDirection >= 0) visibleBlock >= ready.chapter.endBlock - 8 else visibleBlock <= ready.chapter.startBlock + 7
+        }
         buffer(scrollDirection)
     }
     private fun liveLocator(ready: EpubReaderState.Ready): ReadingLocator.Epub =
@@ -251,14 +291,17 @@ internal class EpubReaderController(
         if (closed) return
         if (settings != mutableSettings.value) preferences?.submit(settingsLease, settings)
         mutableSettings.value = settings
-        val ready = state.value as? EpubReaderState.Ready ?: return
-        flush(); request?.cancel()
+        val ready = (state.value as? EpubReaderState.Ready) ?: displayed.value ?: return
+        flush()
+        // Typography/viewport changes invalidate UI callbacks, not semantic parser work.
+        // A pending destination and its lookahead remain valid for the same document.
         val locator = liveLocator(ready)
         val ticket = ++generation
-        mutableState.value = ready.copy(initialPosition = ready.chapter.locate(locator), ticket = ticket, presentation = ticket)
+        val rebased = ready.copy(initialPosition = ready.chapter.locate(locator), ticket = ticket, presentation = ticket)
+        if (state.value is EpubReaderState.Ready) publish(rebased) else mutableDisplayed.value = rebased
     }
     fun close() {
         if (closed) return
-        closed = true; generation++; request?.cancel(); flush(); preferences?.flush(); media.close(); cache.clear(); toc = emptyList(); mutableState.value = EpubReaderState.Loading; document.close()
+        closed = true; generation++; workGeneration++; request?.cancel(); destination = null; failed = null; mutableLoading.value = false; mutableDisplayed.value = null; flush(); preferences?.flush(); media.close(); cache.clear(); toc = emptyList(); mutableState.value = EpubReaderState.Loading; document.close()
     }
 }

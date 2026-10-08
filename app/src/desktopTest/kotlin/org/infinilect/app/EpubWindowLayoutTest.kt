@@ -29,9 +29,12 @@ class EpubWindowLayoutTest {
     private fun text(i:Int)="Original page ${i.toString().padStart(4,'0')} — A simple original reading passage."
     private inner class Parser : EpubParser {
         var gate:CompletableDeferred<Unit>?=null
+        var navigationGate:CompletableDeferred<Unit>?=null
+        var failNavigation=false
         override suspend fun chapter(document:EpubDocument,path:EpubEntryPath):EpubChapter=error("Window API required")
         override suspend fun window(document:EpubDocument,path:EpubEntryPath,request:EpubWindowRequest):EpubChapter {
             val index=when(request){is EpubWindowRequest.Block->request.index;is EpubWindowRequest.Anchor->request.value.toInt();is EpubWindowRequest.Locator->request.value.elementPath.last();EpubWindowRequest.End->3000}
+            if(request is EpubWindowRequest.Anchor){navigationGate?.await();if(failNavigation)throw IllegalStateException("private diagnostic")}
             if(index==256)gate?.await()
             val start=index/128*128;val points=text(0).epubCodePoints()
             return EpubChapter(path,(start until minOf(start+128,3001)).map{EpubBlock(listOf(0,it),0,EpubBlockKind.PARAGRAPH,listOf(EpubRun(text(it))),it*points)},
@@ -111,6 +114,37 @@ class EpubWindowLayoutTest {
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==text(128)}==true})
                 f.click("Previous");assertEquals(0,ready(reader).chapter.startBlock)
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==text(127)}==true})
+            }
+        }finally{reader.close()}
+    }
+    @Test fun slowNavigationKeepsPassageAndShowsOnlyDelayedOverlayLoading()=runTest {
+        val parser=Parser();val reader=EpubReaderController(Doc(),ReadingProgressId(publication,"book",PublicationFormat.EPUB),backgroundScope,parser)
+        try{
+            reader.initialize(null)
+            Scene(this).use{f->
+                f.content{EpubReader(reader,false,{},"Back")};val before=f.firstPassage()
+                parser.navigationGate=CompletableDeferred();reader.navigate(EpubTarget(path,"2800"));f.pump()
+                assertIs<EpubReaderState.Loading>(reader.state.value);assertEquals(before,f.firstPassage())
+                fun loading()=f.nodes().any{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Preparing EPUB passage")==true}
+                advanceTimeBy(100);f.pump();assertFalse(loading())
+                advanceTimeBy(100);f.pump();assertTrue(loading());assertEquals(before,f.firstPassage())
+                parser.navigationGate!!.complete(Unit);f.pump()
+                assertFalse(loading());assertTrue(f.firstPassage().first.startsWith("Original page 2800"))
+            }
+        }finally{reader.close()}
+    }
+    @Test fun recoverableFailureKeepsReadablePassageAndRetryRestoresExactDestination()=runTest {
+        val parser=Parser();val reader=EpubReaderController(Doc(),ReadingProgressId(publication,"book",PublicationFormat.EPUB),backgroundScope,parser)
+        try{
+            reader.initialize(null)
+            Scene(this).use{f->
+                f.content{EpubReader(reader,false,{},"Back")};val before=f.firstPassage().first
+                parser.failNavigation=true;reader.navigate(EpubTarget(path,"2800"));f.pump()
+                assertIs<EpubReaderState.Error>(reader.state.value);assertEquals(before,f.firstPassage().first)
+                assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text=="Retry"}==true})
+                parser.failNavigation=false;f.click("Retry")
+                assertTrue(f.firstPassage().first.startsWith("Original page 2800"))
+                assertFalse(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text=="Retry"}==true})
             }
         }finally{reader.close()}
     }

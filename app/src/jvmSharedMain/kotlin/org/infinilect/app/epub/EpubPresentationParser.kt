@@ -8,6 +8,8 @@ import org.infinilect.core.*
 
 private const val XHTML = "http://www.w3.org/1999/xhtml"
 private val blockTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "section", "div", "body", "pre", "figcaption")
+private val htmlWhitespace = Regex("[\\t\\r\\n ]+")
+private fun headingTag(tag: String) = tag.length == 2 && tag[0] == 'h' && tag[1] in '1'..'6'
 
 /** No browser, network, CSS evaluation or image decoder. Bounded current-chapter semantics. */
 internal class BoundedEpubParser : EpubParser {
@@ -41,10 +43,25 @@ internal class BoundedEpubParser : EpubParser {
     private data class Window(val start: Int, val logicalStart: Int, var count: Int = 0, var units: Int = 0, var events: Int = 0)
     private data class Scan(val anchors: Map<String, EpubPosition>, val anchorBlocks: Map<String, Int>, val blocks: Int, val points: Int)
 
-    /** One bounded transient XML tree. First pass retains only window/anchor metadata;
-     * second pass materializes ONE window. No full semantic chapter/index of text is cached.
-     * Re-scanning bounded local XML trades CPU for small fixed presentation ownership. */
+    /** Prepared documents build a bounded, session-private semantic file once. Warm
+     * requests read only one window. Documents without private cache storage retain
+     * the bounded two-pass fallback; no whole XML/semantic chapter is retained in RAM. */
     override suspend fun window(document: EpubDocument, path: EpubEntryPath, request: EpubWindowRequest): EpubChapter = withContext(Dispatchers.IO) {
+        if (document is EpubSemanticCacheOwner) {
+            try {
+                return@withContext document.semanticCache().window(document, path, request) { writer ->
+                    val (root, images) = chapterXml(document, path)
+                    val scan = scan(document, path, root, images, consume = writer::accept)
+                    EpubSemanticMetadata(scan.anchors, scan.anchorBlocks, scan.blocks, scan.points)
+                }
+            } catch (_: EpubSemanticCacheUnavailable) {
+                // Optional acceleration cannot make an otherwise supported chapter fail.
+            }
+        }
+        uncachedWindow(document, path, request)
+    }
+
+    private suspend fun uncachedWindow(document: EpubDocument, path: EpubEntryPath, request: EpubWindowRequest): EpubChapter {
         val (root, images) = chapterXml(document, path)
         val windows = mutableListOf<Window>()
         var exact: Int? = null
@@ -71,7 +88,7 @@ internal class BoundedEpubParser : EpubParser {
             if (index in selected.start until selected.start + selected.count) blocks.add(block)
         }
         currentCoroutineContext().ensureActive()
-        EpubChapter(path, blocks.toList(), scan.anchors, selected.start, scan.blocks, scan.points)
+        return EpubChapter(path, blocks.toList(), scan.anchors, selected.start, scan.blocks, scan.points)
     }
 
     private suspend fun scan(document: EpubDocument, path: EpubEntryPath, root: EpubXmlNode, rasterWrappers: Map<EpubXmlNode, EpubImage>, legacy: Boolean = false, collectAnchors: Boolean = true, consume: (EpubBlock, Int, Int) -> Unit): Scan {
@@ -94,8 +111,15 @@ internal class BoundedEpubParser : EpubParser {
         var image: EpubImage? = null
         var imageCount = 0
         val runs = mutableListOf<EpubRun>()
+        var runStyle: EpubRun? = null
+        val runText = StringBuilder()
         var units = 0
+        fun finishRun() {
+            runStyle?.let { runs.add(it.copy(text = runText.toString())) }
+            runStyle = null; runText.setLength(0)
+        }
         fun flush() {
+            finishRun()
             if (runs.isEmpty() && kind != EpubBlockKind.SEPARATOR) return
             val text = runs.joinToString("") { it.text }
             if (text.isNotBlank() || kind == EpubBlockKind.SEPARATOR) {
@@ -114,11 +138,14 @@ internal class BoundedEpubParser : EpubParser {
             if (units + text.length > 8192 || ++blockEvents > EpubWindowPolicy.APPEND_EVENTS || legacy && ++runCount > 8192) limit()
             units += text.length
             // Preserve Unicode/text order; collapse HTML whitespace only, not code points.
-            val normalized = if (literal) text else text.replace(Regex("[\\t\\r\\n ]+"), " ")
-            val previous = runs.lastOrNull()
-            if (previous != null && previous.emphasis == em && previous.strong == strong && previous.target == target)
-                runs[runs.lastIndex] = previous.copy(text = previous.text + normalized)
-            else runs.add(EpubRun(normalized, em, strong, target))
+            val normalized = if (literal) text else text.replace(htmlWhitespace, " ")
+            val previous = runStyle
+            if (previous == null || previous.emphasis != em || previous.strong != strong || previous.target != target) {
+                finishRun(); runStyle = EpubRun("", em, strong, target)
+            }
+            // Linear coalescing: thousands of adjacent inline spans must not copy
+            // the growing text/run object for every append event.
+            runText.append(normalized)
         }
         fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: EpubListMarker? = null, pre: Boolean = false) {
             job.ensureActive()
@@ -129,8 +156,8 @@ internal class BoundedEpubParser : EpubParser {
             val savedHeading = heading; val savedMarker = marker; val savedImage = image
             if (isBlock) {
                 flush(); contextPath = pathParts
-                kind = when { tag == "img" -> EpubBlockKind.IMAGE; tag == "hr" -> EpubBlockKind.SEPARATOR; tag == "pre" || pre -> EpubBlockKind.PREFORMATTED; tag == "figcaption" -> EpubBlockKind.CAPTION; tag.matches(Regex("h[1-6]")) -> EpubBlockKind.HEADING; tag == "li" || list != null -> EpubBlockKind.LIST_ITEM; tag == "blockquote" || quote -> EpubBlockKind.QUOTE; else -> EpubBlockKind.PARAGRAPH }
-                heading = tag.takeIf { it.matches(Regex("h[1-6]")) }?.last()?.digitToInt() ?: 1
+                kind = when { tag == "img" -> EpubBlockKind.IMAGE; tag == "hr" -> EpubBlockKind.SEPARATOR; tag == "pre" || pre -> EpubBlockKind.PREFORMATTED; tag == "figcaption" -> EpubBlockKind.CAPTION; headingTag(tag) -> EpubBlockKind.HEADING; tag == "li" || list != null -> EpubBlockKind.LIST_ITEM; tag == "blockquote" || quote -> EpubBlockKind.QUOTE; else -> EpubBlockKind.PARAGRAPH }
+                heading = tag.takeIf(::headingTag)?.last()?.digitToInt() ?: 1
                 marker = list; image = null
                 if (tag == "img" && runs.isEmpty()) {
                     // Keep historical alt-placeholder code-point semantics for saved progress.
@@ -150,8 +177,8 @@ internal class BoundedEpubParser : EpubParser {
             node.attr("id")?.takeIf { collectAnchors }?.let { id ->
                 if (anchors.size + pendingAnchors.size >= 4096) limit()
                 requireEpub(validEpubContentAnchor(id) && id !in anchors && id !in pendingAnchors)
-                if (runs.isEmpty()) pendingAnchors.add(id)
-                else { anchors[id] = EpubPosition(contextPath.toList(), (offsets[contextPath] ?: 0) + runs.sumOf { it.text.epubCodePoints() }); anchorBlocks[id] = blockCount }
+                if (runs.isEmpty() && runText.isEmpty()) pendingAnchors.add(id)
+                else { anchors[id] = EpubPosition(contextPath.toList(), (offsets[contextPath] ?: 0) + runs.sumOf { it.text.epubCodePoints() } + runText.toString().epubCodePoints()); anchorBlocks[id] = blockCount }
             }
             val nextTarget = if (tag == "a" && node.attr("href") != null) {
                 if (++linkCount > 512) limit()
@@ -167,7 +194,7 @@ internal class BoundedEpubParser : EpubParser {
                 for (part in node.content) when (part) {
                     is EpubXmlContent.Text -> append(part.value.toString(), em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, literal = pre || tag == "pre")
                     is EpubXmlContent.Element -> {
-                        val childList = if (tag in setOf("ol", "ul") && part.value.name.local == "li") {
+                        val childList = if ((tag == "ol" || tag == "ul") && part.value.name.local == "li") {
                             val depth = (list?.depth ?: -1) + 1
                             if (depth > 7 || ordinal > 9999) limit()
                             EpubListMarker(tag == "ol", ordinal++, depth)
