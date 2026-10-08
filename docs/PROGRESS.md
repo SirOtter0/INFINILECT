@@ -314,3 +314,58 @@ reopen, new storage schema, global session, or platform rendering engine is adde
 
 Physical Android and native Desktop graphical acceptance of PR #24 are pending.
 Headless layout tests do not establish Activity/device lifecycle correctness.
+
+
+### Verification and manual acceptance
+
+Twenty-one new deterministic tests cover retained sessions, stale persisted state,
+publication isolation, exact page/fraction versus Double anchors, every transition
+phase, loading cancellation, obsolete callbacks, restore-key fallback/clamping,
+legitimate final flush, actual Compose remount/reflow, font scale, orientation-like
+resize and PDF page/raster reuse. Tests use virtual coroutine/render clocks; they
+do not sleep. The existing Double → Single expectation now asserts restoration of
+the original exact page; existing transition/progress/resource safety checks remain.
+
+Automated verification of production/tests at
+`41be647af28e827a101e7b44c77481460e48ae8a`:
+
+- Focused controller/transition/progress/continuity suites: **144 Desktop / 137
+  Android-host**, no failures/errors/skips. Runtime/UI/PDF-isolation follow-up:
+  **26 Desktop / 15 Android-host**, also clean. All 21 new continuity tests passed.
+- Full Desktop app regression: **985 tests**, zero failures/errors/skips.
+- Full Android-host app regression: **900 tests, 899 passed, 1 failure**, zero
+  errors/skips, including on the full retry. The sole failure is the previously
+  documented, unchanged `concurrentRenderRequestsRemainSerialized`: PDF preparer
+  close snapshots a concurrently shrinking set at `FilePdfPreparer.kt:194` and
+  raises `NoSuchElementException`. Isolated Android and Desktop runs pass. This
+  race remains unresolved; no assertion/test was removed, weakened or skipped.
+- The initial Desktop attempt also exposed missing Main-dispatcher wiring; the
+  standard Swing adapter fixes it and the unchanged Search layout test now passes.
+  That attempt also reproduced the same PDF cleanup race.
+- Android and Desktop application compilation passed. Core is unchanged; unrelated
+  core suites were not run. Diff review, `git diff --check` and repository/signing
+  hygiene checks passed; no acceptance artifacts or temporary CI were added.
+
+The subsequent commit records documentation only. Android regression is **not fully
+green**; the known PDF race, physical Android testing and native Desktop graphical
+acceptance remain outstanding. This Draft is not a merge-readiness claim.
+
+Manual Android acceptance is still required:
+
+1. Open the PR #23 CBZ, reach PAGE 6 in Single, alternate Vertical/Webtoon and
+   PAGED_LTR/PAGED_RTL; confirm the same page remains visible.
+2. Switch Single → Double → Single without navigation: show the containing [5,6]
+   spread, then return to PAGE 6. After real spread navigation, retain the new anchor.
+3. Rotate portrait → landscape → portrait while idle, zoomed, loading and during
+   a turn; temporary zoom/animation may reset, but the logical source must remain.
+4. Close/reopen near the end; verify saved Double anchors and direction/layout
+   preferences. Open another publication, then the original; check isolation.
+5. In a noninitial EPUB passage, change font/spacing/margins and rotate; retain the
+   closest semantic passage. Close/reopen and verify saved progress.
+6. Scroll deeply into TEXT (including Unicode), change system font scale and
+   rotate; retain the containing passage, then verify close/reopen.
+7. Reach a noninitial PDF page, rotate and return from background; keep its page.
+   Finish/relaunch and reopen each format to check legitimate pending saves.
+
+Native Desktop graphical testing remains separate: resize/reflow and reopen all
+four readers. Headless tests and compilation are not device/graphical acceptance.
