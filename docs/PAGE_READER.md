@@ -708,5 +708,30 @@ unchanged. Successful turns reset to fit; cancelled/failed turns retain zoom/pan
 The raster/bitmap/job bounds are unchanged; the scalar history owns no artwork.
 The separate orientation/menu state-reset issue is outside this follow-up.
 
+**AUTOMATED FAST-SWIPE VERIFICATION:** Production/test revision
+`e8f20398037481b4a5c1383629dfc999f00c622a` passed the focused PageReader run
+(189 Desktop + 151 Android-host cases), followed by the completed 10-case
+pager-velocity suite on each host. Final full app results are **949 Desktop +
+878 Android-host tests**, zero failures/errors/skips in the passing runs.
+Android (`:androidApp:compileDebugKotlin`) and Desktop (`:desktopApp:compileKotlin`)
+application compilation passed. Core/dependencies are unchanged; no core suites
+were repeated. Existing PR #21/#23 assertions remain unchanged.
+
+The first full Android-host run had one failure in unchanged PDF cleanup:
+`FilePdfPreparer.close()` raised `NoSuchElementException` while snapshotting a
+concurrently shrinking set during `concurrentRenderRequestsRemainSerialized`.
+The isolated test and then the full 878-case retry passed. PDF production/tests
+were not changed; this intermittent cleanup race remains outside this follow-up.
+Incremental diff review and `git diff --check` passed; the repository scan found
+no secrets, signing material, generated acceptance artifacts or temporary CI.
+The subsequent commit changes documentation only.
+
 **Physical Android re-acceptance of this fast-swipe fix is PENDING. Native
 Desktop graphical acceptance remains PENDING. Keep PR #23 DRAFT and unmerged.**
+
+On an APK built from the updated HEAD, check:
+
+- One fast outward swipe at Next/Previous edges in LTR/RTL, Single/Double.
+- Pan to the edge and continue within one swipe; pan-only movement must not turn.
+- Insufficient/reversed movement returns with coherent zoom/pan; pinch never
+  turns. A successful turn resets the new spread to fit.
