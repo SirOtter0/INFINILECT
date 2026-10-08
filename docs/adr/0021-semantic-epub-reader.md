@@ -55,3 +55,27 @@ builds, while historical TEXT remains compatible. Device UI/performance/restorat
 and production source verification remain review gates. No EPUB release/completed
 v0.0.1 claim. Future richer presentation must preserve this explicit ownership and
 security boundary, rather than treating prepared HTML as trusted app content.
+
+## PR #26 follow-up: bounded semantic windows (2026-10-08)
+
+The old whole-chapter model rejects real chapters above 2,048 blocks. The production
+reader now requests a window by semantic locator, owned anchor or transient block
+ordinal. One unchanged bounded XML tree is scanned twice: first to produce bounded
+window/anchor metadata, then to retain only the selected semantic window. No entire
+semantic chapter or whole-book index is retained. The legacy whole-model API and
+its original limit tests remain compatible.
+
+Retain two windows of at most 128 blocks/65,536 UTF-16 text units/8,192 append events
+each; serialize parsing and cancel superseded requests. This trades repeated bounded
+local parsing for fixed semantic ownership. Existing bounded media is reused.
+Rolling LazyColumn keys and explicit index rebasing preserve the visible passage;
+the rebase can stop a fling, a trade-off awaiting physical acceptance. No window UI.
+
+Global element paths, Unicode code-point offsets and chapter progression remain
+unchanged; no progress/publication identity/schema migration. Presentation intent
+and successfully reported progress remain distinct. Reflow/remount restores the
+live semantic position, stale callbacks cannot save, and failed/cancelled windows
+preserve the last successful locator. Owned NCX/nav/internal targets resolve later
+anchors. No archive/XML/network/security relaxation or new dependency.
+
+[Exact budgets, diagnostics and manual acceptance](../EPUB_READER.md#pr-26-long-chapters-with-bounded-semantic-windows).

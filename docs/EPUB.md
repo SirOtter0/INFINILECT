@@ -344,3 +344,19 @@ restart, deduplication, Library/History and EPUB2/EPUB3 progress restore passed.
 or signing change. Temporary per-branch verification workflow is removed from the
 final diff; the run/logs and this summary preserve evidence. These are host/compile
 checks, **not physical Android or native Desktop graphical acceptance**.
+
+## PR #26 bounded long-chapter presentation
+
+The PR #25 Montecristo whole-chapter LIMIT finding above is historical. The reader
+now selects bounded semantic windows without retaining the entire chapter model;
+its old full-model API still enforces the original 2,048-block guard. Preparation,
+import validation, manifest/spine ownership, XML/ZIP/security and image limits are
+unchanged. XML remains limited to 1MiB/20,000 nodes and individual semantic blocks
+to 8,192 text units; broader conformance is not claimed.
+
+See [reader architecture, exact resource bounds, original-book results and pending
+Android acceptance](EPUB_READER.md#pr-26-long-chapters-with-bounded-semantic-windows).
+All five originals pass complete local semantic traversal on both hosts, including
+Montecristo's 26 spine documents and 22 formerly oversized chapters. This is
+additional automated evidence, not physical Android or graphical Desktop acceptance.
+No original books or external diagnostic harness are committed.

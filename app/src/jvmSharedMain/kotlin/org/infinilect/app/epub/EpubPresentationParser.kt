@@ -28,10 +28,57 @@ internal class BoundedEpubParser : EpubParser {
     }
 
     override suspend fun chapter(document: EpubDocument, path: EpubEntryPath): EpubChapter = withContext(Dispatchers.IO) {
-        requireEpub(document.spine.any { spine -> document.manifest.any { it.id == spine.itemId && it.path == path } })
-        val (root, rasterWrappers) = xml(document, path)
-        val body = root.children(XHTML, "body").single()
+        val (root, images) = chapterXml(document, path)
         val blocks = mutableListOf<EpubBlock>()
+        val scan = scan(document, path, root, images, legacy = true) { block, _, _ -> blocks.add(block) }
+        EpubChapter(path, blocks.toList(), scan.anchors)
+    }
+
+    private suspend fun chapterXml(document: EpubDocument, path: EpubEntryPath): Pair<EpubXmlNode, Map<EpubXmlNode, EpubImage>> {
+        requireEpub(document.spine.any { spine -> document.manifest.any { it.id == spine.itemId && it.path == path } })
+        return xml(document, path)
+    }
+    private data class Window(val start: Int, val logicalStart: Int, var count: Int = 0, var units: Int = 0, var events: Int = 0)
+    private data class Scan(val anchors: Map<String, EpubPosition>, val anchorBlocks: Map<String, Int>, val blocks: Int, val points: Int)
+
+    /** One bounded transient XML tree. First pass retains only window/anchor metadata;
+     * second pass materializes ONE window. No full semantic chapter/index of text is cached.
+     * Re-scanning bounded local XML trades CPU for small fixed presentation ownership. */
+    override suspend fun window(document: EpubDocument, path: EpubEntryPath, request: EpubWindowRequest): EpubChapter = withContext(Dispatchers.IO) {
+        val (root, images) = chapterXml(document, path)
+        val windows = mutableListOf<Window>()
+        var exact: Int? = null
+        val locator = (request as? EpubWindowRequest.Locator)?.value
+        val scan = scan(document, path, root, images) { block, index, events ->
+            if (locator != null && block.elementPath == locator.elementPath && block.startOffset <= locator.codePointOffset) exact = index
+            var current = windows.lastOrNull()
+            if (current == null || current.count >= EpubWindowPolicy.BLOCKS || current.units + block.text.length > EpubWindowPolicy.TEXT_UNITS || current.events + events > EpubWindowPolicy.APPEND_EVENTS) {
+                if (windows.size >= EpubWindowPolicy.INDEX_ENTRIES) limit()
+                current = Window(index, block.logicalStart); windows.add(current)
+            }
+            current.count++; current.units += block.text.length; current.events += events
+        }
+        val desired = when (request) {
+            is EpubWindowRequest.Block -> request.index.coerceIn(0, scan.blocks - 1)
+            is EpubWindowRequest.Anchor -> scan.anchorBlocks[request.value] ?: invalid()
+            EpubWindowRequest.End -> scan.blocks - 1
+            is EpubWindowRequest.Locator -> exact
+        }
+        val selected = if (desired != null) windows.last { it.start <= desired }
+            else windows.last { it.logicalStart <= (scan.points * locator!!.chapterProgression).toInt() }
+        val blocks = ArrayList<EpubBlock>(selected.count)
+        scan(document, path, root, images, collectAnchors = false) { block, index, _ ->
+            if (index in selected.start until selected.start + selected.count) blocks.add(block)
+        }
+        currentCoroutineContext().ensureActive()
+        EpubChapter(path, blocks.toList(), scan.anchors, selected.start, scan.blocks, scan.points)
+    }
+
+    private suspend fun scan(document: EpubDocument, path: EpubEntryPath, root: EpubXmlNode, rasterWrappers: Map<EpubXmlNode, EpubImage>, legacy: Boolean = false, collectAnchors: Boolean = true, consume: (EpubBlock, Int, Int) -> Unit): Scan {
+        val body = root.children(XHTML, "body").single()
+        var blockCount = 0
+        val anchorBlocks = linkedMapOf<String, Int>()
+        var blockEvents = 0
         val anchors = linkedMapOf<String, EpubPosition>()
         val pendingAnchors = mutableListOf<String>()
         val offsets = mutableMapOf<List<Int>, Int>()
@@ -52,19 +99,19 @@ internal class BoundedEpubParser : EpubParser {
             if (runs.isEmpty() && kind != EpubBlockKind.SEPARATOR) return
             val text = runs.joinToString("") { it.text }
             if (text.isNotBlank() || kind == EpubBlockKind.SEPARATOR) {
-                if (blocks.size >= 2048 || totalUnits + text.length > 262_144) limit()
+                if (legacy && (blockCount >= 2048 || totalUnits + text.length > 262_144)) limit()
                 val start = offsets[contextPath] ?: 0
                 val block = EpubBlock(contextPath.toList(), start, kind, runs.toList(), logical, heading, marker, image)
-                pendingAnchors.forEach { anchors[it] = EpubPosition(block.elementPath, start) }
+                pendingAnchors.forEach { anchors[it] = EpubPosition(block.elementPath, start); anchorBlocks[it] = blockCount }
                 pendingAnchors.clear()
-                blocks.add(block); logical += block.codePoints; totalUnits += text.length
+                consume(block, blockCount++, blockEvents); logical += block.codePoints; totalUnits += text.length
                 offsets[contextPath] = start + block.codePoints
             }
-            runs.clear(); units = 0
+            runs.clear(); units = 0; blockEvents = 0
         }
         fun append(text: String, em: Boolean, strong: Boolean, target: EpubTarget?, literal: Boolean = false) {
             if (text.isEmpty()) return
-            if (units + text.length > 8192 || ++runCount > 8192) limit()
+            if (units + text.length > 8192 || ++blockEvents > EpubWindowPolicy.APPEND_EVENTS || legacy && ++runCount > 8192) limit()
             units += text.length
             // Preserve Unicode/text order; collapse HTML whitespace only, not code points.
             val normalized = if (literal) text else text.replace(Regex("[\\t\\r\\n ]+"), " ")
@@ -100,11 +147,11 @@ internal class BoundedEpubParser : EpubParser {
                     }
                 }
             }
-            node.attr("id")?.let { id ->
+            node.attr("id")?.takeIf { collectAnchors }?.let { id ->
                 if (anchors.size + pendingAnchors.size >= 4096) limit()
                 requireEpub(validEpubContentAnchor(id) && id !in anchors && id !in pendingAnchors)
                 if (runs.isEmpty()) pendingAnchors.add(id)
-                else anchors[id] = EpubPosition(contextPath.toList(), (offsets[contextPath] ?: 0) + runs.sumOf { it.text.epubCodePoints() })
+                else { anchors[id] = EpubPosition(contextPath.toList(), (offsets[contextPath] ?: 0) + runs.sumOf { it.text.epubCodePoints() }); anchorBlocks[id] = blockCount }
             }
             val nextTarget = if (tag == "a" && node.attr("href") != null) {
                 if (++linkCount > 512) limit()
@@ -133,8 +180,8 @@ internal class BoundedEpubParser : EpubParser {
         }
         visit(body, listOf(0))
         flush()
-        requireEpub(blocks.isNotEmpty())
-        EpubChapter(path, blocks.toList(), anchors.toMap())
+        requireEpub(blockCount > 0)
+        return Scan(anchors.toMap(), anchorBlocks.toMap(), blockCount, logical)
     }
 
     override suspend fun toc(document: EpubDocument): List<EpubTocEntry> = withContext(Dispatchers.IO) {

@@ -233,9 +233,11 @@ CSS is never interpreted or fetched.
 | XML payload per parse, streaming resource buffer | 1 MiB / 8 KiB |
 | XML nodes/depth/attributes per node | Existing 20,000 / 32 / 32 |
 | Attribute value / direct-node text | Existing 8,192 UTF-16 units each |
-| Chapter text / display block text | 262,144 / 8,192 UTF-16 units |
-| Blocks / text-append events / links / anchors per chapter | 2,048 / 8,192 / 512 / 4,096 |
-| Retained parsed chapter models | 2 (current + one previously used); no whole-book DOM |
+| Semantic window / individual block text | 65,536 / 8,192 UTF-16 units |
+| Blocks / text-append events per window | 128 / 8,192 |
+| Window descriptors / links / anchors per XHTML document | 512 / 512 / 4,096 |
+| Retained semantic windows / blocks / text | 2 / 256 / 131,072 UTF-16 units |
+| Legacy whole-model API blocks / text / append events | 2,048 / 262,144 / 8,192 (unchanged) |
 | TOC entries / nested list depth / label | 256 / 16 / 512 UTF-16 units |
 | Transient Compose text layouts | 12 |
 | Chapter navigation parse jobs | One serialized parse; latest generation wins |
@@ -246,9 +248,10 @@ uses up to another 1MiB in chunks plus 8KiB buffer), strict decoded XML ≤2MiB,
 one bounded tree with ≤20,000 nodes. Ordered SAX content coalesces character events;
 parts grow with element transitions, never with each character. Direct/ordered
 text copies are each bounded by XML text. The complete tree is discarded after
-one chapter/nav model is built. Two chapter models retain at most 524,288 UTF-16
-units each in run text and assembled block text combined across their two copies
-(~2MiB text payload overall), plus explicitly bounded blocks/spans/anchors/TOC.
+one window/nav model is built; standard-declaration normalization can temporarily
+hold another decoded XML copy. Two windows retain at most 131,072 UTF-16 units in
+run text and the same amount in assembled block text (about 512KiB character
+payload), plus explicitly bounded blocks/runs/anchors/TOC metadata.
 Object/layout overhead is bounded structurally but not claimed as a measured heap
 limit; device profiling remains pending. Only composed blocks create layout objects.
 
@@ -435,3 +438,128 @@ schema, two-chapter retention and raster/bitmap ownership. It still does not pro
 arbitrary SVG/CSS/font rendering, all named XHTML entities, UTF-16 XML, media
 fallback/overlays, DRM or universal EPUB conformance. Native Desktop graphical
 acceptance remains separate and pending.
+
+## PR #26: long chapters with bounded semantic windows
+
+The historical PR #25 Montecristo LIMIT result above is superseded by this
+reader change. The user reports PR #25 was subsequently merged and physically
+accepted on Android; that evidence established opening Montecristo, not complete
+reading of every chapter. Physical Android acceptance of PR #26 remains pending.
+
+### Parsing and ownership
+
+The old production reader called the full-model `chapter()` API, which rejects
+the entire chapter on its 2,049th block. Splitting that already built list would
+still retain the whole semantic chapter and its XML tree. The reader now calls
+`window()` instead; the historical full-model API and its negative limit tests
+keep their original guards.
+
+Each uncached window reads the same owned, bounded local XHTML, validates it
+with the existing hardened SAX pipeline, and uses one transient XML tree. A first
+semantic scan emits one scratch block at a time, retaining only window descriptors,
+anchor positions and anchor block ordinals. A second scan materializes the selected
+window; the tree and indexing metadata are then released. A window stops before
+exceeding any of 128 blocks, 65,536 UTF-16 text units or 8,192 append events. No text
+is truncated. An individually oversized block still produces a controlled LIMIT.
+The complete first scan validates later content before publishing an earlier window.
+
+This is bounded tree parsing with bounded semantic selection, not a streaming XML
+implementation. Re-reading and scanning a chapter twice per uncached window trades
+CPU/local IO for fixed retained semantic content. Source XML remains limited to
+1MiB and 20,000 nodes/depth32; a publication exceeding those bounds remains unsupported.
+One serialized parser covers initialization/navigation/buffering. Superseded requests
+are cancelled; non-cooperative cleanup must drain before the latest request can
+acquire that same mutex. There is no navigation queue, whole-book index, persistent
+window cache, new temporary file or new dependency.
+
+The controller retains two windows: at most 256 blocks, 131,072 text units and
+16,384 append events/runs. During preparation, these two windows may coexist with
+one incoming window and one scratch block: at most 385 semantic block objects and
+204,800 text units in this working set (about 800KiB character payload counting run
+and assembled-text copies). Temporary concatenation/building allocations and object
+headers are additional, bounded by the individual block/XML limits; these numbers
+are structural ownership bounds, not measured Android heap/RSS. A scan keeps at most
+512 window descriptors, 4,096 anchor positions and 4,096 anchor ordinals; offsets
+are bounded by the 20,000 XML nodes. Retained windows keep at most 8,192 anchor records.
+The transient source-byte/chunk/decoded-text/tree budgets in the table still apply.
+Image work is unchanged: one provider decode, two decoded images and two distinct
+UI bitmaps, with existing byte/pixel limits. Windowing creates no image buffers.
+
+### Navigation and semantic continuity
+
+LazyColumn presents the current and one neighboring window with stable global
+block keys. Scroll direction replaces the old neighbor while preserving the same
+visible paragraph and local pixel position. An explicit index rebase is necessary
+because Compose's nearby-key lookup can miss removal of 128 items. That rebase may
+end an ongoing inertial fling; physical scroll feel still needs device acceptance.
+There is no window indicator or permanent window control. Existing Previous/Next
+traverse windows (previous ends at the preceding window's final block), then the
+ordered spine at the actual chapter boundary. A failed neighboring load preserves
+the current passage and shows a controlled error; an explicit navigation can retry.
+
+TOC/NCX, EPUB3 nav and owned internal links select the window containing their
+anchor, including late numeric IDs. Global element paths, segment offsets and
+Unicode code-point logical starts remain identical to the old parser. Durable
+locators still store canonical spine path + element path + code-point offset +
+whole-chapter progression. Window ordinal and pixels are never persisted. Old
+locators restore directly; a missing element uses whole-chapter progression, and
+a removed spine path retains the established first-chapter fallback. Publication
+identity, progress encoding and storage schemas are unchanged.
+
+During an active session, the last presented locator owns reading progress; an
+unacknowledged navigation target owns only restoration intent. A presentation
+remount or typography/viewport change preserves the appropriate semantic locator
+and retires obsolete callbacks. Buffered, requested, decoded and failed windows
+never advance progress. A new long-chapter target is acknowledged only after the
+UI restores/measures it and any initial image is ready or has a controlled fallback.
+The established whole-small-chapter navigation contract remains compatible.
+Close cancels work, flushes legitimate pending progress, releases windows/media and
+closes the owned document. Cancellation or stale generations cannot publish/save.
+
+PR #25 declaration/NBSP/numeric-ID/static raster-cover compatibility is unchanged,
+as are ZIP/collision/expansion bounds, single URI decoding, owned-only resources,
+DTD/entity restrictions and encryption rejection. No browser, JS, arbitrary SVG
+renderer or network/resource fallback is introduced. Broader EPUB/CSS/font/encoding
+conformance remains outside the supported subset.
+
+### Automated original-book verification
+
+The five supplied originals were accessible. An external, uncommitted diagnostic
+on both Desktop and Android-host imported each file, entered every spine document,
+walked all windows forward/backward, resolved its TOC and restored a deep saved
+locator through fresh preparation. Every block, run, style, offset and anchor was
+compared with an external whole-chapter reference derived from the PR #25 visitor.
+Only that diagnostic reference lifts the whole-model limits to build the oracle;
+production limits and existing test assertions are not relaxed. No original book,
+artwork, external harness or generated artifact is committed.
+
+| Original EPUB2 publication | Spine documents | Semantic blocks | Windows across all documents | Result on both hosts |
+| --- | ---: | ---: | ---: | --- |
+| El conde de Montecristo | 26 | 63,190 | 512 | Complete semantic traversal; all 22 formerly oversized documents pass |
+| El arte de la guerra | 15 | 453 | 15 | Pass |
+| De la brevedad de la vida | 22 | 48 | 22 | Pass |
+| Analectas | 50 | 1,344 | 50 | Pass |
+| Las meditaciones de Marco Aurelio | 3 | 506 | 7 | Pass |
+
+Montecristo's largest document produces 3,269 semantic blocks including its heading.
+Comparison proves no missing/duplicated semantic content at boundaries; it does not
+claim publisher-layout fidelity, device rendering or measured memory/performance.
+Automated object-count/text/job bounds pass; physical memory profiling remains pending.
+
+### Manual Android acceptance — pending
+
+1. Import Montecristo; enter all 26 spine documents and read past paragraph 2,048
+   in each formerly oversized document, through its real ending.
+2. Scroll repeatedly forward/backward across boundaries; check no omitted/repeated
+   passages or jump to another paragraph. Check ordinary flings and controlled errors.
+3. Use Previous/Next, Contents and internal links. Also check a synthetic late-anchor
+   fixture, since a book's own TOC may only target chapter beginnings.
+4. Deep in a long chapter, change font/margins, rotate and recreate presentation;
+   approximately the same semantic passage must remain.
+5. Close/reopen through Library/History and restart the app after a progress-save
+   interval; verify the deep passage and preferences. Open another book and return.
+6. Rapidly navigate/Back during loading; no stale content or invalid progress save.
+7. Reopen the other four supplied EPUBs and check their established reading behavior.
+
+Native Desktop graphical acceptance and physical Android acceptance remain separate
+from headless Compose layout tests and Android-host tests, and remain pending.
