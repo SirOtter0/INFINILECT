@@ -3,9 +3,31 @@
 package org.infinilect.app.epub
 
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.zip.ZipFile
 import org.infinilect.app.zip.*
 import org.infinilect.core.EpubEntryPath
+
+/** Routing/error identity only: the bounded 58-byte OCF first-entry marker.
+ * Never authorizes import; complete ZIP/container/package validation still must pass. */
+internal fun hasEpubMarker(path: Path): Boolean {
+    val bytes = ByteArray(58)
+    Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { stream ->
+        var offset = 0
+        while (offset < bytes.size) {
+            val count = stream.read(bytes, offset, bytes.size - offset)
+            if (count <= 0) return false
+            offset += count
+        }
+    }
+    fun u16(offset: Int) = (bytes[offset].toInt() and 255) or ((bytes[offset + 1].toInt() and 255) shl 8)
+    fun u32(offset: Int) = (0..3).fold(0L) { value, i -> value or ((bytes[offset + i].toLong() and 255) shl (8 * i)) }
+    return u32(0) == 0x04034b50L && u16(8) == 0 && u16(6) and 9 == 0 &&
+        u32(18) == 20L && u32(22) == 20L && u16(26) == 8 && u16(28) == 0 &&
+        bytes.copyOfRange(30, 38).contentEquals("mimetype".encodeToByteArray()) &&
+        bytes.copyOfRange(38, 58).contentEquals("application/epub+zip".encodeToByteArray())
+}
 
 /** EPUB projection of the shared ZIP32 structural metadata. EPUB semantics remain here. */
 internal data class EpubZipEntry(

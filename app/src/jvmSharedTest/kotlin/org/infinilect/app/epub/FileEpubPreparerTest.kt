@@ -201,7 +201,8 @@ class FileEpubPreparerTest {
         invalidFixture { opf { it.replace("id=\"chapter\"", "id=\"chapter\" media-overlay=\"overlay\"") } }
     }
     @Test fun encryptionAndSignaturesAreExplicitlyUnsupported() = runBlocking<Unit> {
-        for (name in listOf("META-INF/encryption.xml", "META-INF/signatures.xml")) invalidFixture { entries[name] = "<root/>".encodeToByteArray() }
+        assertEquals(EpubFailure.ENCRYPTED, rejected(EpubFixture().apply { entries["META-INF/encryption.xml"] = "<root/>".encodeToByteArray() }.zip()).failure)
+        invalidFixture { entries["META-INF/signatures.xml"] = "<root/>".encodeToByteArray() }
     }
     @Test fun nestedArchivesAreNotAcceptedAsOpaquePayloads() = runBlocking<Unit> {
         invalidFixture { entries["nested.zip"] = byteArrayOf(1) }

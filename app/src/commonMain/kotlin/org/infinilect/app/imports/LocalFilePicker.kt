@@ -24,6 +24,8 @@ internal interface LocalPublicationImporter {
 internal enum class ImportFailure(val userMessage: String) {
     UNSUPPORTED("This file is not a supported UTF-8 TEXT, EPUB, CBZ or PDF publication."),
     PDF_ENCRYPTED("This PDF requires a password or uses unsupported encryption."),
+    EPUB_INVALID("This EPUB has invalid structure or unsupported content."),
+    EPUB_ENCRYPTED("This EPUB uses unsupported encryption or font obfuscation."),
     LIMIT("This file exceeds the supported import limits or local import storage is full."),
     TRANSFER("The selected file could not be read completely. Please try again."),
     STORAGE("The file could not be saved in private application storage. Please try again."),

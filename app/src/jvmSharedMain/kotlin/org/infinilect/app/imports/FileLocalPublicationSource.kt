@@ -176,7 +176,17 @@ internal class FileLocalPublicationSource(
                         languages = meta.languages.take(32).map { safeDisplay(it, 128) }.filter { it.isNotBlank() })
                 } finally { doc.close() }
             } catch (e: CancellationException) { throw e }
-            catch (e: EpubException) { if (e.failure == EpubFailure.STORAGE || e.failure == EpubFailure.TRANSFER) fail(ImportFailure.STORAGE) }
+            catch (e: EpubException) {
+                when (e.failure) {
+                    EpubFailure.STORAGE -> fail(ImportFailure.STORAGE)
+                    EpubFailure.TRANSFER -> fail(ImportFailure.TRANSFER)
+                    else -> if (org.infinilect.app.epub.hasEpubMarker(path)) fail(when (e.failure) {
+                        EpubFailure.LIMIT -> ImportFailure.LIMIT
+                        EpubFailure.ENCRYPTED -> ImportFailure.EPUB_ENCRYPTED
+                        else -> ImportFailure.EPUB_INVALID
+                    })
+                }
+            }
             val comic = candidate(PublicationFormat.CBZ)
             try { pages.prepare(comic, loader).close(); return comic }
             catch (e: CancellationException) { throw e }

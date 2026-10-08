@@ -27,27 +27,27 @@ internal class EpubXmlNode(val name: XmlName, val attributes: Map<XmlName, Strin
     }
 }
 
-/** Namespace-aware bounded XML1.0/UTF8 subset. No DTDs/entities/PI/XInclude or URL base.
+/** Namespace-aware bounded XML1.0/UTF8 subset. No DTD loading/entities/PI/XInclude or URL base.
 * Android API26 supports SAX's lexical handler and external-entity flags (AOSP ExpatReader).
 * Required hardening setup fails closed if a provider cannot support it.
 */
 internal fun parseEpubXml(bytes: ByteArray, limits: EpubLimits, job: Job?): EpubXmlNode {
     if (bytes.size>limits.xmlBytes) limit()
-    val text = try {
+    val decoded = try {
         bytes.decodeToString(throwOnInvalidSequence = true).removePrefix("\uFEFF")
     }
     catch (_: Exception) {
         invalid()
     }
-    requireEpub(!text.contains("<!DOCTYPE", ignoreCase = true) && !text.contains("<!ENTITY", ignoreCase = true))
-    if (text.startsWith("<?xml")) {
-        val end = text.indexOf("?>")
+    if (decoded.startsWith("<?xml")) {
+        val end = decoded.indexOf("?>")
         requireEpub(end in 5..256)
-        val declaration = text.substring(0, end)
+        val declaration = decoded.substring(0, end)
         val encoding = Regex("encoding\\s*=\\s*['\"]([^'\"]+)['\"]").find(declaration)?.groupValues?.get(1)
         requireEpub(encoding==null || encoding.equals("UTF-8", true))
         requireEpub(!Regex("version\\s*=\\s*['\"](?!1\\.0['\"]).*").containsMatchIn(declaration))
     }
+    val (text, declaredRoot) = legacyEpubXml(decoded)
     val stack = ArrayList<EpubXmlNode>()
     var root:EpubXmlNode?=null
     var nodes = 0
@@ -145,7 +145,9 @@ internal fun parseEpubXml(bytes: ByteArray, limits: EpubLimits, job: Job?): Epub
         invalid()
     }
     requireEpub(stack.isEmpty())
-    return root ?: invalid()
+    val document = root ?: invalid()
+    requireEpub(declaredRoot == null || document.name == declaredRoot)
+    return document
 }
 internal fun EpubXmlNode.walk(): Sequence<EpubXmlNode>  = sequence {
     val pending = ArrayDeque<EpubXmlNode>()

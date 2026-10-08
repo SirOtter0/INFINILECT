@@ -94,7 +94,9 @@ to 8 KiB even when a caller supplies a larger buffer.
   are rejected. Manifest resources must exist as files and be unique after
   resolution; links/resources cannot authorize entries absent from the manifest.
   TOC targets must additionally be spine documents. Fragments decode once and
-  retain the existing bounded ASCII XML-ID subset (128 units); no external launch.
+  use a bounded ASCII content-anchor subset (128 units), including safe recovery
+  of legacy numeric XHTML IDs; OPF/NCX IDs retain their stricter grammar. Duplicate
+  content IDs and unsafe fragment syntax still fail; no external launch.
 - Ordinary empty ZIP directory entries may be STORED or DEFLATED, including valid
   data descriptors. They count toward 512 entries and receive the same structural,
   size and CRC verification, but never become resources, spine items or descendant
@@ -115,17 +117,27 @@ to 8 KiB even when a caller supplies a larger buffer.
   empty, over-limit or unauthorized NCX fails preparation with a controlled
   INVALID/LIMIT result; no incomplete import is published. EPUB2 requires NCX,
   so this subset does not silently discard a broken TOC. NCX without a DOCTYPE
-  is supported; DTD/entity-bearing NCX remains unsupported by the passive policy.
+  and the exact standard NCX public declaration are supported. The latter is
+  removed before SAX; its external DTD is never loaded.
 - Strict UTF-8 XML1.0 only. Namespace-aware SAX with required external-entity
-  flags and lexical DTD handler; reject DTD/entity declarations, external
+  flags and lexical DTD handler; reject custom/internal DTD/entity declarations, external
   resolution, processing instructions, XInclude and `xml:base`. Setup fails
   closed if a provider lacks the required protection. Enforce node/depth/text
   limits and cancellation while parsing. EPUB permits some constructs this
   deliberately narrower subset rejects; this is not a full conformance validator.
+  Exact XHTML 1.1 and XHTML 1.0 Strict/Transitional public declarations are also
+  removed before SAX, with matching root namespaces required. Only under these
+  XHTML declarations, `&nbsp;` maps to the fixed U+00A0 character; comments/CDATA
+  stay literal. Other named/custom entities remain unsupported. No entity table,
+  DTD evaluator, external lookup or encoding fallback is added.
 - Validate all manifest XHTML for basic root/head/body structure, local
   manifest-owned references, duplicate IDs and navigation `toc`. Reject remote
   references, scripts/event handlers and embedded active elements. At the structural-preparation boundary XHTML is not rendered and
-  CSS/SVG/images/fonts remain **opaque inert bytes**, not sanitized browser content.
+  CSS/images/fonts and standalone SVG assets remain **opaque inert bytes**, not
+  sanitized browser content. A narrow inline SVG cover wrapper containing exactly
+  one manifest-owned PNG/JPEG projects to the existing image model. Only explicitly
+  supported static attributes are allowed; scripts, animation, shapes, transforms,
+  clipping, nested/multiple images, external targets and ambiguous hrefs fail.
   The separate current semantic reader renders bounded text/local PNG/JPEG; any renderer must independently forbid network/script
   execution and impose its own content sandbox. Fragment existence and full
   navigation semantics are deferred.
@@ -232,10 +244,73 @@ TXT/CBZ/PDF regression, resource/memory measurements and performance/FPS.
 Their automated coverage, where present, remains separate from physical evidence.
 Native Desktop graphical acceptance (Windows/Linux/Wayland/niri) remains pending.
 
-Not full EPUB2/EPUB3 conformance: UTF-16 XML, DTD/entities, DTBook/non-XHTML spine,
+Not full EPUB2/EPUB3 conformance: UTF-16 XML, custom/internal DTDs/entities, DTBook/non-XHTML spine,
 pageList/navList/audio, fallbacks, SVG rendering, DRM/font obfuscation, signatures,
 script/forms/media execution, remote resources and browser CSS remain unsupported.
 No dependency, Android permission, acquisition policy or signing change.
+
+## PR #25 real-world compatibility
+
+Base main includes merged PR #24; its retained-session/semantic-position ownership
+is unchanged. A local host harness inspected all five supplied originals, outside
+tracked repository content. Original books, artwork and translations are not
+redistributed. Committed regressions contain only original synthetic text/artwork.
+EPUBCheck 5.3.0 was run as an external tool, without adding a project dependency.
+
+All five have intact ZIPs, the correct first STORED `mimetype`, a matching OCF
+container, OPF 2.0, XHTML spine and NCX; none declares encryption/signatures. Paths,
+namespaces, UTF-8 and manifest/resource references were inspected separately from
+ZIP integrity. Full conformance classifications below use EPUBCheck, not ZIP alone.
+
+| Original | Structural classification / confirmed rejection | Host behavior after correction |
+| --- | --- | --- |
+| El arte de la guerra — Sun Tzu | EPUBCheck clean EPUB2; import succeeded, but reader rejected the inline SVG/raster cover namespace | Import, NCX and all 15 spine documents parse |
+| El conde de Montecristo — Alejandro Dumas | Nonconforming but bounded ID recovery is safe: numeric XHTML IDs and invalid language attributes; ID validation caused import rejection | Import, NCX and cover parse; 22 of 26 spine documents remain over the unchanged 2,048-block chapter limit |
+| De la brevedad de la vida — Séneca | Nonconforming numeric IDs and literal-space resource URIs, safely recoverable; import failed on numeric IDs | Import, NCX and all 22 spine documents parse, including owned space-named PNG wrapper |
+| Analectas — Confucio | Nonconforming CSS syntax, inert in this reader; otherwise standard XHTML/NCX declarations and `nbsp` were unsupported | Import, NCX and all 50 spine documents parse; publisher CSS/fonts remain unevaluated |
+| Meditaciones — Marco Aurelio | EPUBCheck clean EPUB2; standard XHTML declaration rejected before its SVG/raster cover | Import, NCX and all 3 spine documents parse |
+
+The original-book probe therefore has **four complete successes and one partial
+result**, not five complete reading successes. Montecristo's 22 large chapters
+contain 2,808–3,268 nonblank paragraphs and still produce a controlled LIMIT result.
+Supporting them requires future bounded chapter-window work; no limit is raised,
+text discarded or block-limit assertion weakened here. ZIP/source/XML/resource,
+image, link, chapter and retained-cache limits remain unchanged.
+
+Synthetic tests reproduce numeric-ID and SVG-cover failures and standard declaration
+rejection before correction. They also check hostile SVG/DTD inputs, entity/CDATA
+semantics, owned references, duplicate/unsafe IDs, ZIP recognition, encrypted/invalid
+import errors, failed-import cleanup, Library/History registration, fresh-owner
+semantic reopening and progress preservation after a chapter LIMIT failure.
+
+Physical Android acceptance of PR #25 and native Desktop graphical acceptance are
+pending. Host parsing and EPUBCheck do not establish device rendering or layout
+fidelity. Manual checks are in [the reader documentation](EPUB_READER.md#pr-25-manual-android-acceptance).
+
+### Automated verification for PR #25
+
+Verified production/test revision: `be89210897aa32c70db93d5fb82cae153f7e2fba`.
+The subsequent evidence update changes documentation only. Thirty-four original
+synthetic tests were added; the initial three numeric-ID/SVG/declaration
+reproductions all failed before the correction. Existing security and continuity
+assertions remain intact; the encryption assertion now requires its precise category.
+
+- Focused EPUB/import/CBZ/continuity: **307 Desktop / 294 Android-host**, followed
+  by **39 / 39** controller/error/progress/integration tests after the final changes.
+- Final complete app regression: **1,029 Desktop / 944 Android-host** tests,
+  **zero failures, errors or skipped tests**, verified from JUnit XML.
+- Android `:androidApp:compileDebugKotlin` and Desktop `:desktopApp:compileKotlin`
+  passed. Core is unchanged; unrelated core suites were not rerun.
+- The separate, external five-original-book diagnostic ran on both hosts:
+  **four passed / one failed per host**. Its Montecristo failure records the
+  unchanged chapter limit, not complete compatibility. It is not hidden in or
+  substituted for the green synthetic app regression.
+- Full diff review, `git diff --check` and tracked/nonignored signing-secret,
+  attachment-path and generated-artifact scans passed. No project dependency,
+  permission, schema, signing change or temporary CI workflow is included.
+
+Reproduction diagnostics and original-book/EPUBCheck reports remain outside the
+repository. No graphical or physical acceptance is inferred from these results.
 
 ## PR #22 automated verification
 

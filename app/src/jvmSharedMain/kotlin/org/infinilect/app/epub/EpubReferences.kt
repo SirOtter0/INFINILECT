@@ -7,6 +7,10 @@ import java.text.Normalizer
 import org.infinilect.app.reader.epub.EpubTarget
 import org.infinilect.core.*
 
+/** Safe recovery of legacy numeric XHTML IDs; not OPF/NCX identifier validation. */
+internal fun validEpubContentAnchor(value: String): Boolean =
+    Regex("[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}").matches(value)
+
 /** RFC3986 relative path resolution with one strict UTF-8 percent decode per segment.
  * Literal spaces are tolerated from ordinary producers; '+' is never form-decoded.
  * Encoded separators/dot segments/percent, query, authority and schemes fail closed.
@@ -61,6 +65,6 @@ internal fun resolveEpubTarget(
     requireEpub(manifest.any { it.path == path } && (spinePaths == null || path in spinePaths))
     val anchor = reference.substringAfter('#', "").takeIf { it.isNotEmpty() }?.let(::decodeEpubComponent)
     requireEpub(!reference.contains('#') || anchor != null)
-    anchor?.let { requireEpub(Regex("[A-Za-z_][A-Za-z0-9_.-]{0,127}").matches(it)) }
+    anchor?.let { requireEpub(validEpubContentAnchor(it)) }
     return EpubTarget(path, anchor)
 }

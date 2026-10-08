@@ -62,8 +62,12 @@ An unsupported/corrupt record is unavailable, never repaired by deleting user da
   windows remain unchanged. Import additionally rejects C0 controls except tab,
   LF, CR and form feed, and rejects C1 controls. Valid UTF-8 alone is not binary
   format authorization.
-- ZIP input: existing EPUB structural preparation first, otherwise existing strict
-  CBZ preparation. Ordinary/malformed/unsupported ZIP files fail. Filenames and
+- ZIP input: existing EPUB structural preparation first. A recognized EPUB failure
+  stays an EPUB error; other ZIP input may try existing strict CBZ preparation.
+  Recognition reads only the bounded 58-byte first STORED OCF `mimetype` marker
+  for routing/error classification; the complete bounded ZIP/container/OPF checks
+  must still succeed before any EPUB is committed. A marker or extension alone
+  never authorizes bytes. Ordinary/malformed/unsupported ZIP files fail. Filenames and
   provider MIME never authorize a format. A PDF prefix selects the owned PDF
   preparer; bounded engine parsing/inspection must succeed before publication.
   [PDF contracts, limits and cancellation](PDF_READER.md).
@@ -71,6 +75,13 @@ An unsupported/corrupt record is unavailable, never repaired by deleting user da
   validates every page without retaining/decoding every raster. EPUB structural
   import validation does not imply every chapter supports the presentation subset;
   later rendering can still fail safely on unsupported XHTML.
+  PR #25 recovers safe numeric XHTML IDs, inert standard XHTML/NCX declarations and
+  single-owned-raster SVG cover wrappers. Declared encryption/font obfuscation has
+  its own controlled error; recognized invalid/unsupported EPUB, preparation LIMIT,
+  incomplete transfer and private-storage failures remain distinct. The existing
+  Android picker never consults provider MIME to authorize or reject a selection;
+  absent names/sizes, generic MIME and misleading extensions do not change byte
+  validation. No URI grant or external location is retained.
 - At most **8 live local payload handles**, plus the single import input. Local
   catalog operations and import copy time out after 120 seconds where cancellation
   is cooperative. PDF parsing/rendering has no interruptible deadline. Existing
