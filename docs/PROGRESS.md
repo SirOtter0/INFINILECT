@@ -360,7 +360,17 @@ regression and 100 mixed render/cancel/document-close/owner-close rounds (800 re
 attempts), checking exactly-once native close, zero remaining spools, at most two
 live documents and one native operation. Focused PDF verification passed:
 **34 Desktop / 25 Android-host**, zero failures/errors/skips; both application
-compilations passed. Final full-suite results are recorded after verification.
+compilations passed.
+
+Final production/test revision `d8d8235628be0ef2626236776ad96c7385c1ce73`:
+**995 Desktop app / 910 Android-host app tests**, zero failures/errors/skips.
+The original serialized-render regression, new deterministic race test and both
+stress tests pass on each host, including in the full suites. Android and Desktop
+application compilation passed. Core remains unchanged and was not retested;
+no new dependency, resource-limit increase, acceptance artifact or temporary CI
+was added. Incremental diff review, `git diff --check` and repository/signing
+secret checks passed. The subsequent commit records these results in documentation
+only. No prior assertion was weakened or failing test disabled.
 
 Physical Android testing and native Desktop graphical acceptance remain pending.
 This Draft is not a merge-readiness claim.
