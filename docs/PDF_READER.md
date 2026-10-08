@@ -102,6 +102,25 @@ future process isolation is needed for enforceable deadlines and working-memory
 budgets. Existing acquisition/catalog deadlines are cooperative, including the
 120-second import-copy deadline; they do not terminate a stuck provider/kernel call.
 
+PR #24's regression follow-up fixes a preparer cleanup race that predates its
+session-continuity changes. Kotlin `Collection.toList()` can read size 1 from a
+concurrent owner set, then call `iterator().next()` after cleanup removes the last
+owner, throwing `NoSuchElementException`. Document and preparation-job snapshots
+now traverse with `hasNext` without consulting collection size; cancellation/close
+callbacks run only after the snapshot completes. The existing engine mutex,
+atomic retirement, preparation-job drain and second document-retirement pass remain
+authoritative. Final preparer closure also fences queued renders and discards any
+in-flight result produced after closure. No lock, worker, cache or resource limit
+is added: at most two live documents and one native operation remain permitted.
+
+A controlled cleanup interleaving reproduces the former singleton-snapshot failure.
+Gated open/render/transfer tests cover cancellation, final/repeated close, rejected
+post-close work, exactly-once native cleanup, spool removal and owner-lease release.
+Stress supplements these deterministic checks. Retained-session and actual
+headless PDF presentation-remount tests verify that replacing UI leaves its
+document/raster alive until the final session owner closes. These host checks do
+not establish physical Android or native Desktop graphical acceptance.
+
 Next/Previous change the logical zero-based page index independently of rendered
 pixels. Existing ReadingLocator.Page and the existing progress record schema are
 reused with PublicationFormat.PDF and a generated `pdf-page-N` key. Navigation

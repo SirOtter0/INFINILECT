@@ -178,6 +178,8 @@ class ReaderContinuityLayoutTest {
                     assertEquals(state.ticket, reader.state.value.ticket)
                     assertSame(raster, assertIs<PdfFrame.Ready>(reader.state.value.frame).raster)
                     assertEquals(renders, document.rendered)
+                    assertEquals(0, document.closes, "Replacing PDF presentation must not retire its retained document")
+                    assertEquals(4, raster.argb.size)
                 }
             }
         } finally { reader.close() }

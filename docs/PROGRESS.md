@@ -326,7 +326,7 @@ resize and PDF page/raster reuse. Tests use virtual coroutine/render clocks; the
 do not sleep. The existing Double → Single expectation now asserts restoration of
 the original exact page; existing transition/progress/resource safety checks remain.
 
-Automated verification of production/tests at
+Pre-follow-up automated verification of production/tests at
 `41be647af28e827a101e7b44c77481460e48ae8a`:
 
 - Focused controller/transition/progress/continuity suites: **144 Desktop / 137
@@ -338,7 +338,8 @@ Automated verification of production/tests at
   documented, unchanged `concurrentRenderRequestsRemainSerialized`: PDF preparer
   close snapshots a concurrently shrinking set at `FilePdfPreparer.kt:194` and
   raises `NoSuchElementException`. Isolated Android and Desktop runs pass. This
-  race remains unresolved; no assertion/test was removed, weakened or skipped.
+  race was unresolved at that revision; no assertion/test was removed, weakened
+  or skipped.
 - The initial Desktop attempt also exposed missing Main-dispatcher wiring; the
   standard Swing adapter fixes it and the unchanged Search layout test now passes.
   That attempt also reproduced the same PDF cleanup race.
@@ -346,9 +347,23 @@ Automated verification of production/tests at
   core suites were not run. Diff review, `git diff --check` and repository/signing
   hygiene checks passed; no acceptance artifacts or temporary CI were added.
 
-The subsequent commit records documentation only. Android regression is **not fully
-green**; the known PDF race, physical Android testing and native Desktop graphical
-acceptance remain outstanding. This Draft is not a merge-readiness claim.
+The subsequent `99dc36d` commit recorded documentation only. A targeted PDF
+follow-up now corrects the pre-existing cleanup race without changing continuity
+ownership: iterator-driven owner snapshots replace `toList()`'s unsafe singleton
+size/iterator sequence, and final closure fences queued native renders. Existing
+mutex/atomic cleanup and document limits remain unchanged. Nine preparer tests
+and one retained-PDF-session test supplement the unchanged original regression;
+the existing headless PDF remount test also checks document/raster liveness.
+The deterministic singleton test fails before the correction and passes afterward.
+Each host additionally runs 50 repetitions of the original serialized-render
+regression and 100 mixed render/cancel/document-close/owner-close rounds (800 render
+attempts), checking exactly-once native close, zero remaining spools, at most two
+live documents and one native operation. Focused PDF verification passed:
+**34 Desktop / 25 Android-host**, zero failures/errors/skips; both application
+compilations passed. Final full-suite results are recorded after verification.
+
+Physical Android testing and native Desktop graphical acceptance remain pending.
+This Draft is not a merge-readiness claim.
 
 Manual Android acceptance is still required:
 
