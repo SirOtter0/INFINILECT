@@ -19,10 +19,9 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
     .associateBy {
         it.path
     }
-    requireEpub(entries.none {
-        it.name.equals("META-INF/encryption.xml", true) || it.name.equals("META-INF/signatures.xml", true)
-    }
-    )
+    if (entries.any { it.name.equals("META-INF/encryption.xml", true) })
+        throw org.infinilect.app.reader.EpubException(org.infinilect.app.reader.EpubFailure.ENCRYPTED)
+    requireEpub(entries.none { it.name.equals("META-INF/signatures.xml", true) })
     fun xml(path: EpubEntryPath): EpubXmlNode {
         job?.ensureActive()
         val entry = files[path] ?: invalid()
@@ -142,22 +141,8 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
     }
     ) {
         val doc = xml(item.path)
-        requireEpub(doc.name==XmlName(XHTML, "html"))
-        requireEpub(doc.children(XHTML, "head").size==1 && doc.children(XHTML, "body").size==1)
-        val documentIds = HashSet<String>()
-        for (node in doc.walk()) {
-            job?.ensureActive()
-            requireEpub(node.name.local.lowercase() !in setOf("script", "iframe", "object", "embed", "form"))
-            for ((name, value) in node.attributes) {
-                requireEpub(!name.local.startsWith("on", ignoreCase = true))
-                if (name.local=="id") requireEpub(validId(value) && documentIds.add(value))
-                if (name.local in setOf("href", "src", "poster", "data")) {
-                    requireEpub(value.length <= 512)
-                    resolveEpubTarget(item.path, value, manifest)
-                }
-                requireEpub(name.local !in setOf("srcset", "action"))
-            }
-        }
+        job?.ensureActive()
+        validateEpubContent(doc, item.path, manifest, job)
         if (!epub2 && item.id==nav.id) requireEpub(doc.walk().any {
             node -> node.name==XmlName(XHTML, "nav") &&
             node.attributes[XmlName("http://www.idpf.org/2007/ops", "type")]?.split(Regex("\\s+"))?.contains("toc")==true

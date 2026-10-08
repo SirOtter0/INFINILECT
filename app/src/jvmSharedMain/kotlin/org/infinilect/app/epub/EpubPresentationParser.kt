@@ -8,11 +8,10 @@ import org.infinilect.core.*
 
 private const val XHTML = "http://www.w3.org/1999/xhtml"
 private val blockTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "section", "div", "body", "pre", "figcaption")
-private val forbidden = setOf("script", "iframe", "object", "embed", "form", "input", "button", "textarea", "select", "audio", "video", "canvas", "base", "applet")
 
 /** No browser, network, CSS evaluation or image decoder. Bounded current-chapter semantics. */
 internal class BoundedEpubParser : EpubParser {
-    private suspend fun xml(document: EpubDocument, path: EpubEntryPath): EpubXmlNode {
+    private suspend fun xml(document: EpubDocument, path: EpubEntryPath): Pair<EpubXmlNode, Map<EpubXmlNode, EpubImage>> {
         val item = document.manifest.singleOrNull { it.path == path } ?: invalid()
         requireEpub(item.mediaType == "application/xhtml+xml")
         // readBytes closes on success/failure/cancellation, exact entry size/CRC checked below it.
@@ -21,23 +20,17 @@ internal class BoundedEpubParser : EpubParser {
         catch (error: ResourceLimitExceededException) { limit() }
         catch (error: Exception) { throw org.infinilect.app.reader.EpubException(org.infinilect.app.reader.EpubFailure.INVALID, error) }
         val root = parseEpubXml(bytes, EpubLimits(), currentCoroutineContext().job)
-        requireEpub(root.name == XmlName(XHTML, "html"))
-        requireEpub(root.children(XHTML, "head").size == 1 && root.children(XHTML, "body").size == 1)
-        for (node in root.walk()) {
-            currentCoroutineContext().ensureActive()
-            requireEpub(node.name.namespace == XHTML && node.name.local.lowercase() !in forbidden)
-            requireEpub(node.attributes.keys.none { it.local.startsWith("on", true) })
-            requireEpub(node.attr("srcset") == null && node.attr("action") == null)
-            for (name in listOf("href", "src", "poster", "data")) node.attr(name)?.let { reference ->
-                ownedTarget(document, path, reference, spineOnly = name == "href" && node.name.local == "a")
-            }
+        val images = validateEpubContent(root, path, document.manifest, currentCoroutineContext().job)
+        for (node in root.walk()) if (node.name == XmlName(XHTML, "a")) node.attr("href")?.let {
+            currentCoroutineContext().ensureActive(); ownedTarget(document, path, it, spineOnly = true)
         }
-        return root
+        return root to images
     }
 
     override suspend fun chapter(document: EpubDocument, path: EpubEntryPath): EpubChapter = withContext(Dispatchers.IO) {
         requireEpub(document.spine.any { spine -> document.manifest.any { it.id == spine.itemId && it.path == path } })
-        val body = xml(document, path).children(XHTML, "body").single()
+        val (root, rasterWrappers) = xml(document, path)
+        val body = root.children(XHTML, "body").single()
         val blocks = mutableListOf<EpubBlock>()
         val anchors = linkedMapOf<String, EpubPosition>()
         val pendingAnchors = mutableListOf<String>()
@@ -82,7 +75,8 @@ internal class BoundedEpubParser : EpubParser {
         }
         fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: EpubListMarker? = null, pre: Boolean = false) {
             job.ensureActive()
-            val tag = node.name.local
+            val rasterWrapper = rasterWrappers[node]
+            val tag = if (rasterWrapper != null) "img" else node.name.local
             val isBlock = tag in blockTags || tag == "img" || tag == "hr"
             val savedPath = contextPath; val savedKind = kind
             val savedHeading = heading; val savedMarker = marker; val savedImage = image
@@ -96,17 +90,19 @@ internal class BoundedEpubParser : EpubParser {
                     // Inline images split a paragraph, but use its existing element path/offsets.
                     contextPath = if (savedPath.size > 1) savedPath else pathParts
                     if (++imageCount > 64) limit()
-                    val src = node.attr("src") ?: invalid()
-                    requireEpub(!src.contains('#'))
-                    val targetPath = ownedTarget(document, path, src, false).path
-                    val item = document.manifest.single { it.path == targetPath }
-                    val alt = node.attr("alt")?.let { it.substring(0, it.epubUtf16(it.epubPointAtUtf16(minOf(256, it.length)))) } ?: ""
-                    image = EpubImage(targetPath, item.mediaType, alt)
+                    image = rasterWrapper ?: run {
+                        val src = node.attr("src") ?: invalid()
+                        requireEpub(!src.contains('#'))
+                        val targetPath = ownedTarget(document, path, src, false).path
+                        val item = document.manifest.single { it.path == targetPath }
+                        val alt = node.attr("alt")?.let { it.substring(0, it.epubUtf16(it.epubPointAtUtf16(minOf(256, it.length)))) } ?: ""
+                        EpubImage(targetPath, item.mediaType, alt)
+                    }
                 }
             }
             node.attr("id")?.let { id ->
                 if (anchors.size + pendingAnchors.size >= 4096) limit()
-                requireEpub(Regex("[A-Za-z_][A-Za-z0-9_.-]{0,127}").matches(id) && id !in anchors && id !in pendingAnchors)
+                requireEpub(validEpubContentAnchor(id) && id !in anchors && id !in pendingAnchors)
                 if (runs.isEmpty()) pendingAnchors.add(id)
                 else anchors[id] = EpubPosition(contextPath.toList(), (offsets[contextPath] ?: 0) + runs.sumOf { it.text.epubCodePoints() })
             }
@@ -149,7 +145,7 @@ internal class BoundedEpubParser : EpubParser {
             return@withContext readEpubNcx(parseEpubXml(bytes, EpubLimits(), currentCoroutineContext().job),
                 nav.path, document.manifest, document.spine, currentCoroutineContext().job)
         }
-        val root = xml(document, nav.path)
+        val root = xml(document, nav.path).first
         val toc = root.walk().filter { it.name.local == "nav" && it.attributes[XmlName("http://www.idpf.org/2007/ops", "type")]?.split(' ')?.contains("toc") == true }.singleOrNull() ?: invalid()
         val job = currentCoroutineContext().job
         val entries = mutableListOf<EpubTocEntry>()

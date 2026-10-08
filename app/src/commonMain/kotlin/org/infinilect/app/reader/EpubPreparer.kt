@@ -13,7 +13,8 @@ internal interface EpubPreparer {
 
 internal enum class EpubFailure(val userMessage: String) {
     INVALID("This EPUB has unsupported or invalid structure."),
-    LIMIT("This EPUB exceeds the supported preparation limits."),
+    ENCRYPTED("This EPUB uses unsupported encryption or font obfuscation."),
+    LIMIT("This EPUB exceeds the supported size or reading limits."),
     TRANSFER("The EPUB transfer was incomplete or changed."),
     STORAGE("Could not prepare this EPUB in private temporary storage."),
 }

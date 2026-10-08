@@ -137,4 +137,63 @@ class LocalImportReaderIntegrationTest {
         } finally {session.close();owner.close();root.toFile().deleteRecursively()}
     }
 
+    @Test fun recoveredLegacyCoverAndNumericLocatorSurviveOwnedImportAndFreshSession()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("local-epub-legacy")
+        val first=Owner(root);val session=ApplicationSession(first.sources,this)
+        val fixture=rasterCoverFixture().apply {
+            change("OPS/chapter.xhtml") { XHTML_DECLARATION + it.replace("<body>","<body><p id=\"123\">Original semantic reading passage 📖</p>") }
+            change("OPS/Nav/toc.ncx") { NCX_DECLARATION + it.replace("../chapter.xhtml", "../chapter.xhtml#123") }
+        }
+        val original=Files.write(root.resolve("original.bin"),fixture.zip())
+        lateinit var snapshot:PublicationSnapshot
+        lateinit var expected:ReadingLocator.Epub
+        try {
+            session.importLocal(object:LocalFilePicker {
+                override suspend fun pick()=LocalFileSelection(null) { EpubBytes(Files.readAllBytes(original),sizeBytes=null,chunk=1) }
+            })
+            val open=assertIs<OpenPublicationState.EpubReady>(ready(session))
+            val frame=assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(open.reader.state.value)
+            assertEquals(PublicationFormat.EPUB,open.publication.resources.single().format)
+            assertEquals("123",org.infinilect.app.epub.BoundedEpubParser().toc(open.reader.document).single().target.anchor)
+            val image=assertNotNull(frame.chapter.blocks.single{it.image!=null}.image)
+            assertContentEquals(developmentPng(),open.reader.document.openResource(image.path).readBytes(4096))
+            snapshot=PublicationSnapshot.from(open.publication);expected=frame.chapter.locator(0,9)
+            open.reader.report(frame.ticket,0,9);session.back();Files.delete(original)
+            first.collections.flushHistory()
+            assertEquals(snapshot.id,value(first.store.library.list()).single().publication.id)
+            assertEquals(snapshot.id,value(first.store.history.listRecent()).single().publication.id)
+        } finally {session.close();first.close()}
+        root.resolve("cache").toFile().deleteRecursively()
+        val second=Owner(root);val reopened=ApplicationSession(second.sources,this)
+        try {
+            for(destination in listOf(Destination.LIBRARY,Destination.HISTORY)) {
+                reopened.navigate(destination);reopened.openSaved(snapshot)
+                val frame=assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(assertIs<OpenPublicationState.EpubReady>(ready(reopened)).reader.state.value)
+                assertEquals(expected,frame.chapter.locator(frame.initialPosition.first,frame.initialPosition.second))
+                reopened.back()
+            }
+        } finally {reopened.close();second.close();root.toFile().deleteRecursively()}
+    }
+    @Test fun overLimitImportedChapterCannotOverwritePriorSuccessfulLocator()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("local-epub-reading-limit");val owner=Owner(root);val session=ApplicationSession(owner.sources,this)
+        val fixture=epub2Fixture().apply {
+            entries["OPS/large.xhtml"]=("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Original large chapter</title></head><body>"+
+                "<p>Original bounded paragraph</p>".repeat(2049)+"</body></html>").encodeToByteArray()
+            opf{it.replace("</manifest>","<item id=\"large\" href=\"large.xhtml\" media-type=\"application/xhtml+xml\"/></manifest>")
+                .replace("</spine>","<itemref idref=\"large\"/></spine>")}
+        }
+        try {
+            session.importLocal(picker(fixture.zip()))
+            val open=assertIs<OpenPublicationState.EpubReady>(ready(session))
+            val frame=assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(open.reader.state.value)
+            val snapshot=PublicationSnapshot.from(open.publication);val expected=frame.chapter.locator(0,5)
+            open.reader.report(frame.ticket,0,5);open.reader.chapter(1)
+            val failure=withTimeout(5000){open.reader.state.first{it is org.infinilect.app.reader.epub.EpubReaderState.Error}}
+            assertEquals(EpubFailure.LIMIT.userMessage,assertIs<org.infinilect.app.reader.epub.EpubReaderState.Error>(failure).message)
+            session.back();session.openSaved(snapshot)
+            val restored=assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(assertIs<OpenPublicationState.EpubReady>(ready(session)).reader.state.value)
+            assertEquals(expected,restored.chapter.locator(restored.initialPosition.first,restored.initialPosition.second))
+        } finally {session.close();owner.close();root.toFile().deleteRecursively()}
+    }
+
 }

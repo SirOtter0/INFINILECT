@@ -81,12 +81,15 @@ only declared spine paths/anchors. Missing anchors give a safe fixed error.
 
 PNG/JPEG local images render within a stable-height 200dp presentation area using
 Fit, with bounded alt-text and figure captions where available. Other images display
-alt/unsupported text. Only manifest-owned resources are opened. No SVG/GIF/WebP,
+alt/unsupported text. Only manifest-owned resources are opened. Narrow static SVG
+cover wrappers around a single owned PNG/JPEG use that same image path/model;
+the SVG itself is not rendered. No SVG/GIF/WebP decoding,
 responsive `srcset`/picture selection, remote or data URLs, external fonts or browser.
 
 Not supported: arbitrary CSS, publisher fonts, fixed-layout fidelity, RTL layout
 policy, scripting, audio/video/forms, SVG/MathML rendering, remote resources,
-EPUB2/NCX, DRM, annotations or Downloads. Foreign namespace/active content fails.
+DRM, annotations or Downloads. EPUB2/NCX follows the PR #22 contract. Foreign
+namespace/active content fails except the explicitly validated raster-cover wrapper.
 No generic EPUB compatibility or production acquisition claim.
 
 ### Reading settings and semantic position
@@ -208,10 +211,13 @@ adapter. No generic URL resolver exists.
 No browser, JS evaluator, URI handler, HTTP client or filesystem path enters the
 renderer. External/file/content/javascript/network-relative schemes, encoded aliases,
 queries, escaping traversal, undeclared targets and non-spine hyperlinks reject.
-Fragments use the foundation's portable ID subset; missing anchors produce a fixed
-reader error. DTD/entities/PI/XInclude/xml:base remain forbidden. Required SAX
+Fragments use bounded ASCII content tokens, including recoverable numeric IDs;
+missing anchors produce a fixed reader error. Exact standard XHTML/NCX declarations
+are removed before SAX, and XHTML `nbsp` is a fixed character alias. Custom/internal
+DTDs, other named entities, PI/XInclude/xml:base remain forbidden. Required SAX
 hardening fails closed. Scripts/forms/objects/iframes/events/active media and foreign
-namespaces cannot reach Compose. CSS is never interpreted or fetched.
+namespaces cannot reach Compose except the validated one-raster cover projection.
+CSS is never interpreted or fetched.
 
 | Budget | Ceiling |
 | --- | ---: |
@@ -403,3 +409,29 @@ errors. See [the exact physical evidence and unclaimed checklist observations](E
 This does not claim individual TOC/order/image/progress/import/Library/History or
 TXT/CBZ/PDF manual observations. Automated evidence remains separate, and native
 Desktop graphical acceptance (Windows/Linux/Wayland/niri) remains pending.
+
+## PR #25 manual Android acceptance
+
+The five supplied originals were inspected locally; see the precise
+[classifications and remaining limits](EPUB.md#pr-25-real-world-compatibility).
+No original publication is committed. Automated host results are separate from
+physical Android acceptance, which remains pending for this change.
+
+1. Import Sun Tzu, Séneca, Analectas and Meditaciones through the Android picker;
+   verify titles, opening, local covers, Contents and chapter navigation.
+2. Repeat one import with a misleading extension or generic provider MIME; byte
+   validation should give the same publication and deduplicate owned content.
+3. Read a noninitial passage, change typography/rotate, exit/reopen from Library
+   and History; confirm semantic position continuity from PR #24.
+4. Import Montecristo and open its cover. Large chapters currently report the
+   supported size/reading limit; this PR does not claim complete reading support.
+   A failed chapter must not replace the last successful saved locator.
+5. Check the controlled invalid/encrypted EPUB messages with original synthetic
+   regression fixtures where available; rejection must leave no Library/History
+   item or partial import. Never use hostile fixtures on the device.
+
+The reader preserves existing semantic locators, publication identity, progress
+schema, two-chapter retention and raster/bitmap ownership. It still does not provide
+arbitrary SVG/CSS/font rendering, all named XHTML entities, UTF-16 XML, media
+fallback/overlays, DRM or universal EPUB conformance. Native Desktop graphical
+acceptance remains separate and pending.

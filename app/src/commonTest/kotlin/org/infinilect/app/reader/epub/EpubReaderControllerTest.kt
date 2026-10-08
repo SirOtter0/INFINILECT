@@ -7,6 +7,8 @@ import kotlinx.coroutines.test.*
 import kotlin.test.*
 import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.core.*
+import org.infinilect.app.reader.EpubException
+import org.infinilect.app.reader.EpubFailure
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EpubReaderControllerTest {
@@ -109,6 +111,28 @@ class EpubReaderControllerTest {
     @Test fun failedChapterDoesNotExposeParserDetails() = runTest { use { reader, _, parser, _, _ ->
         parser.action = { error("secret path and content") }; reader.chapter(1); advanceUntilIdle()
         assertFalse(assertIs<EpubReaderState.Error>(reader.state.value).message.contains("secret"))
+    } }
+    @Test fun categorizedChapterFailureKeepsOnlySuccessfulProgressAndSafeMessages() = runTest {
+        for (failure in EpubFailure.entries) use { reader, _, parser, store, _ ->
+            val ready = assertIs<EpubReaderState.Ready>(reader.state.value)
+            reader.report(ready.ticket, 0, 2)
+            val progression = reader.progression.value
+            parser.action = { throw EpubException(failure, IllegalStateException("secret filesystem path")) }
+            reader.chapter(1); advanceUntilIdle()
+            assertEquals(failure.userMessage, assertIs<EpubReaderState.Error>(reader.state.value).message)
+            reader.report(ready.ticket, 1, 4); reader.flush(); runCurrent()
+            assertEquals(progression, reader.progression.value); assertEquals(1, reader.retainedChapters)
+            val locator = assertIs<ReadingLocator.Epub>(assertNotNull(store.values[id]).locator)
+            assertEquals(paths[0], locator.spinePath); assertEquals(2L, locator.codePointOffset)
+        }
+    }
+    @Test fun obsoleteCategorizedFailureCannotReplaceSuccessfullyPresentedChapter() = runTest { use { reader, _, parser, store, _ ->
+        val gate = CompletableDeferred<Unit>()
+        parser.action = { path -> if (path == paths[1]) withContext(NonCancellable) { gate.await(); throw EpubException(EpubFailure.LIMIT) } }
+        reader.chapter(1); runCurrent(); reader.chapter(2); runCurrent(); gate.complete(Unit); advanceUntilIdle()
+        val ready = assertIs<EpubReaderState.Ready>(reader.state.value)
+        assertEquals(paths[2], ready.chapter.path); reader.flush(); runCurrent()
+        assertEquals(paths[2], assertIs<ReadingLocator.Epub>(assertNotNull(store.values[id]).locator).spinePath)
     } }
     @Test fun noncooperativeLateChapterCannotReplaceNewerNavigation() = runTest { use { reader, _, parser, _, _ ->
         val gate = CompletableDeferred<Unit>()

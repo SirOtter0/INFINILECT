@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import org.infinilect.app.progress.ProgressPersistence
 import org.infinilect.app.reader.PROGRESS_SAVE_INTERVAL_MILLIS
 import org.infinilect.core.*
+import org.infinilect.app.reader.EpubException
 
 internal sealed interface EpubReaderState {
     data object Loading : EpubReaderState
@@ -102,6 +103,10 @@ internal class EpubReaderController(
                 currentCoroutineContext().ensureActive()
                 if (!closed && ticket == generation) mutableState.value = EpubReaderState.Error("Opening this EPUB chapter timed out.")
             } catch (error: CancellationException) { throw error }
+            catch (error: EpubException) {
+                currentCoroutineContext().ensureActive()
+                if (!closed && ticket == generation) mutableState.value = EpubReaderState.Error(error.failure.userMessage)
+            }
             catch (_: Exception) {
                 currentCoroutineContext().ensureActive()
                 if (!closed && ticket == generation) mutableState.value = EpubReaderState.Error("This EPUB chapter or internal link is unsupported or unavailable.")
