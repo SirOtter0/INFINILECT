@@ -8,29 +8,29 @@ reader positions. `ApplicationSession` remains the navigation/session owner.
 
 | Existing surface | Before | Current presentation |
 | --- | --- | --- |
-| Application root | Import button and three equal action buttons above every destination | Quiet app header; Library, History, Search and Settings in one adaptive navigation hierarchy |
+| Application root | Import button and three equal action buttons above every destination | Compact wordmark/import icon; Home, Library, History, Search and Settings with icons and labels |
 | Search/source browsing | Large branding, source buttons, plain result rows | Restrained heading, existing source choices and query semantics, shared publication cards and bounded scrollable feedback/results |
 | Library | Plain rows and separators | Cover-only portrait grid, details on tap, title gradient, known progress edge and contextual multi-selection |
 | History | Plain newest-first rows, TXT-only empty wording | Compact thumbnail rows grouped by actual last-opened dates; cover opens details, row resumes, trailing removal keeps Library and progress |
 | Publication metadata | Inline catalog metadata only; no separate details screen | Focus-managed, scrollable metadata dialog; shows only available author/language/format/source/rights information |
 | Local import | Plain busy/error text | Consistent validation/loading/error card, Cancel, original picker and importer unchanged |
 | Publication opening | Spinner or plain failure column | Shared loading/error surfaces with Back and the existing retry contract |
-| Application settings | No application-level settings screen | System/Light/Dark application appearance; existing reader settings stay inside readers |
+| Home/profile | No Home, profile or first-run setup | Local greeting, real resume/recent Library sections, optional nonblocking local setup and Settings → Profile |
+| Application settings | No application-level settings screen | System/Light/Dark appearance and local profile; reader settings stay inside readers |
 | History confirmation | Standard confirmation | Shared theme/shape, accessible actions; same deletion contract |
 | Permissions | Platform document picker; no custom permission screen | Unchanged platform picker/permissions |
 | Content readers | EPUB, CBZ/images, PDF, TEXT | Existing controls, rendering, lifecycle, preferences and progress contracts preserved |
 
-There is no separate home dashboard, download manager or permission explanation
-screen in the current code. This PR does not invent those destinations or
-redesign discovery/source functionality planned for PR #29.
+Home is now the normal startup destination. There is no download manager, online
+account or custom permission screen. Search/source behavior is retained; discovery
+and recommendation backends belong to PR #29.
 
 ## Shared visual language
 
 `app.ui` supplies two restrained, high-contrast palettes, Material typography,
 8/16/24 dp spacing, rounded surfaces, labeled navigation, publication cards,
 feedback cards and metadata/settings presentation. Standard buttons retain
-keyboard activation and at least 48 dp targets. Navigation uses labeled tabs
-rather than unexplained icon-only controls. There are no new dependencies,
+keyboard activation and at least 48 dp targets. Navigation combines original outline icons with concise accessible labels. There are no new dependencies,
 network fonts, cover downloads or custom rendering systems. The bounded local thumbnail cache is described below.
 
 Below 840 dp window width, destinations use bottom navigation. Wider windows use
@@ -38,10 +38,10 @@ a 176 dp labeled side rail. Content is centered within a 1120 dp maximum width;
 Library uses adaptive portrait-cover columns; History remains a compact single-column list. Font scaling and short windows
 keep content scrollable. Search retains its independently bounded header and lazy
 result viewport; import feedback can use at most half the available content height.
-Alt+1/2/3/4 select Library/History/Search/Settings on Desktop; Tab/Enter activate
+Alt+1/2/3/4/5 select Home/Library/History/Search/Settings on Desktop; Tab/Enter activate
 normal controls and Escape dismisses details. Android Back dismisses the platform
 dialog first, cancels an active import, returns from a reader to its origin, or
-returns a secondary destination to Search. Root Back retains system exit behavior.
+returns a secondary destination to Home. Root Back retains system exit behavior.
 
 Search query/results/source remain session-owned. Library/History grid positions
 are separately remembered/saveable across navigation and reader return. Details
@@ -82,8 +82,9 @@ publication identity uses the existing repository key, not a duplicate record.
 Long press selects the initial cover. Subsequent taps toggle selected publications;
 selected covers have a border/check and announced selection state. A compact action
 bar shows the count, Select all, Clear selection and Remove from Library. It reserves
-space above the grid, keeps bottom navigation reachable and replaces the redundant
-Library heading while active. The same lazy grid state and stable publication keys
+space above the grid and keeps bottom navigation reachable. Library and History
+have accessible pane titles without redundant visible screen headings; History
+retains meaningful date-group headings. The same lazy grid state and stable publication keys
 preserve the browsing position. Selection is session presentation state, bounded by
 the existing **1,000-entry Library** capacity. Leaving the destination or opening a
 reader clears it. Android Back exits selection before navigating away; Escape does
@@ -132,7 +133,7 @@ or unsupported images safely use the fallback, rather than relaxing reader limit
 
 ### Thumbnail ownership and budgets
 
-One application-owned LRU is shared by Library and History. It has **24 slots**,
+One application-owned LRU is shared by Home, Library, History and details. It has **24 slots**,
 including negative, pending and visible/pinned entries. Leases share the same
 bitmap; no bitmap is copied for a second screen. If every slot is pinned, extra
 visible items use the typographic fallback until revisited. Old unleased slots are
@@ -164,22 +165,67 @@ inspection). Cold archive-metadata/decode checks were 15–96 ms in this managed
 JDK 21 host, excluding private-import hashing/UI/device work; these are not Android
 performance measurements or acceptance results.
 
-Progress bars use only the existing writer's bounded, read-only recent records,
-matched by the full publication identity and newest timestamp. They appear after
-a session has submitted a legitimate position. Persisted progress is still restored
-by the reader; this PR does not enumerate progress files or fabricate 0% for an
-unopened publication. Percentages can therefore be absent after restarting until
-a reader supplies a known position. Library/History schemas are unchanged.
+Progress bars use only legitimate saved positions, matched by the full publication
+identity and newest timestamp; unknown progress stays absent. Home can retrieve
+cross-restart summaries for **at most eight recent History publication identities**.
+This app-only read API reuses the existing progress record format and IO/monitor/OS
+lock: scan cap 4,096 directory entries, ≤16 KiB per checksummed record, one record
+at a time, at most eight results. It checks the identity-derived filename and does
+not follow symlinks, open source content, or write/normalize locators. The existing
+1,024-record / 16 MiB storage quota is unchanged. One cancellable, generation-checked
+Home lookup with a five-second budget is retired on destination change, reader open
+or app close. Recent in-session positions win over older summaries. Collection
+progress indicators retain the existing recent-session contract; Home summaries
+do not become a new durable position owner.
+
+## Home and local profile
+
+Home has a vertically scrolling greeting, **Continue reading** from actual History
+and saved progress, and **Recently added** from real Library insertion timestamps.
+Each section shows at most eight distinct full publication identities. Covers use
+the existing shared pipeline; Continue opens/resumes directly, Recently added opens
+details. Links lead to full History/Library. No fake dates, EPUB pages, genres or
+recommendations are generated. Empty Home explains local import and provides an
+import action. Home uses held/local metadata offline and never reacquires content;
+a previously saved remote/catalog item still uses its existing source contract
+when explicitly opened. Section composition is an extension point for future
+source-supplied discovery, without a speculative provider framework.
+
+The normal startup destination is Home; opening/returning from a reader retains
+its originating Home/Library/History/Search destination and scroll/session state.
+A five-destination compact bar fits normal phone widths; wide Desktop windows use
+the same icons and labels in a side rail. The global import action is a 48 dp
+icon button with an accessible label. Asset inspection found only an explicitly
+provisional Android launcher-book vector, not an official INFINILECT logo. The
+wordmark remains; neither an invented logo nor the mascot substitutes for branding.
+
+The local profile contains an optional trimmed name (≤80 UTF-16 units; no control
+characters), optional known ISO 3166-1 alpha-2 residence code and optional `en`
+interface preference. Null language follows the existing English interface, which
+has no localization framework yet. Country names use the device locale; the selector
+searches real country names/codes without geolocation. Country is required to save
+a completed profile, but **Set up later** persists a deferred setup and never blocks
+local reading. The nonblocking Home setup prompt appears only until completion or
+deferral; Settings → Profile remains editable. No email, password, account, backend,
+network request or legal eligibility claim is introduced. Residence is user-declared;
+future jurisdiction rules must be enforced by discovery/acquisition, not this UI.
+No existing residence preference was found to migrate.
 
 ## Appearance and lifecycle
 
-Application appearance is independent of EPUB/PageReader preferences. One
-application-owned worker loads and coalesces a single choice. Edits during loading
-win over disk, failures remain visible with retry, and final application close
-drains the pending choice. One fixed 40-byte checksummed record uses private
-persistent storage and atomic replacement, outside the collections database and
-resource cache. Cancellation cleans up its temporary file. Existing preference
-records and reader settings are not migrated or overwritten.
+Profile and appearance share the existing application-owned preference worker and
+private `application-appearance-v1/appearance.preferences` file. There is no second
+settings system, profile table or collection/progress schema change. Legacy **40-byte
+INF1** appearance records load unchanged with an empty profile; the first profile
+edit atomically writes **INF2, at most 512 bytes**, including the existing appearance.
+The name is optional, setup deferral survives restart, and changing appearance keeps
+the profile. Reads validate length, checksum, fields and EOF; symlinks/invalid records
+fail safely. Private permissions, atomic replacement and temporary-file cleanup are
+retained. Independent profile/appearance edits during initial load preserve the
+other stored field. One conflated pending record, retry feedback and close/drain
+avoid competing writers. Profile editing waits for preferences to load. Upgrades
+leave Library, History, reader preferences and semantic reading positions untouched.
+
 
 Android draws the current opaque application background behind transparent system
 bars before consuming safe drawing/IME insets. Icon contrast follows the resolved
@@ -198,16 +244,23 @@ loading/edit races, coalescing, close/drain, persistence failure/retry, fixed-si
 records, corrupt records/symlinks, exact progress identity and palette contrast.
 Existing reader, parser/security, acquisition and persistence tests remain required.
 
-Final verification: 1,247 Desktop app tests and 1,090 Android-host app tests,
-zero failures/errors/skips; Android `assembleDebug` and Desktop `compileKotlin`
-passed with JDK 21. Focused selection/collection/history/cover verification passed
-76 Desktop / 43 Android-host tests. The minimal-library follow-up adds **28 tests**
-(17 shared/host and 11 Desktop), including partial batch failure/retry, cancellation,
-semantic progress retention, date grouping, split History actions, Back/Escape,
-keyboard/accessibility and a 1,000-entry lazy Library within the 24-entry cover bound.
-Earlier cover/UI tests retain safety assertions; tap/long-press expectations change
-only to match the requested details/selection interaction. Full suites retain reader
-continuity, EPUB/CBZ/PDF/TEXT, security, import and progress regressions.
+Final verification: **1,271 Desktop app tests / 1,105 Android-host app tests**,
+zero failures/errors/skips. Android `assembleDebug` and Desktop `compileKotlin`
+passed with JDK 21 and the existing Gradle configuration. Focused Home/profile,
+progress/lifecycle and UI verification passed **163 Desktop tests**; an additional
+**5-test layout recheck** passed. This follow-up adds **24 tests** (15 shared/host,
+9 Desktop). The initial full Desktop attempt needed one Search-origin/icon test
+setup update and encountered an unchanged CBZ first-presentation timeout; its
+isolated rerun and the complete final suite passed without changing/disabling
+that reader test. This does not establish a physical-device cause for the timeout.
+Focused coverage includes Home startup, five-destination navigation, greeting,
+real progress resume/Back, empty import state, details/removal isolation, profile
+setup/defer/edit/cancel, ISO validation, legacy migration, Unicode bounds, preference
+load/edit races and retry, read-only restart summaries, stale lookup cancellation,
+accessible panes, light/dark previews and narrow/wide layouts. Existing 1,000-entry
+Library, selection/history, cover/cache/security and all four reader tests remain
+required. Tests that intentionally open from Search now explicitly navigate there;
+the expected normal root is Home, without weakening reader lifecycle assertions.
 
 The production/test/Gradle fingerprint matches the final verified source. Core and
 reader engines are unchanged by this follow-up, so unrelated core suites were not
@@ -215,12 +268,12 @@ rerun. Test execution uses the existing Skiko library and a writable external ca
 in the managed headless environment; no temporary workflow/configuration is committed.
 
 Native Android/desktop graphical acceptance is pending. English remains the
-existing UI language; no new localization infrastructure is introduced. Organizational read/unread flags, PDF/remote covers, undeclared EPUB/SVG cover heuristics, cross-restart collection
-progress summaries and discovery redesign remain outside this PR.
+existing UI language; no new localization infrastructure is introduced. Organizational read/unread flags, PDF/remote covers, undeclared EPUB/SVG cover heuristics, general cross-restart Library/History progress enumeration and discovery redesign
+remain outside this PR. Home has the bounded restart lookup described above.
 
 ## Manual Android acceptance
 
-1. Visit Library, History, Search and Settings; use Back and return from each reader.
+1. Start on Home. Visit all five icon destinations; use Back and return from each reader to its originating screen.
 2. Import TEXT/EPUB/CBZ/PDF; cancel the picker/import and try a rejected file.
 3. Open details, inspect known metadata/rights, dismiss with Back, then open a book.
 4. Tap a Library cover for details, then Open/Continue. Cancel and confirm its Library removal; files, History and saved position remain.
@@ -232,4 +285,14 @@ progress summaries and discovery redesign remain outside this PR.
 10. Rotate/resize and increase system font size; actions and lists remain reachable.
 11. Check EPUB2/EPUB3 declared covers and CBZ first-page artwork; TEXT/PDF/missing/rejected artwork uses readable typographic covers.
 12. Scroll a larger Library, switch History/Library, rotate/resize and resume; no position resets or layout jumps.
-13. On Desktop, resize across 840 dp, use Alt+1..4, Tab/Enter, right-click and Menu/Shift+F10; dismiss menus/details with Escape.
+13. On Desktop, resize across 840 dp, use Alt+1..5, Tab/Enter, right-click and Menu/Shift+F10; dismiss menus/details with Escape.
+
+14. On first launch/upgrade, open profile setup, skip the name, search/select a country, save and restart. Confirm no account/network requirement. Alternatively defer setup, restart, and verify local reading remains available without repeated onboarding.
+15. Edit name/country through Settings → Profile; check personalized/generic greetings and appearance persistence. Cancel/Back/Escape must discard unsaved edits.
+16. On Home, resume a saved deep passage, return and reopen after restart. Recently added covers must open details; View History/Library reach their destinations. Empty Home must show import guidance without empty carousels.
+
+Headless previews use only original synthetic artwork and sample profile data. They
+are generated outside the repository; no reference screenshots, books, thumbnails,
+APK, signing material or preview artifacts are committed. They demonstrate shared
+Compose layouts, not physical Android system bars, TalkBack/IME or native Desktop
+window acceptance. Those checks remain pending.

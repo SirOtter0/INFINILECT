@@ -153,6 +153,7 @@ class ReaderContinuityLayoutTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try { Scene(this).use { f ->
             f.scene.constraints = Constraints.fixed(1000, 900)
+            sources.applicationSession().navigate(Destination.SEARCH)
             f.content { App(sources) }
             f.nodes().first { it.config.getOrNull(SemanticsActions.SetText)?.action != null }.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("original"))
             f.pump(); f.click("Search"); f.click("Open text")

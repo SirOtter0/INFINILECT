@@ -31,7 +31,7 @@ class ApplicationPresentationTest {
         assertEquals(light, resolveSystemAppearance(light, null))
     }
     @Test fun navigationUsesTheSameFourDestinationsInCompactAndWideWindows() {
-        assertEquals(listOf(Destination.LIBRARY, Destination.HISTORY, Destination.SEARCH, Destination.SETTINGS), applicationDestinations)
+        assertEquals(listOf(Destination.HOME, Destination.LIBRARY, Destination.HISTORY, Destination.SEARCH, Destination.SETTINGS), applicationDestinations)
         assertFalse(applicationNavigationWide(360f)); assertFalse(applicationNavigationWide(839f)); assertTrue(applicationNavigationWide(840f))
     }
     @Test fun lightAndDarkPalettesProvideReadableTextAndButtonContrast() {

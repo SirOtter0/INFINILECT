@@ -2,6 +2,7 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.ui
 
+import java.io.*
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.*
@@ -15,29 +16,45 @@ import kotlinx.coroutines.*
 
 internal const val APPLICATION_APPEARANCE_DIRECTORY = "application-appearance-v1"
 
-/** One 40-byte record, private storage, atomic replacement. No database/schema change.
+/** One private atomic record: legacy 40-byte appearance or ≤512-byte appearance/profile. No database/schema change.
  * File contents and directory entries are never parsed without a hard bound. */
 internal class FileApplicationAppearanceStore(
     private val directory: Path?,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ApplicationAppearanceStore {
-    override suspend fun load(): ApplicationThemeMode = withContext(dispatcher) {
+    override suspend fun load(): ApplicationThemeMode = loadPreferences().mode
+    override suspend fun save(mode: ApplicationThemeMode): Boolean = savePreferences(loadPreferences().copy(mode = mode))
+
+    override suspend fun loadPreferences(): ApplicationPreferences = withContext(dispatcher) {
         try {
-            val root = directory?.takeIf { it.isAbsolute && Files.isDirectory(it, NOFOLLOW_LINKS) } ?: return@withContext ApplicationThemeMode.SYSTEM
+            val root = directory?.takeIf { it.isAbsolute && Files.isDirectory(it, NOFOLLOW_LINKS) } ?: return@withContext ApplicationPreferences()
             val path = root.resolve("appearance.preferences")
-            if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) return@withContext ApplicationThemeMode.SYSTEM
+            if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) return@withContext ApplicationPreferences()
             FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
-                if (channel.size() != 40L) return@withContext ApplicationThemeMode.SYSTEM
-                val buffer = ByteBuffer.allocate(40)
-                while (buffer.hasRemaining()) { ensureActive(); if (channel.read(buffer) <= 0) return@withContext ApplicationThemeMode.SYSTEM }
-                val bytes = buffer.array()
-                require(MessageDigest.isEqual(bytes.copyOfRange(8, 40), MessageDigest.getInstance("SHA-256").digest(bytes.copyOfRange(0, 8))))
-                buffer.flip(); require(buffer.int == 0x494E4631)
-                ApplicationThemeMode.entries[buffer.int]
+                val size = channel.size()
+                if (size !in 40..512) return@withContext ApplicationPreferences()
+                val buffer = ByteBuffer.allocate(size.toInt())
+                while (buffer.hasRemaining()) { ensureActive(); if (channel.read(buffer) <= 0) return@withContext ApplicationPreferences() }
+                if (channel.size() != size) return@withContext ApplicationPreferences()
+                val bytes = buffer.array(); val payload = bytes.copyOfRange(0, bytes.size - 32)
+                require(MessageDigest.isEqual(bytes.takeLast(32).toByteArray(), MessageDigest.getInstance("SHA-256").digest(payload)))
+                DataInputStream(ByteArrayInputStream(payload)).use { input ->
+                    val magic = input.readInt(); require(magic == 0x494E4631 || magic == 0x494E4632)
+                    val mode = ApplicationThemeMode.entries[input.readInt()]
+                    val profile = if (magic == 0x494E4631) LocalProfile() else {
+                        val handled = input.readBoolean()
+                        val name = input.readUTF().ifEmpty { null }
+                        val country = input.readUTF().ifEmpty { null }
+                        val language = input.readUTF().ifEmpty { null }
+                        LocalProfile(name, country, language, handled)
+                    }
+                    require(input.available() == 0)
+                    ApplicationPreferences(mode, profile)
+                }
             }
-        } catch (e: CancellationException) { throw e } catch (_: Exception) { ApplicationThemeMode.SYSTEM }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { ApplicationPreferences() }
     }
-    override suspend fun save(mode: ApplicationThemeMode): Boolean = withContext(dispatcher) {
+    override suspend fun savePreferences(value: ApplicationPreferences): Boolean = withContext(dispatcher) {
         var temp: Path? = null
         try {
             val root = directory?.takeIf { it.isAbsolute } ?: return@withContext false
@@ -46,12 +63,23 @@ internal class FileApplicationAppearanceStore(
             permissions(root, true)
             val target = root.resolve("appearance.preferences")
             if (Files.exists(target, NOFOLLOW_LINKS) && !Files.isRegularFile(target, NOFOLLOW_LINKS)) return@withContext false
-            val record = ByteBuffer.allocate(40).putInt(0x494E4631).putInt(mode.ordinal)
-            record.put(MessageDigest.getInstance("SHA-256").digest(record.array().copyOfRange(0, 8)))
+            val output = ByteArrayOutputStream()
+            DataOutputStream(output).use { data ->
+                val legacy = value.profile == LocalProfile()
+                data.writeInt(if (legacy) 0x494E4631 else 0x494E4632); data.writeInt(value.mode.ordinal)
+                if (!legacy) {
+                    data.writeBoolean(value.profile.setupHandled)
+                    data.writeUTF(value.profile.displayName.orEmpty()); data.writeUTF(value.profile.countryCode.orEmpty())
+                    data.writeUTF(value.profile.interfaceLanguage.orEmpty())
+                }
+            }
+            val payload = output.toByteArray()
+            val bytes = payload + MessageDigest.getInstance("SHA-256").digest(payload)
+            check(bytes.size <= 512)
             temp = root.resolve("t-${UUID.randomUUID()}.part")
             FileChannel.open(temp, CREATE_NEW, WRITE, NOFOLLOW_LINKS).use { channel ->
-                permissions(temp, false); record.flip()
-                while (record.hasRemaining()) { ensureActive(); check(channel.write(record) > 0) }
+                permissions(temp, false); val buffer = ByteBuffer.wrap(bytes)
+                while (buffer.hasRemaining()) { ensureActive(); check(channel.write(buffer) > 0) }
                 channel.force(true)
             }
             ensureActive()

@@ -28,7 +28,7 @@ class ApplicationBackHandlerTest {
     }
     private inner class Fixture(private val scope: TestScope) {
         val opening = MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
-        val destination = MutableStateFlow(Destination.SEARCH)
+        val destination = MutableStateFlow(Destination.HOME)
         var enabled: Boolean? = null
         var backCalls = 0
         var callback: () -> Unit = {}
@@ -123,13 +123,13 @@ class ApplicationBackHandlerTest {
         }
         assertEquals(3, backCalls)
     } }
-    @Test fun collectionDestinationsHandleBackButSearchRootKeepsSystemExit() = runTest { use {
+    @Test fun collectionDestinationsHandleBackButHomeRootKeepsSystemExit() = runTest { use {
         install(); settle()
         for (target in listOf(Destination.LIBRARY, Destination.HISTORY)) {
             destination.value = target; settle(); assertEquals(true, enabled)
             opening.value = epub; settle(); assertEquals(true, enabled)
             opening.value = OpenPublicationState.Idle; settle(); assertEquals(true, enabled)
-            destination.value = Destination.SEARCH; settle(); assertEquals(false, enabled)
+            destination.value = Destination.HOME; settle(); assertEquals(false, enabled)
         }
         assertEquals(0, backCalls)
     } }

@@ -82,14 +82,22 @@ installers are not included. Build/install the standard debug APK with:
 adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-Android uses the same source selection, search and TextReader. System Back from
-Loading/Reader/Error returns to retained results; Back at Search follows Android.
-Activity recreation/process death starts a new session: query/results/document/
-pixel scroll state are not saved. Logical reading progress is saved separately
-and restores after a new explicit, valid acquisition. There is no tracking or extra device-data access.
-The only requested platform capability is INTERNET; AndroidX also declares an
-internal app-scoped signature permission for non-exported receiver protection.
-The icon is original provisional geometry, not the final logo.
+Normal startup opens **Home**, with real resume/recent Library shortcuts and an
+optional device-only profile. Five labeled icon destinations reach Home, Library,
+History, Search and Settings. Profile setup may be deferred without blocking local
+reading. [Application UI, persistence and manual checks](docs/APPLICATION_UI.md).
+
+Android Back from Loading/Reader/Error returns to the originating destination;
+secondary destinations return to Home and root Back follows Android. The existing
+retained application session survives Activity configuration recreation; temporary
+presentation geometry may reset while logical reading position remains owned by
+the reader. Process death creates a new runtime; durable progress restores when a
+publication is reopened through its valid source (the existing validated local-PDF
+recreation route is also retained). Pixel offsets are not durable progress. There
+is no tracking or extra device-data access. The only requested platform capability
+is INTERNET; AndroidX also declares an internal app-scoped signature permission
+for non-exported receiver protection. The launcher icon remains original provisional
+geometry, not the final project logo; the application toolbar uses the wordmark.
 
 For Gutenberg catalog examples, search `Frankenstein` or `shakespeare`; you can
 save metadata to Library, but EPUB/TEXT opening is unavailable for this source.

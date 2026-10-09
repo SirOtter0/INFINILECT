@@ -46,6 +46,7 @@ class EpubReadingLifecycleTest {
         val session = ApplicationSession(sources, scope)
         init { sources.attach(session) }
         suspend fun searchOpen(): OpenPublicationState.EpubReady {
+            session.navigate(Destination.SEARCH)
             val query = session.searchSession.value
             query.editQuery("original")
             if (query.search.state.value !is org.infinilect.app.search.SearchState.Results) {
@@ -124,9 +125,8 @@ class EpubReadingLifecycleTest {
             assertEquals(0, open.reader.retainedChapters)
             open.reader.report(chapter.ticket, 0, 0); open.reader.chapter(0)
             assertIs<EpubReaderState.Loading>(open.reader.state.value)
-            if (destination != Destination.SEARCH) {
-                assertTrue(owner.session.handlesBack()); owner.session.back()
-            }
+            assertTrue(owner.session.handlesBack()); owner.session.back()
+            assertEquals(Destination.HOME, owner.session.destination.value)
             assertFalse(owner.session.handlesBack())
         } finally { owner.close() }
         // Entire owner/writer is drained; a brand-new store must read committed bytes, not RAM.
@@ -143,7 +143,8 @@ class EpubReadingLifecycleTest {
             delay(100)
             assertIs<OpenPublicationState.Idle>(owner.session.opening.value)
             assertEquals(Destination.SEARCH, owner.session.destination.value)
-            assertFalse(owner.session.handlesBack()); assertEquals(0, open.reader.retainedChapters)
+            assertTrue(owner.session.handlesBack()); assertEquals(0, open.reader.retainedChapters)
+            owner.session.back(); assertEquals(Destination.HOME, owner.session.destination.value); assertFalse(owner.session.handlesBack())
             assertIs<EpubReaderState.Loading>(open.reader.state.value)
             assertFails { open.reader.document.openResource(open.reader.document.manifest.first().path) }
         } finally { owner.close() }
@@ -215,7 +216,7 @@ class EpubReadingLifecycleTest {
         owner.source.beforeLoad = { entered.complete(Unit); withContext(NonCancellable) { release.await() } }
         try {
             val publication = owner.source.search("original").publications.single()
-            owner.session.openSearch(publication); withTimeout(5000) { entered.await() }
+            owner.session.navigate(Destination.SEARCH); owner.session.openSearch(publication); withTimeout(5000) { entered.await() }
             owner.session.back(); release.complete(Unit); delay(100)
             assertIs<OpenPublicationState.Idle>(owner.session.opening.value)
             owner.collections.flushHistory(); assertTrue(assertIs<LocalStoreResult.Success<List<HistoryEntry>>>(owner.database.history.listRecent()).value.isEmpty())
@@ -263,7 +264,7 @@ class EpubReadingLifecycleTest {
         }.zip()
         try {
             val publication = owner.source.search("original").publications.single()
-            owner.session.openSearch(publication)
+            owner.session.navigate(Destination.SEARCH); owner.session.openSearch(publication)
             withTimeout(5000) { owner.session.opening.first { it is OpenPublicationState.Error } }
             owner.collections.flushHistory()
             assertTrue(assertIs<LocalStoreResult.Success<List<HistoryEntry>>>(owner.database.history.listRecent()).value.isEmpty())

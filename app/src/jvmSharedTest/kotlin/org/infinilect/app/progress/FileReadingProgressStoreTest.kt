@@ -174,4 +174,37 @@ class FileReadingProgressStoreTest {
         assertTrue(store().save(progress())); assertEquals(progress(),store().get(id))
         assertFalse(Files.exists(root.resolve(CACHE_DIRECTORY_NAME)))
     }
+    @Test fun homeSummariesSurviveRestartKeepExactIdentityAndDoNotWriteLocators()=runTest {
+        val first=progress();val other=progress(id.copy(resourceKey="alternate"),time=3,offset=8)
+        val foreign=progress(id.copy(publicationId=id.publicationId.copy(sourceId=SourceId("other"))),time=9)
+        val original=store();for(record in listOf(first,other,foreign))assertTrue(original.save(record))
+        val before=files().associate{it.fileName.toString() to Files.readAllBytes(it).toList()}
+        val summaries=store().recentPublications(listOf(id.publicationId))
+        assertEquals(listOf(other),summaries)
+        assertEquals(before,files().associate{it.fileName.toString() to Files.readAllBytes(it).toList()})
+        assertEquals(first,store().get(id));assertEquals(foreign,store().get(foreign.id))
+    }
+    @Test fun summaryLookupHasEightPublicationBoundAndRejectsForgedFilenamesAndOversizedRecords()=runTest {
+        val records=(0..11).map{progress(id.copy(publicationId=id.publicationId.copy(localId=it.toString())))}
+        val store=store();records.forEach{assertTrue(store.save(it))}
+        val result=store.recentPublications(records.map{it.id.publicationId})
+        assertEquals(records.take(8).toSet(),result.toSet())
+        val path=files().first();val forged=path.resolveSibling("p-${"0".repeat(64)}.progress")
+        Files.move(path,forged)
+        val all=store.recentPublications(records.take(8).map{it.id.publicationId})
+        assertTrue(all.size<=8)
+        val forgedRecord=records.firstOrNull{store.get(it.id)==null};assertNotNull(forgedRecord)
+        assertFalse(forgedRecord in all)
+        Files.write(forged,ByteArray(MAX_PROGRESS_RECORD_BYTES+1));assertFalse(forgedRecord in store.recentPublications(records.take(8).map{it.id.publicationId}))
+    }
+    @Test fun summaryLookupRejectsSymlinksAndCancelledReadWithoutLeakingOrSaving()=runTest {
+        val store=store();assertTrue(store.save(progress()));val path=files().single()
+        val outside=root.resolve("external.fixture");Files.move(path,outside);Files.createSymbolicLink(path,outside)
+        val bytes=Files.readAllBytes(outside)
+        assertTrue(store.recentPublications(listOf(id.publicationId)).isEmpty())
+        assertContentEquals(bytes,Files.readAllBytes(outside))
+        val job=launch{store.recentPublications(listOf(id.publicationId));fail("Cancelled lookup must not execute")};job.cancel();runCurrent();job.join()
+        assertTrue(job.isCancelled);assertContentEquals(bytes,Files.readAllBytes(outside))
+    }
+
 }

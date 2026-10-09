@@ -17,16 +17,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import org.infinilect.app.Destination
 
 internal fun Destination.label(): String = when (this) {
-    Destination.LIBRARY -> "Library"; Destination.HISTORY -> "History"; Destination.SEARCH -> "Search"; Destination.SETTINGS -> "Settings"
+    Destination.HOME -> "Home"; Destination.LIBRARY -> "Library"; Destination.HISTORY -> "History"; Destination.SEARCH -> "Search"; Destination.SETTINGS -> "Settings"
 }
-internal val applicationDestinations = listOf(Destination.LIBRARY, Destination.HISTORY, Destination.SEARCH, Destination.SETTINGS)
+internal val applicationDestinations = listOf(Destination.HOME, Destination.LIBRARY, Destination.HISTORY, Destination.SEARCH, Destination.SETTINGS)
 internal fun applicationNavigationWide(width: Float) = width >= 840f
 
 /** One hierarchy: a labeled bottom bar in compact windows, a labeled rail in wide windows.
- * Alt+1..4 select the same destinations; tab/enter use standard selectable semantics. */
+ * Alt+1..5 select the same destinations; tab/enter use standard selectable semantics. */
 @Composable
 internal fun ApplicationShell(destination: Destination, busy: Boolean, navigate: (Destination) -> Unit,
     importAction: (@Composable () -> Unit)? = null, onEscape: () -> Boolean = { false }, content: @Composable () -> Unit) {
@@ -34,13 +36,13 @@ internal fun ApplicationShell(destination: Destination, busy: Boolean, navigate:
     LaunchedEffect(Unit) { rootFocus.requestFocus() }
     BoxWithConstraints(Modifier.fillMaxSize().focusRequester(rootFocus).onPreviewKeyEvent {
         if (it.type == KeyEventType.KeyDown && it.key == Key.Escape && onEscape()) return@onPreviewKeyEvent true
-        val target = when (it.key) { Key.One -> Destination.LIBRARY; Key.Two -> Destination.HISTORY; Key.Three -> Destination.SEARCH; Key.Four -> Destination.SETTINGS; else -> null }
+        val target = when (it.key) { Key.One -> Destination.HOME; Key.Two -> Destination.LIBRARY; Key.Three -> Destination.HISTORY; Key.Four -> Destination.SEARCH; Key.Five -> Destination.SETTINGS; else -> null }
         if (!busy && it.type == KeyEventType.KeyDown && it.isAltPressed && target != null) { navigate(target); true } else false
     }.focusable()) {
         val wide = applicationNavigationWide(maxWidth.value)
         Column(Modifier.fillMaxSize()) {
             Surface(color = MaterialTheme.colors.background) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("INFINILECT", style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f))
                     importAction?.invoke()
                 }
@@ -48,7 +50,7 @@ internal fun ApplicationShell(destination: Destination, busy: Boolean, navigate:
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 if (wide) Surface(Modifier.width(176.dp).fillMaxHeight(), color = MaterialTheme.colors.background) {
                     Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState()).selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        applicationDestinations.forEach { NavigationItem(it, destination == it, !busy, { navigate(it) }, Modifier.fillMaxWidth()) }
+                        applicationDestinations.forEach { NavigationItem(it, destination == it, !busy, { navigate(it) }, Modifier.fillMaxWidth(), wide = true) }
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
@@ -68,14 +70,18 @@ internal fun ApplicationShell(destination: Destination, busy: Boolean, navigate:
 }
 
 @Composable
-private fun NavigationItem(target: Destination, selected: Boolean, enabled: Boolean, click: () -> Unit, modifier: Modifier) {
+private fun NavigationItem(target: Destination, selected: Boolean, enabled: Boolean, click: () -> Unit, modifier: Modifier, wide: Boolean = false) {
+    val color = if (selected) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = if (enabled) .75f else .38f)
     Surface(modifier, shape = MaterialTheme.shapes.small,
         color = if (selected) MaterialTheme.colors.primary.copy(alpha = .12f) else MaterialTheme.colors.surface.copy(alpha = 0f)) {
-        Box(Modifier.heightIn(min = 56.dp).selectable(selected, enabled = enabled, role = Role.Tab, onClick = click)
-            .semantics { contentDescription = "Navigate to ${target.label()}" }.padding(horizontal = 4.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center) {
-            Text(target.label(), style = MaterialTheme.typography.button,
-                color = if (selected) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = if (enabled) .75f else .38f))
+        Box(Modifier.heightIn(min = 64.dp).selectable(selected, enabled = enabled, role = Role.Tab, onClick = click)
+            .semantics { contentDescription = "Navigate to ${target.label()}" }.padding(horizontal = 4.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            if (wide) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                DestinationIcon(target,color);Text(target.label(), style = MaterialTheme.typography.button)
+            } else Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                DestinationIcon(target,color)
+                Text(target.label(), color=color, fontSize=12.sp, lineHeight=16.sp, textAlign=TextAlign.Center, maxLines=2)
+            }
         }
     }
 }

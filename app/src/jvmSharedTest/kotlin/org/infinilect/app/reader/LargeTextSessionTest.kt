@@ -41,7 +41,7 @@ class LargeTextSessionTest {
         val progress=ProgressPersistence(FileReadingProgressStore(root.resolve("progress"),dispatcher=dispatcher),dispatcher)
         val owner=ApplicationSources(listOf(SourceOption("Archive",source,true)),progress=progress,
             collections=ApplicationCollections(fake.library,fake.history,dispatcher),textPreparer=FileTextPreparer(root.resolve("text"),dispatcher)){}
-        val session=ApplicationSession(owner,this,dispatcher);owner.attach(session)
+        val session=ApplicationSession(owner,this,dispatcher);owner.attach(session);session.navigate(Destination.SEARCH)
         try {
             val search=session.searchSession.value;search.editQuery("query");search.submitSearch();advanceUntilIdle();val results=search.search.state.value
             session.openSearch(source.publication);advanceUntilIdle();val ready=assertIs<OpenPublicationState.Ready>(session.opening.value)
@@ -58,7 +58,7 @@ class LargeTextSessionTest {
         fake.saved[snapshot.id]=LibraryEntry(snapshot,1)
         val owner=ApplicationSources(listOf(SourceOption("Archive",source,true)),collections=ApplicationCollections(fake.library,fake.history,dispatcher),
             textPreparer=FileTextPreparer(root.resolve("text"),dispatcher)){}
-        val session=ApplicationSession(owner,this,dispatcher);owner.attach(session)
+        val session=ApplicationSession(owner,this,dispatcher);owner.attach(session);session.navigate(Destination.SEARCH)
         try {
             session.navigate(Destination.LIBRARY);session.openSaved(snapshot);advanceUntilIdle()
             val document=assertIs<OpenPublicationState.Ready>(session.opening.value).document

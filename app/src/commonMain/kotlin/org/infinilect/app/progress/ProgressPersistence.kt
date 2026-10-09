@@ -54,6 +54,16 @@ internal class ProgressPersistence(
         catch (_: Exception) { null }
     }
 
+    suspend fun publicationSummaries(ids: List<PublicationId>): List<ReadingProgress> {
+        val requested = ids.take(8).toSet()
+        val disk = try { withTimeout(5_000) { (store as? PublicationProgressLookup)?.recentPublications(requested.toList()).orEmpty() } }
+        catch (_: TimeoutCancellationException) { emptyList() }
+        catch (error: CancellationException) { throw error }
+        catch (_: Exception) { emptyList() }
+        return (disk + recent.value.values).filter { it.id.publicationId in requested }
+            .groupBy { it.id.publicationId }.mapNotNull { (_, values) -> values.maxByOrNull { it.updatedAtEpochMillis } }.take(8)
+    }
+
     fun submit(progress: ReadingProgress) {
         if (closed || (recent.value[progress.id]?.updatedAtEpochMillis ?: -1) > progress.updatedAtEpochMillis) return
         if (pending.value.size >= 32 && progress.id !in pending.value) {

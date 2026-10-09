@@ -44,13 +44,34 @@ internal class FileReadingProgressStore(
     private val beforeCommit: () -> Unit = {}, // Failure/cancellation seam for real-files tests.
     private val setPrivatePermissions: (Path, Boolean) -> Unit = ::privateProgressPermissions,
     private val onFailure: (ProgressStorageFailure) -> Unit = {},
-) : ReadingProgressStore {
+) : ReadingProgressStore, PublicationProgressLookup {
     init { require(maxEntries > 0 && maxBytes > 0) }
 
     // Filesystem API seams let host tests reproduce Android/provider failures precisely.
     override suspend fun get(id: ReadingProgressId): ReadingProgress? = operation(Operation.GET, null) { root, attempt ->
         val identity = attempt.at(Stage.IDENTITY) { encodeIdentity(id) }
         read(root.resolve(name(identity)), id, attempt)
+    }
+
+    override suspend fun recentPublications(ids: List<PublicationId>): List<ReadingProgress> {
+        val requested = ids.take(8).toSet()
+        if (requested.isEmpty()) return emptyList()
+        return operation(Operation.GET, emptyList()) { root, attempt ->
+            val found = mutableMapOf<PublicationId, ReadingProgress>()
+            var scanned = 0
+            Files.newDirectoryStream(root).use { entries ->
+                for (path in entries) {
+                    attempt.context.ensureActive()
+                    if (++scanned > 4096) return@operation emptyList()
+                    if (!recordName.matches(path.fileName.toString())) continue
+                    val record = read(path, null, attempt) ?: continue
+                    if (record.id.publicationId !in requested || path.fileName.toString() != name(encodeIdentity(record.id))) continue
+                    val previous = found[record.id.publicationId]
+                    if (previous == null || record.updatedAtEpochMillis > previous.updatedAtEpochMillis) found[record.id.publicationId] = record
+                }
+            }
+            found.values.toList()
+        }
     }
 
     override suspend fun save(progress: ReadingProgress): Boolean = operation(Operation.SAVE, false) { root, attempt ->
@@ -149,7 +170,7 @@ internal class FileReadingProgressStore(
         catch (_: Exception) { fallback }
     }
 
-    private fun read(path: Path, expected: ReadingProgressId, attempt: Attempt): ReadingProgress? { return try {
+    private fun read(path: Path, expected: ReadingProgressId?, attempt: Attempt): ReadingProgress? { return try {
         val bytes = attempt.at(Stage.RECORD_READ) {
             if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) return null
             FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
@@ -165,7 +186,7 @@ internal class FileReadingProgressStore(
                 buffer.array()
             }
         }
-        attempt.at(Stage.RECORD_DECODE) { decodeRecord(bytes).takeIf { it.id == expected } }
+        attempt.at(Stage.RECORD_DECODE) { decodeRecord(bytes).takeIf { expected == null || it.id == expected } }
     } catch (error: CancellationException) { throw error }
     catch (_: Exception) { null }
     }

@@ -95,7 +95,7 @@ class DesktopReadingLifecycleTest {
             assertTrue(id in session.collections.membership.value.saved)
             assertTrue(success(a.sources.collections!!.history.listRecent(10)).isEmpty())
 
-            session.openSearch(results.result.page.publications.single())
+            session.navigate(Destination.SEARCH); session.openSearch(results.result.page.publications.single())
             val ready = assertIs<OpenPublicationState.Ready>(session.opening.first {
                 it is OpenPublicationState.Ready || it is OpenPublicationState.Error
             })

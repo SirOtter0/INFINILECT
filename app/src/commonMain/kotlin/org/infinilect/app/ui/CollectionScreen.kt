@@ -45,7 +45,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
     val historyGroups = remember(history.entries, isLibrary, historyDay(now, now).key) {
         if (isLibrary) emptyMap() else history.entries.groupBy { historyDay(it.lastOpenedAtEpochMillis, now) }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().onPreviewKeyEvent {
+    BoxWithConstraints(Modifier.fillMaxSize().semantics { paneTitle = if (isLibrary) "Library" else "History" }.onPreviewKeyEvent {
         if (selecting && it.type == KeyEventType.KeyDown && it.key == Key.Escape) { controller.clearSelection(); true } else false
     }) {
         val barMaxHeight = maxHeight / 2
@@ -66,10 +66,6 @@ internal fun CollectionScreen(destination: Destination, application: Application
             }
             LazyVerticalGrid(GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = position,
                 contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(if (isLibrary) 12.dp else 4.dp)) {
-                item(key = "collection-heading", span = { GridItemSpan(maxLineSpan) }) {
-                    if (!selecting) ScreenHeading(if (isLibrary) "Library" else "History",
-                        if (isLibrary) "Tap a cover for details · Long press to select." else "Recently opened · newest first.")
-                }
                 if (loading) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Loading…", "Reading your saved publications.", busy = true) }
                 if (failed) item(span = { GridItemSpan(maxLineSpan) }) {
                     FeedbackCard("Local storage is unavailable", "Your saved publications have not been removed. Please try again.", error = true,

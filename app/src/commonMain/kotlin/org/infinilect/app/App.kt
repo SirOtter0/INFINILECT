@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.*
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.app.reader.TextReader
 import org.infinilect.app.search.SearchState
@@ -63,6 +65,9 @@ fun App(
 ) {
     val application=remember(applicationSources) { applicationSources.applicationSession() }
     val appearanceState by (applicationSources.appearance?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(ApplicationAppearanceState()) }).collectAsState()
+    var profileEditor by remember { mutableStateOf(false) }
+    val homePosition = rememberLazyListState()
+    val homeProgress by application.homeProgress.collectAsState()
     val mode = appearanceState.mode
     val appearanceFailed by (applicationSources.appearance?.saveFailed ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
     val systemDark = isSystemInDarkTheme()
@@ -108,7 +113,7 @@ fun App(
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
     val saveFailed by (applicationSources.progress?.saveFailed
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
-    val backLabel=when(destination) { Destination.LIBRARY -> "Back to Library"; Destination.HISTORY -> "Back to History"; else -> "Back to results" }
+    val backLabel=when(destination) { Destination.HOME -> "Back to Home"; Destination.LIBRARY -> "Back to Library"; Destination.HISTORY -> "Back to History"; else -> "Back to results" }
     ApplicationBackHandler(application.opening,application.destination,application::back,backHandler,application.importing)
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
@@ -119,8 +124,8 @@ fun App(
                             if (application.collections.selection.value.isNotEmpty()) { application.collections.clearSelection(); true } else false
                         },
                         importAction = if (localFilePicker != null && applicationSources.localImports != null) ({
-                            androidx.compose.material.OutlinedButton(enabled = !importing.busy, onClick = { application.importLocal(localFilePicker) },
-                                modifier = Modifier.heightIn(min = 48.dp)) { Text("Import local file") }
+                            androidx.compose.material.IconButton(enabled = !importing.busy, onClick = { application.importLocal(localFilePicker) },
+                                modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Import local file" }) { ImportIcon() }
                         }) else null,
                     ) {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -133,18 +138,24 @@ fun App(
                                 }
                                 androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                                     when (destination) {
+                                        Destination.HOME -> HomeScreen(application, appearanceState, progressRecords.values.toList() + homeProgress,
+                                            applicationSources.appearance, homePosition,
+                                            importAction = if (localFilePicker != null && applicationSources.localImports != null && !importing.busy) ({ application.importLocal(localFilePicker) }) else null,
+                                            editProfile = { profileEditor = true }, settingsFailed = appearanceFailed)
                                         Destination.SEARCH -> key(session) {
                                             SearchScreen(session, searchState, resultsPosition, applicationSources.options, selected, application::selectSource,
                                                 application.collections, application::openSearch, progressRecords = progressRecords.values.toList())
                                         }
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, progressRecords.values.toList())
-                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed)
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null)
                                     }
                                 }
                             }
                         }
                     }
+                    if (profileEditor && applicationSources.appearance != null) ProfileEditor(appearanceState.profile,
+                        save = applicationSources.appearance::changeProfile, close = { profileEditor = false })
                 }
                 is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(
                     current.reader, saveFailed, application::back, backLabel, backHandler,

@@ -175,3 +175,25 @@ private fun CoverContextMenu(expanded: Boolean, dismiss: () -> Unit, enabled: Bo
         DropdownMenuItem({ dismiss(); remove() }, enabled = enabled) { Text("Remove from Library") }
     }
 }
+
+@Composable
+internal fun HomeCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
+    resume: Boolean, action: (PublicationFormat?) -> Unit) {
+    val cover = coverState(publication.id, covers)
+    Surface(Modifier.width(144.dp).aspectRatio(2f/3f).clip(MaterialTheme.shapes.small)
+        .clickable(onClickLabel = if (resume) "Continue reading" else "Publication details", onClick = { action(cover.format) })
+        .semantics {
+            contentDescription = if (resume) "Continue ${publication.title}" else "Details for ${publication.title}"
+            progress?.let { stateDescription = "${(it.progression*100).toInt()}% read" }
+        }) {
+        Box {
+            CoverArtwork(publication, cover, Modifier.fillMaxSize())
+            Text(publication.title, color=Color.White, style=MaterialTheme.typography.subtitle2, maxLines=3, overflow=TextOverflow.Ellipsis,
+                modifier=Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=COVER_TITLE_MIN_SCRIM),Color.Black.copy(alpha=.94f))))
+                    .padding(12.dp,12.dp,12.dp,16.dp))
+            progress?.let { LinearProgressIndicator(it.progression.toFloat(),Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
+                color=Color(0xffa8e6d5),backgroundColor=Color.Black.copy(alpha=.5f)) }
+        }
+    }
+}

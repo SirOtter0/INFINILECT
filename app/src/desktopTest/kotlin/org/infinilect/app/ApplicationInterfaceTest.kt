@@ -45,19 +45,23 @@ class ApplicationInterfaceTest {
             }
         }
     }
-    private inner class Fixture(val scope: TestScope, width: Int = 360, val height: Int = 640, fontScale: Float = 1f, count: Int = 3, artwork: Boolean = false) : AutoCloseable {
+    private inner class Fixture(val scope: TestScope, width: Int = 360, val height: Int = 640, fontScale: Float = 1f, count: Int = 3, artwork: Boolean = false, firstRun: Boolean = false) : AutoCloseable {
         val dispatcher = StandardTestDispatcher(scope.testScheduler)
         val source = Source(maxOf(30, count)); val data = FakeCollections()
         val collections = ApplicationCollections(data.library,data.history,dispatcher)
+        var preferenceValue = ApplicationPreferences(profile = LocalProfile(setupHandled = !firstRun))
         val settings = ApplicationAppearancePreferences(object : ApplicationAppearanceStore {
             override suspend fun load() = ApplicationThemeMode.SYSTEM
-            override suspend fun save(mode: ApplicationThemeMode) = true
+            override suspend fun save(mode: ApplicationThemeMode): Boolean { preferenceValue = preferenceValue.copy(mode=mode); return true }
+            override suspend fun loadPreferences() = preferenceValue
+            override suspend fun savePreferences(value: ApplicationPreferences): Boolean { preferenceValue=value; return true }
         }, dispatcher)
         val saved = mutableListOf<ReadingProgress>()
-        val progress = ProgressPersistence(object : ReadingProgressStore {
+        val progress = ProgressPersistence(object : ReadingProgressStore, org.infinilect.app.progress.PublicationProgressLookup {
             override suspend fun get(id: ReadingProgressId) = saved.lastOrNull { it.id==id }
             override suspend fun save(progress: ReadingProgress): Boolean { saved += progress; return true }
             override suspend fun remove(id: ReadingProgressId) = true
+            override suspend fun recentPublications(ids: List<PublicationId>) = saved.filter { it.id.publicationId in ids }.groupBy { it.id.publicationId }.map { (_,values) -> values.maxBy { it.updatedAtEpochMillis } }
         }, dispatcher)
         var picked = 0
         var selectFile = false
@@ -153,7 +157,7 @@ class ApplicationInterfaceTest {
             f.nav(Destination.LIBRARY)
             val scroll=f.nodes().first {it.config.getOrNull(SemanticsActions.ScrollToIndex)!=null}
             assertTrue(scroll.boundsInRoot.height>0)
-            f.reach(30)
+            f.reach(29)
             val title=f.nodes().first {f.has(it,"Original publication 29")}
             assertTrue(title.boundsInRoot.bottom>0 && title.boundsInRoot.top<height)
             val nav=f.nodes().first { f.has(it,"Navigate to Settings") }
@@ -188,12 +192,12 @@ class ApplicationInterfaceTest {
             assertEquals(record,f.saved.last())
         }
     }
-    @Test fun appearanceChangesDoNotRecreateSessionAndSettingsBackRestoresSearch() = runTest {
+    @Test fun appearanceChangesDoNotRecreateSessionAndSettingsBackRestoresHome() = runTest {
         Fixture(this).use { f ->
             val session=f.app.searchSession.value;f.nav(Destination.SETTINGS);f.click("Dark")
             assertTrue(assertNotNull(f.appAppearance).dark);assertSame(session,f.app.searchSession.value)
             f.click("Light");assertFalse(assertNotNull(f.appAppearance).dark)
-            assertNotNull(f.back).invoke();f.pump();assertEquals(Destination.SEARCH,f.app.destination.value)
+            assertNotNull(f.back).invoke();f.pump();assertEquals(Destination.HOME,f.app.destination.value)
         }
     }
     @Test fun importBusyCancellationAndPickerCancelKeepNavigationAndSession() = runTest {
@@ -228,9 +232,9 @@ class ApplicationInterfaceTest {
     }
     @Test fun desktopKeyboardDestinationsAndEscapeDetailsRemainAccessible() = runTest {
         Fixture(this,1280,800).use { f ->
-            f.scene.sendKeyEvent(KeyEvent(Key.Four,KeyEventType.KeyDown,isAltPressed=true));f.pump()
+            f.scene.sendKeyEvent(KeyEvent(Key.Five,KeyEventType.KeyDown,isAltPressed=true));f.pump()
             assertEquals(Destination.SETTINGS,f.app.destination.value)
-            f.scene.sendKeyEvent(KeyEvent(Key.One,KeyEventType.KeyDown,isAltPressed=true));f.pump();assertEquals(Destination.LIBRARY,f.app.destination.value)
+            f.scene.sendKeyEvent(KeyEvent(Key.Two,KeyEventType.KeyDown,isAltPressed=true));f.pump();assertEquals(Destination.LIBRARY,f.app.destination.value)
             f.click("Original publication 0")
             f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.pump();assertFalse(f.visible("Publication details"))
         }
@@ -519,6 +523,124 @@ class ApplicationInterfaceTest {
             assertTrue(f.coverLoads<60);assertTrue(f.covers.retainedEntries()<=24)
             assertEquals(0,f.source.acquisitions);assertEquals(0,f.source.metadataCalls)
             assertEquals(1000,f.data.saved.size)
+        }
+    }
+
+    private fun Fixture.preview(name:String) {
+        System.getenv("INFINILECT_UI_PREVIEW_DIRECTORY")?.let { path ->
+            val directory=java.nio.file.Path.of(path);require(directory.isAbsolute&&!directory.startsWith(java.nio.file.Path.of("/workspace/INFINILECT")))
+            java.nio.file.Files.createDirectories(directory)
+            scene.render(scope.testScheduler.currentTime*1_000_000).use { image ->
+                java.nio.file.Files.write(directory.resolve(name),assertNotNull(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)).use {it.bytes})
+            }
+        }
+    }
+    private fun Fixture.edit(label:String,value:String) {
+        assertTrue(visible(label));val control=nodes().last { it.config.getOrNull(SemanticsActions.SetText)?.action!=null }
+        assertTrue(control.config[SemanticsActions.SetText].action!!.invoke(androidx.compose.ui.text.AnnotatedString(value)));pump()
+    }
+    @Test fun homeIsDefaultAndEmptyStateOffersImportWithoutInventedRecommendations()=runTest {
+        Fixture(this,count=0).use { f ->
+            assertEquals(Destination.HOME,f.app.destination.value);assertFalse(f.app.handlesBack())
+            assertTrue(f.visible("Hello!"));assertTrue(f.visible("Your next read starts here"));assertTrue(f.visible("Import local file"))
+            assertFalse(f.visible("Continue reading"));assertFalse(f.visible("Recently added"));assertEquals(0,f.source.acquisitions)
+            f.click("Import local file");assertEquals(1,f.picked);assertEquals(Destination.HOME,f.app.destination.value)
+        }
+    }
+    @Test fun firstRunSetupIsOptionalAndDeferredChoiceDoesNotBlockLibraryOrReader()=runTest {
+        Fixture(this,390,800,firstRun=true).use { f ->
+            assertTrue(f.visible("Set up profile"));f.preview("home-first-run.png")
+            f.click("Set up profile");assertTrue(f.visible("Your local profile"));f.preview("profile-onboarding.png")
+            f.click("Set up later");assertTrue(f.preferenceValue.profile.setupHandled);assertNull(f.preferenceValue.profile.countryCode)
+            assertFalse(f.visible("Set up profile"));assertFalse(f.visible("Your local profile"))
+            f.nav(Destination.LIBRARY);f.click("Original publication 0");f.click("Open")
+            assertIs<OpenPublicationState.Ready>(f.app.opening.value)
+            f.app.back();f.pump();assertEquals(Destination.LIBRARY,f.app.destination.value)
+            f.nav(Destination.HOME);assertFalse(f.visible("Set up profile"))
+        }
+    }
+    @Test fun profileCountrySelectorStoresIsoNameIsOptionalAndSettingsEditsGreeting()=runTest {
+        Fixture(this,390,900,firstRun=true).use { f ->
+            val readerSession=f.app.searchSession.value;val records=f.saved.toList()
+            f.click("Set up profile");f.edit("Display name (optional)","Ana")
+            assertTrue(f.nodes().any{it.config.contains(SemanticsProperties.Disabled)&&it.children.any{n->f.has(n,"Save profile")}})
+            f.click("Country of residence");f.edit("Find country","ES");f.preview("profile-country-selector.png");f.click("Choose country ES")
+            f.click("English");f.click("Save profile")
+            assertEquals(LocalProfile("Ana","ES","en",true),f.preferenceValue.profile)
+            assertTrue(f.visible("Hello, Ana!"));assertEquals(records,f.saved);assertSame(readerSession,f.app.searchSession.value)
+            f.nav(Destination.SETTINGS);assertTrue(f.visible("Ana"));f.preview("settings-profile.png")
+            f.click("Edit profile");f.preview("profile-editor.png");f.edit("Display name (optional)","");f.click("Save profile")
+            assertNull(f.preferenceValue.profile.displayName);assertEquals("ES",f.preferenceValue.profile.countryCode)
+            f.nav(Destination.HOME);assertTrue(f.visible("Hello!"));assertEquals(0,f.source.acquisitions)
+        }
+    }
+    @Test fun cancelledProfileAndEscapeDoNotChangePreferencesOrOpenReader()=runTest {
+        Fixture(this,1280,800).use { f ->
+            val before=f.preferenceValue;f.nav(Destination.SETTINGS);f.click("Edit profile");f.edit("Display name (optional)","Unsaved")
+            f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump()
+            assertFalse(f.visible("Display name (optional)"));assertEquals(before,f.preferenceValue)
+            assertIs<OpenPublicationState.Idle>(f.app.opening.value)
+        }
+    }
+    @Test fun homeResumeRestoresActualLocatorAndBackReturnsHomeWithoutWritingOnBrowsing()=runTest {
+        Fixture(this,390,900,artwork=true).use { f ->
+            val id=f.source.books[2].id
+            f.progress.submit(ReadingProgress(ReadingProgressId(id,"text",PublicationFormat.TEXT),ReadingLocator.Text(8,51),8.0/51,2));f.pump()
+            val before=f.saved.toList()
+            assertTrue(f.visible("Continue reading"));assertTrue(f.visible("Continue Original publication 2"))
+            assertEquals(0,f.source.acquisitions);f.click("Continue Original publication 2")
+            val ready=assertIs<OpenPublicationState.Ready>(f.app.opening.value)
+            assertEquals(id,assertNotNull(ready.publication).id);assertEquals(8,assertNotNull(ready.reading).codePointOffset.value)
+            f.app.back();f.pump();assertEquals(Destination.HOME,f.app.destination.value)
+            assertEquals(before,f.saved);assertTrue(f.visible("Continue reading"))
+        }
+    }
+    @Test fun recentlyAddedOpensDetailsAndRemovalIsConfirmedWithoutChangingHistoryOrProgress()=runTest {
+        Fixture(this,390,900,artwork=true).use { f ->
+            // Give distinct insertion times; reopening/history ordering must not reorder this section.
+            f.data.saved.entries.toList().forEachIndexed{ i,(id,entry)->f.data.saved[id]=entry.copy(addedAtEpochMillis=i.toLong())}
+            f.app.collections.refreshLibrary();f.pump();f.reach(2)
+            val before=f.saved.toList();f.click("Details for Original publication 2")
+            assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
+            f.click("Remove from Library");assertTrue(f.visible("Remove from Library?"));f.click("Cancel")
+            assertEquals(3,f.data.saved.size);f.click("Remove from Library");f.click("Remove")
+            assertEquals(2,f.data.saved.size);assertEquals(3,f.data.opened.size);assertEquals(before,f.saved)
+            assertIs<OpenPublicationState.Idle>(f.app.opening.value)
+        }
+    }
+    @Test fun homeNavigationFiveAccessibleIconsAndBrandingFallbackHaveResponsiveBounds()=runTest {
+        for(width in listOf(320,390,1280)) Fixture(this,width,800).use { f ->
+            assertTrue(f.visible("INFINILECT"));assertFalse(f.visible("Make this space yours"))
+            for(destination in applicationDestinations) {
+                val tab=f.nodes().single{it.config.getOrNull(SemanticsProperties.Role)==Role.Tab&&f.has(it,"Navigate to ${destination.label()}")}
+                assertTrue(tab.boundsInRoot.width>0);assertTrue(tab.boundsInRoot.height>=48)
+                assertTrue(tab.boundsInRoot.left>=0&&tab.boundsInRoot.right<=width)
+                f.nav(destination);assertEquals(destination,f.app.destination.value)
+            }
+            f.scene.sendKeyEvent(KeyEvent(Key.One,KeyEventType.KeyDown,isAltPressed=true));f.pump();assertEquals(Destination.HOME,f.app.destination.value)
+            f.scene.constraints=androidx.compose.ui.unit.Constraints.fixed(360,480);f.pump()
+            assertEquals(Destination.HOME,f.app.destination.value);assertEquals(0,f.source.acquisitions)
+        }
+    }
+    @Test fun homePreviewsKeepSharedCoversThemesAndBoundedOwnership()=runTest {
+        for((width,height,name,dark) in listOf(
+            listOf(390,900,"home-android.png",false),listOf(1280,850,"home-desktop.png",true))) {
+            Fixture(this,width as Int,height as Int,count=12,artwork=true).use { f ->
+                f.settings.changeProfile(LocalProfile("Ana","ES",null,true))
+                if(dark as Boolean)f.settings.change(ApplicationThemeMode.DARK)
+                f.pump();assertTrue(f.visible("Hello, Ana!"));assertTrue(f.visible("Continue reading"))
+                assertTrue(f.covers.retainedEntries()<=24);assertEquals(0,f.source.acquisitions)
+                f.preview(name as String)
+            }
+        }
+    }
+    @Test fun libraryAndHistoryKeepAccessiblePaneTitlesWithoutRedundantHeadings()=runTest {
+        Fixture(this).use {f->
+            for(destination in listOf(Destination.LIBRARY,Destination.HISTORY)) {
+                f.nav(destination)
+                assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.PaneTitle)==destination.label()})
+                assertFalse(f.nodes().any{it.config.contains(SemanticsProperties.Heading)&&f.has(it,destination.label())})
+            }
         }
     }
 
