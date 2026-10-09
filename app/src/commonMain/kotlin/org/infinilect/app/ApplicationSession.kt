@@ -26,7 +26,8 @@ internal class ApplicationSession(
     val selected=mutableSelected.asStateFlow()
     private val mutableDestination=MutableStateFlow(Destination.SEARCH)
     val destination=mutableDestination.asStateFlow()
-    val collections=CollectionsController(sources.collections,this.scope,clock)
+    val covers get() = sources.covers
+    val collections=CollectionsController(sources.collections,this.scope,clock) { sources.covers?.invalidate(it) }
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
         sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer) { publication ->
         collections.enteredReader(publication)

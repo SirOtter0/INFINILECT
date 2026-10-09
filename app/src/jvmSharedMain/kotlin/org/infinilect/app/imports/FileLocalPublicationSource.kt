@@ -127,6 +127,24 @@ internal class FileLocalPublicationSource(
             .sortedWith(compareBy<Publication> { it.title }.thenBy { it.id.localId }))
     }
 
+    /** Borrow immutable private import bytes; cover loading never reacquires source content. */
+    internal suspend fun cover(publicationId: PublicationId): org.infinilect.app.covers.CoverArtwork? = operation {
+        if (publicationId.sourceId != id || !DIGEST_NAME.matches(publicationId.localId)) return@operation null
+        val key = publicationId.localId
+        val entry = initialize().resolve("$key.import")
+        val record = readRecord(entry, key) ?: return@operation null
+        val payload = entry.resolve("payload")
+        require(hashPayload(payload, record.size) == key)
+        val format = record.publication.resources.single().format
+        val raster = try {
+            org.infinilect.app.covers.localArchiveCover(payload, format)?.let {
+                org.infinilect.app.covers.decodeCoverThumbnail(it.bytes, it.mediaType)
+            }
+        } catch (error: CancellationException) { throw error }
+        catch (_: Exception) { null } // Invalid/missing artwork does not invalidate an already imported publication.
+        org.infinilect.app.covers.CoverArtwork(format, raster)
+    }
+
     override suspend fun getPublication(publicationId: PublicationId): Publication? = operation {
         require(publicationId.sourceId == id && DIGEST_NAME.matches(publicationId.localId))
         readRecord(initialize().resolve("${publicationId.localId}.import"), publicationId.localId)?.publication

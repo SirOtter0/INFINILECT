@@ -45,7 +45,7 @@ class ApplicationInterfaceTest {
             }
         }
     }
-    private inner class Fixture(val scope: TestScope, width: Int = 360, val height: Int = 640, fontScale: Float = 1f, count: Int = 3) : AutoCloseable {
+    private inner class Fixture(val scope: TestScope, width: Int = 360, val height: Int = 640, fontScale: Float = 1f, count: Int = 3, artwork: Boolean = false) : AutoCloseable {
         val dispatcher = StandardTestDispatcher(scope.testScheduler)
         val source = Source(); val data = FakeCollections()
         val collections = ApplicationCollections(data.library,data.history,dispatcher)
@@ -73,15 +73,37 @@ class ApplicationInterfaceTest {
         }
         // Cancelled selection tests the real application import state without external bytes.
         val picker = object : LocalFilePicker { override suspend fun pick(): LocalFileSelection? { picked++; importGate?.await(); return if (selectFile) LocalFileSelection("original.txt") { error("No bytes required by this controlled importer") } else null } }
+        var coverLoads = 0
+        val covers = org.infinilect.app.covers.PublicationCovers({ id ->
+            coverLoads++
+            val i=id.localId.substringAfterLast('-').toInt()
+            if (i%4==3) org.infinilect.app.covers.CoverArtwork(PublicationFormat.TEXT)
+            else org.infinilect.app.covers.CoverArtwork(if(i%2==0) PublicationFormat.EPUB else PublicationFormat.CBZ,
+                org.infinilect.app.media.Raster(192,288,IntArray(192*288){0xff294d55.toInt()}))
+        },dispatcher,convert={ raster ->
+            val image=androidx.compose.ui.graphics.ImageBitmap(raster.width,raster.height)
+            val canvas=androidx.compose.ui.graphics.Canvas(image)
+            val paint=androidx.compose.ui.graphics.Paint()
+            paint.color=androidx.compose.ui.graphics.Color(0xff263f55)
+            canvas.drawRect(0f,0f,192f,288f,paint)
+            paint.color=androidx.compose.ui.graphics.Color(0xffdab483)
+            canvas.drawCircle(androidx.compose.ui.geometry.Offset(132f,72f),42f,paint)
+            paint.color=androidx.compose.ui.graphics.Color(0xff588d89)
+            for(i in 0..5) canvas.drawRect(0f,120f+i*22,192f-i*24,132f+i*22,paint)
+            image
+        })
         val owner = ApplicationSources(listOf(SourceOption("Original fixtures",source,textReadingEnabled=true)),
-            progress=progress, collections=collections, localImports=importer, appearance=settings, sessionDispatcher=dispatcher) {}
+            progress=progress, collections=collections, localImports=importer, appearance=settings, covers=if(artwork) covers else null, sessionDispatcher=dispatcher) {}
         val app = owner.applicationSession()
         var back: (() -> Unit)? = null
         var appAppearance: ReaderAppearance? = null
         var readerAppearance: ReaderAppearance? = null
         val scene = ImageComposeScene(width,height,Density(1f,fontScale),coroutineContext=dispatcher)
         init {
-            repeat(count) { val p=PublicationSnapshot.from(source.books[it]);data.saved[p.id]=LibraryEntry(p,1);data.opened[p.id]=HistoryEntry(p,it.toLong()) }
+            repeat(count) { val p=PublicationSnapshot.from(source.books[it]);data.saved[p.id]=LibraryEntry(p,1);data.opened[p.id]=HistoryEntry(p,if(artwork) 1_790_000_000_000L+it*60_000 else it.toLong()) }
+            if(artwork) source.books.take(count).takeLast(2).forEach { book ->
+                progress.submit(ReadingProgress(ReadingProgressId(book.id,"text",PublicationFormat.TEXT),ReadingLocator.Text(8,10),.8,1))
+            }
             app.collections.refreshLibrary()
             scene.setContent { App(owner, backHandler={ enabled, callback ->
                 DisposableEffect(enabled, callback) { back=if(enabled)callback else null;onDispose {} }
@@ -100,15 +122,18 @@ class ApplicationInterfaceTest {
             // Modal owners consume input before the underlying screen, just like real pointers.
             fun walk(n: SemanticsNode): List<SemanticsNode> = listOf(n)+n.children.flatMap(::walk)
             val activeNodes=scene.semanticsOwners.lastOrNull()?.let { walk(it.unmergedRootSemanticsNode) }.orEmpty()
-            val control=assertNotNull(activeNodes.firstOrNull { !it.config.contains(SemanticsProperties.Disabled) && it.config.getOrNull(SemanticsActions.OnClick)?.action!=null && contains(it) },label)
+            val control=assertNotNull(activeNodes.lastOrNull { !it.config.contains(SemanticsProperties.Disabled) && it.config.getOrNull(SemanticsActions.OnClick)?.action!=null && contains(it) },label)
             assertTrue(control.config[SemanticsActions.OnClick].action!!.invoke());pump()
+            // Advance the controlled clock through Material's menu exit; a fading Popup still
+            // owns input above a newly opened Dialog until its animation has finished.
+            scope.advanceTimeBy(200);pump()
         }
         fun nav(destination: Destination) = click("Navigate to ${destination.label()}")
         fun reach(index: Int) {
             val scroll=nodes().first { it.config.getOrNull(SemanticsActions.ScrollToIndex)?.action!=null }
             assertTrue(scroll.config[SemanticsActions.ScrollToIndex].action!!.invoke(index));pump()
         }
-        override fun close() { scene.close();owner.close();scope.runCurrent() }
+        override fun close() { scene.close();owner.close();covers.close();scope.runCurrent() }
     }
 
     @Test fun compactAndWideNavigationUseSelectedTabsAndRetainSearchState() = runTest {
@@ -145,7 +170,7 @@ class ApplicationInterfaceTest {
     }
     @Test fun detailsUseKnownMetadataDoNotAcquireAndDismissWithoutLosingScreen() = runTest {
         Fixture(this).use { f ->
-            f.nav(Destination.LIBRARY);f.click("Details for Original publication 0")
+            f.nav(Destination.LIBRARY);f.click("Actions for Original publication 0");f.click("Details for Original publication 0")
             assertTrue(f.visible("Publication details"));assertTrue(f.visible("Fixture author 0"))
             assertTrue(f.visible("Format checked when opening"));assertTrue(f.visible("Original test material"))
             assertEquals(0,f.source.metadataCalls);assertEquals(0,f.source.acquisitions)
@@ -206,7 +231,7 @@ class ApplicationInterfaceTest {
             f.scene.sendKeyEvent(KeyEvent(Key.Four,KeyEventType.KeyDown,isAltPressed=true));f.pump()
             assertEquals(Destination.SETTINGS,f.app.destination.value)
             f.scene.sendKeyEvent(KeyEvent(Key.One,KeyEventType.KeyDown,isAltPressed=true));f.pump();assertEquals(Destination.LIBRARY,f.app.destination.value)
-            f.click("Details for Original publication 0")
+            f.click("Actions for Original publication 0");f.click("Details for Original publication 0")
             f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.pump();assertFalse(f.visible("Publication details"))
         }
     }
@@ -224,7 +249,7 @@ class ApplicationInterfaceTest {
     @Test fun previewLightLibraryAndDarkDesktopUseOnlyOriginalFixtureMaterial() = runTest {
         val directory=System.getenv("INFINILECT_UI_PREVIEW_DIRECTORY")?.let { java.nio.file.Path.of(it) }
         for ((width,name,dark) in listOf(Triple(390,"library-light-compact.png",false),Triple(1280,"library-dark-wide.png",true))) {
-            Fixture(this,width,800).use { f ->
+            Fixture(this,width,800,count=12,artwork=true).use { f ->
                 f.nav(Destination.LIBRARY)
                 if (dark) { f.settings.change(ApplicationThemeMode.DARK);f.pump() }
                 assertTrue(f.visible("Original publication 0"))
@@ -235,6 +260,104 @@ class ApplicationInterfaceTest {
                         val bytes=assertNotNull(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)).use { it.bytes }
                         java.nio.file.Files.write(directory.resolve(name),bytes)
                     }
+                }
+            }
+        }
+    }
+
+    @Test fun coverGridHasTwoPhoneColumnsAndNoPermanentActionRows() = runTest {
+        Fixture(this,count=12).use { f ->
+            f.nav(Destination.LIBRARY)
+            fun tile(i:Int)=f.nodes().single { it.config.getOrNull(SemanticsActions.OnLongClick)!=null && it.children.any { n -> f.has(n,"Original publication $i") } }
+            val a=tile(0).boundsInRoot;val b=tile(1).boundsInRoot
+            assertEquals(a.top,b.top);assertTrue(b.left>=a.right)
+            assertEquals(2f/3f,a.width/a.height,.02f)
+            assertFalse(f.visible("Open"));assertFalse(f.visible("Remove"));assertFalse(f.visible("Publication details"))
+            assertTrue(f.visible("Actions for Original publication 0"))
+        }
+    }
+    @Test fun primaryCoverTapResumesAndDoesNotRequireDetails() = runTest {
+        Fixture(this).use { f ->
+            f.nav(Destination.LIBRARY);f.click("Original publication 0")
+            assertIs<OpenPublicationState.Ready>(f.app.opening.value);assertEquals(1,f.source.acquisitions)
+        }
+    }
+    @Test fun longPressAndAccessibleActionsExposeDetailsWithoutAcquisition() = runTest {
+        Fixture(this).use { f ->
+            f.nav(Destination.LIBRARY)
+            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            assertTrue(tile.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump()
+            assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
+            f.click("Details for Original publication 0");f.click("Close")
+            val action=f.nodes().flatMap {it.config.getOrNull(SemanticsActions.CustomActions).orEmpty()}.first {it.label=="Publication details"}
+            assertTrue(action.action());f.pump();assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
+        }
+    }
+    @Test fun libraryRemovalRequiresConfirmationAndKeepsProgressAndImport() = runTest {
+        Fixture(this).use { f ->
+            val record=ReadingProgress(ReadingProgressId(f.source.books[0].id,"text",PublicationFormat.TEXT),ReadingLocator.Text(8,10),.8,1)
+            f.progress.submit(record);f.pump();f.nav(Destination.LIBRARY)
+            f.click("Actions for Original publication 0");f.click("Remove from Library")
+            assertTrue(f.visible("Remove from Library?"));assertEquals(3,f.data.saved.size)
+            f.click("Cancel");assertEquals(3,f.data.saved.size)
+            f.click("Actions for Original publication 0");f.click("Remove from Library");f.click("Remove")
+            assertEquals(2,f.data.saved.size);assertEquals(3,f.source.books.take(3).size);assertEquals(record,f.saved.last())
+        }
+    }
+    @Test fun historyRowsKeepNewestFirstAndResumeDirectly() = runTest {
+        Fixture(this).use { f ->
+            f.nav(Destination.HISTORY)
+            val titles=(0..2).map {i->f.nodes().first {f.has(it,"Original publication $i")}.boundsInRoot.top}
+            assertTrue(titles[2]<titles[1]);assertTrue(titles[1]<titles[0]);assertTrue(f.visible("Continue reading"))
+            f.click("Original publication 2");assertIs<OpenPublicationState.Ready>(f.app.opening.value)
+            assertEquals(f.source.books[2].id,assertNotNull(assertIs<OpenPublicationState.Ready>(f.app.opening.value).publication).id)
+        }
+    }
+    @Test fun artworkLoadingIsLazyAndSharedAcrossLibraryHistory() = runTest {
+        Fixture(this,count=30,artwork=true).use { f ->
+            f.nav(Destination.LIBRARY);val initially=f.coverLoads
+            assertTrue(initially in 1..23);assertTrue(f.visible("EPUB"));assertTrue(f.visible("TEXT"))
+            f.nav(Destination.HISTORY);assertTrue(f.coverLoads<30)
+            assertEquals(0,f.source.acquisitions)
+        }
+    }
+    @Test fun desktopRightClickOpensMenuWithoutOpeningReader() = runTest {
+        Fixture(this,1280,800).use {f ->
+            f.nav(Destination.LIBRARY)
+            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            val at=tile.boundsInRoot.center
+            f.scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press,at,
+                buttons=androidx.compose.ui.input.pointer.PointerButtons(2),button=androidx.compose.ui.input.pointer.PointerButton.Secondary)
+            f.scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release,at,
+                buttons=androidx.compose.ui.input.pointer.PointerButtons(0),button=androidx.compose.ui.input.pointer.PointerButton.Secondary);f.pump()
+            assertTrue(f.visible("Publication details"));assertIs<OpenPublicationState.Idle>(f.app.opening.value)
+            f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump();advanceTimeBy(200);f.pump()
+            assertFalse(f.visible("Publication details"))
+        }
+    }
+    @Test fun desktopKeyboardCanOpenCoverContextMenu() = runTest {
+        Fixture(this,1280,800).use {f ->
+            f.nav(Destination.LIBRARY)
+            repeat(20) {
+                if(f.nodes().none {it.config.getOrNull(SemanticsProperties.Focused)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null}) {
+                    f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyUp));f.pump()
+                }
+            }
+            assertTrue(f.nodes().any {it.config.getOrNull(SemanticsProperties.Focused)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null})
+            f.scene.sendKeyEvent(KeyEvent(Key.F10,KeyEventType.KeyDown,isShiftPressed=true));f.pump()
+            assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
+        }
+    }
+
+    @Test fun historyPreviewContainsOnlyOriginalFixtureArtwork() = runTest {
+        Fixture(this,360,800,count=8,artwork=true).use {f ->
+            f.nav(Destination.HISTORY)
+            System.getenv("INFINILECT_UI_PREVIEW_DIRECTORY")?.let { path ->
+                val directory=java.nio.file.Path.of(path);require(directory.isAbsolute&&!directory.startsWith(java.nio.file.Path.of("/workspace/INFINILECT")))
+                java.nio.file.Files.createDirectories(directory)
+                f.scene.render(testScheduler.currentTime*1_000_000).use { image ->
+                    val bytes=assertNotNull(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)).use {it.bytes}
+                    java.nio.file.Files.write(directory.resolve("history-compact.png"),bytes)
                 }
             }
         }

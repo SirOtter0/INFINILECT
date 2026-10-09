@@ -215,41 +215,51 @@ internal fun CollectionScreen(destination: Destination, application: Application
     val loading = if (isLibrary) library.loading else history.loading
     val failed = if (isLibrary) library.failed else history.failed
     var detail by remember(destination) { mutableStateOf<org.infinilect.core.PublicationSnapshot?>(null) }
-    LazyVerticalGrid(GridCells.Adaptive(340.dp), Modifier.fillMaxSize(), state = position,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(24.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            ScreenHeading(if (isLibrary) "Library" else "History",
-                if (isLibrary) "Your saved publications, ready to return to." else "Recently read · newest first.")
-        }
-        if (loading) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Loading…", "Reading your saved publications.", busy = true) }
-        if (failed) item(span = { GridItemSpan(maxLineSpan) }) {
-            FeedbackCard("Local storage is unavailable", "Your saved publications have not been removed. Please try again.", error = true,
-                action = "Try again", onAction = { if (isLibrary) controller.refreshLibrary() else controller.refreshHistory() })
-        }
-        error?.let { item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Change could not be saved", it, error = true) } }
-        if (entries.isEmpty() && !loading && !failed) item(span = { GridItemSpan(maxLineSpan) }) {
-            FeedbackCard(if (isLibrary) "Your Library is empty" else "No reading history yet",
-                if (isLibrary) "Import a local file or save a publication from Search. Your reading positions are kept separately." else "Open a publication to start reading. Recent reads will appear here.",
-                action = "Browse Search", onAction = { application.navigate(Destination.SEARCH) })
-        }
-        items(entries, key = { it.id.resultKey() }) { publication ->
-            PublicationCard(publication.displayPublication(), application.sourceName(publication.id.sourceId), publicationProgress(progressRecords, publication.id), details = { detail = publication }) {
-                Button(onClick = { application.openSaved(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open") }
-                val action = membership.forPublication(publication.id)
-                androidx.compose.material.TextButton(enabled = if (isLibrary) action.enabled else !busy,
-                    onClick = { if (isLibrary) controller.removeLibrary(publication.id) else controller.removeHistory(publication.id) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(if (isLibrary && action.busy) "Removing…" else "Remove")
-                }
+    var detailFormat by remember(destination) { mutableStateOf<org.infinilect.core.PublicationFormat?>(null) }
+    var remove by remember(destination) { mutableStateOf<org.infinilect.core.PublicationSnapshot?>(null) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(GridCells.Fixed(if (isLibrary) libraryColumns(maxWidth.value) else 1), Modifier.fillMaxSize(), state = position,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                ScreenHeading(if (isLibrary) "Library" else "History",
+                    if (isLibrary) "Your saved publications, ready to return to." else "Recently read · newest first.")
+            }
+            if (loading) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Loading…", "Reading your saved publications.", busy = true) }
+            if (failed) item(span = { GridItemSpan(maxLineSpan) }) {
+                FeedbackCard("Local storage is unavailable", "Your saved publications have not been removed. Please try again.", error = true,
+                    action = "Try again", onAction = { if (isLibrary) controller.refreshLibrary() else controller.refreshHistory() })
+            }
+            error?.let { item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Change could not be saved", it, error = true) } }
+            if (entries.isEmpty() && !loading && !failed) item(span = { GridItemSpan(maxLineSpan) }) {
+                FeedbackCard(if (isLibrary) "Your Library is empty" else "No reading history yet",
+                    if (isLibrary) "Import a local file or save a publication from Search. Your reading positions are kept separately." else "Open a publication to start reading. Recent reads will appear here.",
+                    action = "Browse Search", onAction = { application.navigate(Destination.SEARCH) })
+            }
+            items(entries, key = { it.id.resultKey() }) { publication ->
+                CollectionPublication(publication.displayPublication(), application.covers, publicationProgress(progressRecords, publication.id),
+                    history = !isLibrary, lastOpened = if (isLibrary) null else history.entries.firstOrNull { it.publication.id == publication.id }?.lastOpenedAtEpochMillis?.let(::lastOpenedLabel),
+                    enabled = if (isLibrary) membership.forPublication(publication.id).enabled else !busy,
+                    open = { application.openSaved(publication) }, details = { detail = publication; detailFormat = it }, remove = { remove = publication })
+            }
+            if (!isLibrary) item(span = { GridItemSpan(maxLineSpan) }) {
+                androidx.compose.material.TextButton(enabled = !busy && entries.isNotEmpty(), onClick = controller::requestClearHistory, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear history") }
             }
         }
-        if (!isLibrary) item(span = { GridItemSpan(maxLineSpan) }) {
-            androidx.compose.material.TextButton(enabled = !busy && entries.isNotEmpty(), onClick = controller::requestClearHistory, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear history") }
-        }
+    }
+    remove?.let { publication ->
+        androidx.compose.material.AlertDialog(onDismissRequest = { remove = null },
+            title = { Text(if (isLibrary) "Remove from Library?" else "Remove from History?") },
+            text = { Text("${publication.title} will be removed from this list. The imported file and reading position are kept.") },
+            confirmButton = { androidx.compose.material.TextButton(onClick = {
+                remove = null
+                if (isLibrary) controller.removeLibrary(publication.id) else controller.removeHistory(publication.id)
+            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove") } },
+            dismissButton = { androidx.compose.material.TextButton(onClick = { remove = null }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") } })
     }
     detail?.let { publication ->
         val progress = publicationProgress(progressRecords, publication.id)
-        PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId), formats = progress?.let { listOf(it.id.format) } ?: emptyList(),
+        PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId), formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
             progress = progress, close = { detail = null }) {
             Button(onClick = { detail = null; application.openSaved(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open") }
         }

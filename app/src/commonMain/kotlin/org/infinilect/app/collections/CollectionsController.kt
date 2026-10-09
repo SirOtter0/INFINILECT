@@ -27,7 +27,9 @@ internal data class CatalogLibraryState(val saved: Set<PublicationId> = emptySet
 }
 
 /** UI-thread state. No optimistic mutation success; refreshes always query repositories. */
-internal class CollectionsController(private val owner: ApplicationCollections?, scope: CoroutineScope, private val clock: () -> Long) {
+internal class CollectionsController(private val owner: ApplicationCollections?, scope: CoroutineScope, private val clock: () -> Long,
+    private val removed: suspend (PublicationId) -> Unit) {
+    constructor(owner: ApplicationCollections?, scope: CoroutineScope, clock: () -> Long) : this(owner, scope, clock, {})
     private val job = SupervisorJob(scope.coroutineContext[Job])
     private val scope = CoroutineScope(scope.coroutineContext + job)
     private val mutableLibrary = MutableStateFlow(CollectionList<LibraryEntry>())
@@ -157,6 +159,7 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
                     libraryGeneration++;libraryRequest?.cancel()
                     updateMembership(membership.value.copy(saved=if(remove) membership.value.saved-id else membership.value.saved+id,
                         loading=false,unavailable=false))
+                    if (remove) removed(id)
                     mutableError.value=null;owner?.changed()
                 } else {
                     if (reader.value.publication?.id == id) readerMutationFailed=true
@@ -183,14 +186,18 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
     }
     fun removeHistory(id: PublicationId) = mutate("The history change could not be saved on this device.") {
         owner?.flushHistory()
-        owner?.history?.remove(id) ?: LocalStoreResult.Unavailable
+        (owner?.history?.remove(id) ?: LocalStoreResult.Unavailable).also { if (it is LocalStoreResult.Success) removed(id) }
     }
     fun requestClearHistory() { if (!closed && !busy.value) mutableConfirm.value=true }
     fun dismissClearHistory() { mutableConfirm.value=false }
     fun confirmClearHistory() {
         if (!confirmClear.value) return
         mutableConfirm.value=false
-        mutate("History could not be cleared on this device.") { owner?.flushHistory(); owner?.history?.clear() ?: LocalStoreResult.Unavailable }
+        val ids = history.value.entries.map { it.publication.id }
+        mutate("History could not be cleared on this device.") {
+            owner?.flushHistory()
+            (owner?.history?.clear() ?: LocalStoreResult.Unavailable).also { if (it is LocalStoreResult.Success) ids.forEach { id -> removed(id) } }
+        }
     }
     private fun mutate(message: String, action: suspend () -> LocalStoreResult<Unit>) {
         if (closed || busy.value) return
