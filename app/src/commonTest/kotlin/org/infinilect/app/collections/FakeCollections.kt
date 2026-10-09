@@ -8,6 +8,8 @@ internal class FakeCollections {
     val saved=linkedMapOf<PublicationId,LibraryEntry>()
     val opened=linkedMapOf<PublicationId,HistoryEntry>()
     var fail=false
+    val failedLibraryRemovals = mutableSetOf<PublicationId>()
+    val libraryRemovals = mutableListOf<PublicationId>()
     var beforeWrite: suspend () -> Unit = {}
     private fun <T> result(value: T): LocalStoreResult<T> = if(fail) LocalStoreResult.Unavailable else LocalStoreResult.Success(value)
     val library=object : LibraryRepository {
@@ -20,7 +22,9 @@ internal class FakeCollections {
             saved[publication.id]=entry;return LocalStoreResult.Success(entry)
         }
         override suspend fun remove(id: PublicationId): LocalStoreResult<Unit> {
-            beforeWrite();if(fail) return LocalStoreResult.Unavailable;saved.remove(id);return LocalStoreResult.Success(Unit)
+            beforeWrite(); libraryRemovals += id
+            if(fail || id in failedLibraryRemovals) return LocalStoreResult.Unavailable
+            saved.remove(id);return LocalStoreResult.Success(Unit)
         }
     }
     val history=object : ReadingHistoryRepository {

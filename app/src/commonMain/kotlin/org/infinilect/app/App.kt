@@ -115,6 +115,9 @@ fun App(
             when(val current=opening) {
                 OpenPublicationState.Idle -> ApplicationTheme(mode) {
                     ApplicationShell(destination, importing.busy, application::navigate,
+                        onEscape = {
+                            if (application.collections.selection.value.isNotEmpty()) { application.collections.clearSelection(); true } else false
+                        },
                         importAction = if (localFilePicker != null && applicationSources.localImports != null) ({
                             androidx.compose.material.OutlinedButton(enabled = !importing.busy, onClick = { application.importLocal(localFilePicker) },
                                 modifier = Modifier.heightIn(min = 48.dp)) { Text("Import local file") }
@@ -198,80 +201,6 @@ fun App(
             }
         }
     }
-}
-
-@Composable
-internal fun CollectionScreen(destination: Destination, application: ApplicationSession,
-    position: LazyGridState = rememberLazyGridState(), progressRecords: List<org.infinilect.core.ReadingProgress> = emptyList()) {
-    val controller = application.collections
-    val library by controller.library.collectAsState()
-    val history by controller.history.collectAsState()
-    val confirmation by controller.confirmClear.collectAsState()
-    val busy by controller.busy.collectAsState()
-    val error by controller.error.collectAsState()
-    val membership by controller.membership.collectAsState()
-    val isLibrary = destination == Destination.LIBRARY
-    val entries = if (isLibrary) library.entries.map { it.publication } else history.entries.map { it.publication }
-    val loading = if (isLibrary) library.loading else history.loading
-    val failed = if (isLibrary) library.failed else history.failed
-    var detail by remember(destination) { mutableStateOf<org.infinilect.core.PublicationSnapshot?>(null) }
-    var detailFormat by remember(destination) { mutableStateOf<org.infinilect.core.PublicationFormat?>(null) }
-    var remove by remember(destination) { mutableStateOf<org.infinilect.core.PublicationSnapshot?>(null) }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        LazyVerticalGrid(GridCells.Fixed(if (isLibrary) libraryColumns(maxWidth.value) else 1), Modifier.fillMaxSize(), state = position,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                ScreenHeading(if (isLibrary) "Library" else "History",
-                    if (isLibrary) "Your saved publications, ready to return to." else "Recently read · newest first.")
-            }
-            if (loading) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Loading…", "Reading your saved publications.", busy = true) }
-            if (failed) item(span = { GridItemSpan(maxLineSpan) }) {
-                FeedbackCard("Local storage is unavailable", "Your saved publications have not been removed. Please try again.", error = true,
-                    action = "Try again", onAction = { if (isLibrary) controller.refreshLibrary() else controller.refreshHistory() })
-            }
-            error?.let { item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Change could not be saved", it, error = true) } }
-            if (entries.isEmpty() && !loading && !failed) item(span = { GridItemSpan(maxLineSpan) }) {
-                FeedbackCard(if (isLibrary) "Your Library is empty" else "No reading history yet",
-                    if (isLibrary) "Import a local file or save a publication from Search. Your reading positions are kept separately." else "Open a publication to start reading. Recent reads will appear here.",
-                    action = "Browse Search", onAction = { application.navigate(Destination.SEARCH) })
-            }
-            items(entries, key = { it.id.resultKey() }) { publication ->
-                CollectionPublication(publication.displayPublication(), application.covers, publicationProgress(progressRecords, publication.id),
-                    history = !isLibrary, lastOpened = if (isLibrary) null else history.entries.firstOrNull { it.publication.id == publication.id }?.lastOpenedAtEpochMillis?.let(::lastOpenedLabel),
-                    enabled = if (isLibrary) membership.forPublication(publication.id).enabled else !busy,
-                    open = { application.openSaved(publication) }, details = { detail = publication; detailFormat = it }, remove = { remove = publication })
-            }
-            if (!isLibrary) item(span = { GridItemSpan(maxLineSpan) }) {
-                androidx.compose.material.TextButton(enabled = !busy && entries.isNotEmpty(), onClick = controller::requestClearHistory, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear history") }
-            }
-        }
-    }
-    remove?.let { publication ->
-        androidx.compose.material.AlertDialog(onDismissRequest = { remove = null },
-            title = { Text(if (isLibrary) "Remove from Library?" else "Remove from History?") },
-            text = { Text("${publication.title} will be removed from this list. The imported file and reading position are kept.") },
-            confirmButton = { androidx.compose.material.TextButton(onClick = {
-                remove = null
-                if (isLibrary) controller.removeLibrary(publication.id) else controller.removeHistory(publication.id)
-            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove") } },
-            dismissButton = { androidx.compose.material.TextButton(onClick = { remove = null }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") } })
-    }
-    detail?.let { publication ->
-        val progress = publicationProgress(progressRecords, publication.id)
-        PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId), formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
-            progress = progress, close = { detail = null }) {
-            Button(onClick = { detail = null; application.openSaved(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open") }
-        }
-    }
-    if (confirmation) androidx.compose.material.AlertDialog(
-        onDismissRequest = controller::dismissClearHistory,
-        title = { Text("Clear reading history?") },
-        text = { Text("Library entries and reading positions will be kept.") },
-        confirmButton = { androidx.compose.material.TextButton(onClick = controller::confirmClearHistory, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear history") } },
-        dismissButton = { androidx.compose.material.TextButton(onClick = controller::dismissClearHistory, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") } },
-        shape = MaterialTheme.shapes.medium,
-    )
 }
 
 @Composable

@@ -10,8 +10,8 @@ reader positions. `ApplicationSession` remains the navigation/session owner.
 | --- | --- | --- |
 | Application root | Import button and three equal action buttons above every destination | Quiet app header; Library, History, Search and Settings in one adaptive navigation hierarchy |
 | Search/source browsing | Large branding, source buttons, plain result rows | Restrained heading, existing source choices and query semantics, shared publication cards and bounded scrollable feedback/results |
-| Library | Plain rows and separators | Cover-first portrait grid, direct resume, title gradient, known progress edge, contextual actions and confirmed removal |
-| History | Plain newest-first rows, TXT-only empty wording | Compact thumbnail rows, author/last-opened metadata, Continue reading, contextual actions, existing newest-first ordering and clear-history confirmation |
+| Library | Plain rows and separators | Cover-only portrait grid, details on tap, title gradient, known progress edge and contextual multi-selection |
+| History | Plain newest-first rows, TXT-only empty wording | Compact thumbnail rows grouped by actual last-opened dates; cover opens details, row resumes, trailing removal keeps Library and progress |
 | Publication metadata | Inline catalog metadata only; no separate details screen | Focus-managed, scrollable metadata dialog; shows only available author/language/format/source/rights information |
 | Local import | Plain busy/error text | Consistent validation/loading/error card, Cancel, original picker and importer unchanged |
 | Publication opening | Spinner or plain failure column | Shared loading/error surfaces with Back and the existing retry contract |
@@ -31,11 +31,11 @@ redesign discovery/source functionality planned for PR #29.
 feedback cards and metadata/settings presentation. Standard buttons retain
 keyboard activation and at least 48 dp targets. Navigation uses labeled tabs
 rather than unexplained icon-only controls. There are no new dependencies,
-network fonts, cover downloads, image caches or custom rendering systems.
+network fonts, cover downloads or custom rendering systems. The bounded local thumbnail cache is described below.
 
 Below 840 dp window width, destinations use bottom navigation. Wider windows use
 a 176 dp labeled side rail. Content is centered within a 1120 dp maximum width;
-collections use adaptive 340 dp minimum columns. Font scaling and short windows
+Library uses adaptive portrait-cover columns; History remains a compact single-column list. Font scaling and short windows
 keep content scrollable. Search retains its independently bounded header and lazy
 result viewport; import feedback can use at most half the available content height.
 Alt+1/2/3/4 select Library/History/Search/Settings on Desktop; Tab/Enter activate
@@ -62,16 +62,54 @@ Library uses two columns at ordinary phone widths (320–559 dp), one below 320 
 and a growing column count above that, within the existing 1120 dp content cap.
 Portrait tiles are 2:3; artwork uses aspect-preserving **Fit**, without cropping or
 stretching. Titles sit on a dark bottom gradient. Unknown progress stays absent.
-History uses one-column compact rows with 56×84 dp thumbnails, known metadata,
-locale-formatted last-opened time and an explicit Continue reading action.
+History uses compact rows with 48×72 dp thumbnails, available title/author, and
+known semantic page/progress information. A saved page locator displays its actual
+1-based page index without inventing a total. EPUB locators have no stored chapter
+label/ordinal, so element/window paths never become fabricated chapter/page numbers.
+Unknown progress stays absent. Rows group the existing **last-opened** timestamps
+in newest-first order: Today, Yesterday or locale-formatted calendar dates in the
+current timezone. They do not pretend to measure every later reading interaction.
+The existing 50-entry recent-history query remains unchanged.
 
-Primary tap/Enter resumes directly through the existing source/session checks.
-Long press, right-click, Menu/Shift+F10, the visible 48 dp actions button and
-screen-reader custom actions expose details/resume/removal. Context menus request
-focus and dismiss with Escape/Back. Removal requires confirmation and removes only
-the selected collection entry; imported bytes and reading positions are retained.
-Committed removals invalidate shared artwork; failed removals retain it. History
-clear invalidates the displayed history's cached thumbnails only after success.
+### Details, selection and removal
+
+Normal Library covers have no format badge, ellipsis or management button. Tap/Enter
+opens the focus-managed details dialog, with artwork, known metadata, Open/Continue
+reading and the repository-backed Add/Remove Library action. Opening still resolves
+current source ownership and restores the existing locator. Adding the same full
+publication identity uses the existing repository key, not a duplicate record.
+
+Long press selects the initial cover. Subsequent taps toggle selected publications;
+selected covers have a border/check and announced selection state. A compact action
+bar shows the count, Select all, Clear selection and Remove from Library. It reserves
+space above the grid, keeps bottom navigation reachable and replaces the redundant
+Library heading while active. The same lazy grid state and stable publication keys
+preserve the browsing position. Selection is session presentation state, bounded by
+the existing **1,000-entry Library** capacity. Leaving the destination or opening a
+reader clears it. Android Back exits selection before navigating away; Escape does
+the same even when focus is on the application root. Right-click or Menu/Shift+F10
+opens a keyboard-focused context menu with Select, Details, Continue and Remove;
+TalkBack has equivalent custom actions. No permanent menu trigger is needed.
+
+Batch removal confirms a snapshot of the selected IDs, then performs **one sequential
+batch** without an accumulating queue. Only committed IDs leave Library; failures
+remain selected with a fixed count/error message and can be retried. Duplicate requests
+are ignored while busy. Cancellation reconciles membership from storage; one final
+change notification/list refresh avoids repeatedly rescanning the entire Library for
+every removed item. Committed removals invalidate artwork; failures retain it.
+
+**Supported batch action: Remove from Library. Mark as read/unread is deferred.**
+The current model has no separate organizational read flag. Implementing it requires
+a deliberate persistence/schema contract; rewriting the semantic locator or percentage
+would corrupt resume behavior. This PR leaves identity, schemas and progress unchanged.
+
+History cover tap opens details; tapping the remaining row resumes directly. Its
+48 dp trailing trash action confirms removal of **only that history entry**. Individual
+Library removal, batch Library removal, History removal and clear History keep original
+files, private imported copies and saved positions. Removing History never removes
+Library membership; removing Library never clears History. Destructive list changes
+are not file deletion. Details/menu dismissal and selection do not acquire publication
+bytes or write reading progress. Reader functionality is unchanged.
 
 | Format/source | Local cover support | Intentional fallback |
 | --- | --- | --- |
@@ -160,17 +198,24 @@ loading/edit races, coalescing, close/drain, persistence failure/retry, fixed-si
 records, corrupt records/symlinks, exact progress identity and palette contrast.
 Existing reader, parser/security, acquisition and persistence tests remain required.
 
-Final verification: 1,219 Desktop app tests and 1,073 Android-host app tests,
-zero failures/errors/skips; Android and Desktop compilation passed with JDK 21.
-Focused cover/collection verification passed 61 Desktop / 30 Android-host tests.
-This follow-up adds 48 unique tests (30 shared/host and 18 Desktop, including
-9 additional collection UI cases); existing assertions remain intact. Full suites
-include all four reader-continuity layout tests and existing EPUB/CBZ/PDF/TEXT regressions. Test execution uses the existing
-Skiko library and a writable external cache in this managed headless environment;
-no temporary test workflow/configuration is committed.
+Final verification: 1,247 Desktop app tests and 1,090 Android-host app tests,
+zero failures/errors/skips; Android `assembleDebug` and Desktop `compileKotlin`
+passed with JDK 21. Focused selection/collection/history/cover verification passed
+76 Desktop / 43 Android-host tests. The minimal-library follow-up adds **28 tests**
+(17 shared/host and 11 Desktop), including partial batch failure/retry, cancellation,
+semantic progress retention, date grouping, split History actions, Back/Escape,
+keyboard/accessibility and a 1,000-entry lazy Library within the 24-entry cover bound.
+Earlier cover/UI tests retain safety assertions; tap/long-press expectations change
+only to match the requested details/selection interaction. Full suites retain reader
+continuity, EPUB/CBZ/PDF/TEXT, security, import and progress regressions.
+
+The production/test/Gradle fingerprint matches the final verified source. Core and
+reader engines are unchanged by this follow-up, so unrelated core suites were not
+rerun. Test execution uses the existing Skiko library and a writable external cache
+in the managed headless environment; no temporary workflow/configuration is committed.
 
 Native Android/desktop graphical acceptance is pending. English remains the
-existing UI language; no new localization infrastructure is introduced. PDF/remote covers, undeclared EPUB/SVG cover heuristics, cross-restart collection
+existing UI language; no new localization infrastructure is introduced. Organizational read/unread flags, PDF/remote covers, undeclared EPUB/SVG cover heuristics, cross-restart collection
 progress summaries and discovery redesign remain outside this PR.
 
 ## Manual Android acceptance
@@ -178,11 +223,13 @@ progress summaries and discovery redesign remain outside this PR.
 1. Visit Library, History, Search and Settings; use Back and return from each reader.
 2. Import TEXT/EPUB/CBZ/PDF; cancel the picker/import and try a rejected file.
 3. Open details, inspect known metadata/rights, dismiss with Back, then open a book.
-4. Tap covers to resume; open actions by button/long press, inspect details and cancel/confirm removal. Clear History and confirm Library/progress/imported bytes remain.
-5. Choose System/Light/Dark, restart, and check bars with gesture/three-button navigation.
-6. Open an EPUB with a different reader appearance, then exit; the application theme returns.
-7. Read at a noninitial position, return and reopen; position/preferences remain intact.
-8. Rotate/resize and increase system font size; actions and lists remain reachable.
-9. Check EPUB2/EPUB3 declared covers and CBZ first-page artwork; TEXT/PDF/missing/rejected artwork uses readable typographic covers.
-10. Scroll a larger Library, switch History/Library, rotate/resize and resume; no position resets or layout jumps.
-11. On Desktop, resize across 840 dp, use Alt+1..4, Tab/Enter, right-click and Menu/Shift+F10; dismiss menus/details with Escape.
+4. Tap a Library cover for details, then Open/Continue. Cancel and confirm its Library removal; files, History and saved position remain.
+5. Long press a cover, toggle more covers, Select all and Clear. Exit with Back/Escape without losing scroll; cancel then confirm a batch and inspect retry feedback if storage fails.
+6. In History, tap a cover for details and the title/remaining row to resume. Check Today/Yesterday/older dates and actual page/progress summaries. Cancel/confirm the trailing trash action and Clear History; Library, files and saved position remain.
+7. Choose System/Light/Dark, restart, and check bars with gesture/three-button navigation.
+8. Open an EPUB with a different reader appearance, then exit; the application theme returns.
+9. Read at a noninitial position, return and reopen; position/preferences remain intact.
+10. Rotate/resize and increase system font size; actions and lists remain reachable.
+11. Check EPUB2/EPUB3 declared covers and CBZ first-page artwork; TEXT/PDF/missing/rejected artwork uses readable typographic covers.
+12. Scroll a larger Library, switch History/Library, rotate/resize and resume; no position resets or layout jumps.
+13. On Desktop, resize across 840 dp, use Alt+1..4, Tab/Enter, right-click and Menu/Shift+F10; dismiss menus/details with Escape.

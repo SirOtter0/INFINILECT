@@ -6,6 +6,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.infinilect.core.*
 
+internal data class BatchLibraryRemoval(val removed: Set<PublicationId>, val failed: Set<PublicationId>)
+
 internal data class CollectionList<T>(val entries: List<T> = emptyList(), val loading: Boolean = false, val failed: Boolean = false)
 internal data class ReaderLibraryState(val publication: PublicationSnapshot? = null, val inLibrary: Boolean? = null,
     val busy: Boolean = false, val failed: Boolean = false, val unavailable: Boolean = false)
@@ -46,6 +48,65 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
     val confirmClear = mutableConfirm.asStateFlow()
     private val mutableBusy = MutableStateFlow(false)
     val busy = mutableBusy.asStateFlow()
+    private val mutableSelection = MutableStateFlow<Set<PublicationId>>(emptySet())
+    val selection = mutableSelection.asStateFlow()
+    private val mutableBatchRemoval = MutableStateFlow<BatchLibraryRemoval?>(null)
+    val batchRemoval = mutableBatchRemoval.asStateFlow()
+    fun select(id: PublicationId) {
+        if (!closed && !busy.value && id in membership.value.saved && selection.value.size < 1000)
+            mutableSelection.value = selection.value + id
+    }
+    fun toggleSelection(id: PublicationId) {
+        if (closed || busy.value) return
+        if (id in selection.value) mutableSelection.value = selection.value - id else select(id)
+    }
+    fun selectAll() {
+        if (!closed && !busy.value) mutableSelection.value = library.value.entries.take(1000).map { it.publication.id }.toSet()
+    }
+    fun clearSelection() { mutableSelection.value = emptySet() }
+
+    /** One bounded sequential batch; only committed IDs disappear. Failed IDs stay selected.
+     * No source deletion, history mutation or progress write is part of this operation. */
+    fun removeSelectedLibrary(selected: Set<PublicationId> = selection.value): Job? {
+        if (closed || busy.value || libraryMutations.isNotEmpty()) return null
+        val ids = selected.intersect(membership.value.saved).take(1000).toSet()
+        if (ids.isEmpty()) return null
+        mutableBusy.value = true
+        mutableBatchRemoval.value = null
+        updateMembership(membership.value.copy(mutating = membership.value.mutating + ids))
+        val request = scope.launch(start = CoroutineStart.LAZY) {
+            val committed = mutableSetOf<PublicationId>()
+            val failed = mutableSetOf<PublicationId>()
+            try {
+                for (id in ids) {
+                    val result = safe { owner?.library?.remove(id) ?: LocalStoreResult.Unavailable }
+                    currentCoroutineContext().ensureActive()
+                    if (result is LocalStoreResult.Success) {
+                        committed += id
+                        libraryGeneration++; libraryRequest?.cancel()
+                        updateMembership(membership.value.copy(saved = membership.value.saved - id, loading = false))
+                        mutableSelection.value = selection.value - id
+                        removed(id)
+                    } else failed += id
+                }
+                mutableBatchRemoval.value = BatchLibraryRemoval(committed.toSet(), failed.toSet())
+                mutableError.value = if (failed.isEmpty()) null else
+                    "${committed.size} removed; ${failed.size} could not be removed. Remaining items are kept. Try again."
+            } finally {
+                mutableBusy.value = false
+                updateMembership(membership.value.copy(mutating = membership.value.mutating - ids))
+                if (committed.isNotEmpty()) owner?.changed()
+                if (!closed) refreshLibrary()
+            }
+        }
+        request.invokeOnCompletion {
+            // A cancelled parent can prevent even the lazy body/finally from starting.
+            mutableBusy.value = false
+            updateMembership(membership.value.copy(mutating = membership.value.mutating - ids))
+        }
+        request.start()
+        return request
+    }
     private var libraryRequest: Job? = null
     private var historyRequest: Job? = null
     private var libraryGeneration = 0L
@@ -82,7 +143,10 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
                 currentCoroutineContext().ensureActive()
                 if (generation != libraryGeneration) return@launch
                 mutableLibrary.value = when (result) {
-                    is LocalStoreResult.Success -> CollectionList(result.value)
+                    is LocalStoreResult.Success -> {
+                        mutableSelection.value = selection.value.intersect(result.value.map { it.publication.id }.toSet())
+                        CollectionList(result.value)
+                    }
                     else -> mutableLibrary.value.copy(loading=false,failed=true)
                 }
                 updateMembership(when (result) {
@@ -143,7 +207,7 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
         return mutateLibrary(id,null,remove=true)
     }
     private fun mutateLibrary(id: PublicationId, snapshot: PublicationSnapshot?, remove: Boolean): Job? {
-        if (closed || id in membership.value.mutating) return null
+        if (closed || busy.value || id in membership.value.mutating) return null
         if (reader.value.publication?.id == id) readerMutationFailed=false
         updateMembership(membership.value.copy(mutating=membership.value.mutating+id))
         // Install the job before starting it, including with an unconfined caller scope.
@@ -211,7 +275,7 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
         }
     }
     fun close() { if (!closed) {
-        closed=true; leftReader(); mutableConfirm.value=false; job.cancel()
+        closed=true; leftReader(); clearSelection(); mutableConfirm.value=false; mutableBusy.value=false; job.cancel()
         mutableLibrary.value=mutableLibrary.value.copy(loading=false)
         updateMembership(membership.value.copy(loading=false,mutating=emptySet()))
     } }

@@ -63,14 +63,16 @@ private fun CoverArtwork(publication: Publication, state: CoverState, modifier: 
 }
 
 @Composable
-internal fun CollectionPublication(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
-    history: Boolean, lastOpened: String? = null, enabled: Boolean = true,
-    open: () -> Unit, details: (PublicationFormat?) -> Unit, remove: () -> Unit) {
+internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
+    selected: Boolean, selecting: Boolean, enabled: Boolean,
+    open: () -> Unit, details: (PublicationFormat?) -> Unit, select: () -> Unit, toggle: () -> Unit, remove: () -> Unit) {
     val cover = coverState(publication.id, covers)
     val showDetails = { details(cover.format) }
     var menu by remember(publication.id) { mutableStateOf(false) }
-    val interaction = Modifier.combinedClickable(onClick = open, onLongClick = { menu = true },
-        onClickLabel = "Continue reading", onLongClickLabel = "Publication actions")
+    val interaction = Modifier.combinedClickable(
+        onClick = { if (selecting) toggle() else showDetails() },
+        onLongClick = select, onClickLabel = if (selecting) "Toggle selection" else "Publication details",
+        onLongClickLabel = "Select publication")
         .pointerInput(publication.id) {
             awaitPointerEventScope {
                 while (true) {
@@ -85,55 +87,91 @@ internal fun CollectionPublication(publication: Publication, covers: Publication
         .onPreviewKeyEvent {
             if (it.type == KeyEventType.KeyDown && (it.key == Key.Menu || it.key == Key.F10 && it.isShiftPressed)) { menu = true; true } else false
         }.semantics {
-            customActions = listOf(CustomAccessibilityAction("Publication details") { showDetails(); true },
-                CustomAccessibilityAction(if (history) "Remove from History" else "Remove from Library") { if (enabled) remove(); enabled })
+            this.selected = selected
+            contentDescription = "Cover for ${publication.title}"
+            stateDescription = listOfNotNull(if (selected) "Selected" else if (selecting) "Not selected" else null,
+                progress?.let { "${(it.progression * 100).toInt()}% read" }).joinToString(" · ")
+            customActions = listOf(CustomAccessibilityAction(if (selected) "Deselect publication" else "Select publication") { toggle(); true },
+                CustomAccessibilityAction("Publication details") { showDetails(); true },
+                CustomAccessibilityAction("Continue reading") { open(); true })
         }
     Surface(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).then(interaction), color = MaterialTheme.colors.surface) {
-        if (history) Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            CoverArtwork(publication, cover, Modifier.width(56.dp).height(84.dp).clip(MaterialTheme.shapes.small), compact = true)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(publication.title, style = MaterialTheme.typography.subtitle1, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "), style = MaterialTheme.typography.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                lastOpened?.let { Text(it, style = MaterialTheme.typography.caption) }
-                progress?.let { Text("${(it.progression * 100).toInt()}% read", style = MaterialTheme.typography.caption) }
-                TextButton(open, Modifier.heightIn(min = 48.dp)) { Text("Continue reading") }
-            }
-            PublicationMenu(publication.title, history, enabled, menu, { menu = it }, open, showDetails, remove)
-        } else Box(Modifier.aspectRatio(2f / 3f)) {
+        Box(Modifier.aspectRatio(2f / 3f)) {
             CoverArtwork(publication, cover, Modifier.fillMaxSize())
             Text(publication.title, color = Color.White, style = MaterialTheme.typography.subtitle2, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = COVER_TITLE_MIN_SCRIM), Color.Black.copy(alpha = .94f))))
                     .padding(12.dp, 12.dp, 12.dp, 16.dp))
-            cover.format?.let { Text(it.name, color = Color.White, style = MaterialTheme.typography.overline,
-                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).background(Color.Black.copy(alpha = .72f), MaterialTheme.shapes.small).padding(4.dp)) }
-            Box(Modifier.align(Alignment.TopEnd)) { PublicationMenu(publication.title, history, enabled, menu, { menu = it }, open, showDetails, remove) }
             progress?.let { LinearProgressIndicator(it.progression.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
                 color = Color(0xffa8e6d5), backgroundColor = Color.Black.copy(alpha = .5f)) }
+            if (selected) {
+                Box(Modifier.fillMaxSize().border(3.dp, MaterialTheme.colors.primary, MaterialTheme.shapes.small))
+                Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp).background(MaterialTheme.colors.primary, MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
+                    Text("✓", color = MaterialTheme.colors.onPrimary, modifier = Modifier.clearAndSetSemantics {})
+                }
+            }
+            // Secondary-pointer/keyboard menu is available without permanent cover chrome.
+            Box(Modifier.align(Alignment.TopEnd)) {
+                CoverContextMenu(menu, { menu = false }, enabled, select, open, showDetails, remove)
+            }
+        }
+    }
+}
+
+internal fun historyPosition(progress: ReadingProgress?): String? = progress?.let {
+    val location = when (val locator = it.locator) {
+        is ReadingLocator.Page -> "Page ${locator.pageIndex + 1} · "
+        // No chapter label/ordinal is held in the persisted EPUB locator; never invent one.
+        else -> ""
+    }
+    "$location${(it.progression * 100).toInt()}% read"
+}
+
+@Composable
+internal fun HistoryPublication(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
+    enabled: Boolean, open: () -> Unit, details: (PublicationFormat?) -> Unit, remove: () -> Unit) {
+    val cover = coverState(publication.id, covers)
+    Row(Modifier.fillMaxWidth().heightIn(min = 88.dp).clickable(onClickLabel = "Continue reading", onClick = open)
+        .semantics { contentDescription = "Resume ${publication.title}" }
+        .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.width(48.dp).height(72.dp).clip(MaterialTheme.shapes.small)
+            .clickable(onClickLabel = "Publication details", onClick = { details(cover.format) })
+            .semantics { contentDescription = "Details for ${publication.title}" }) {
+            CoverArtwork(publication, cover, Modifier.fillMaxSize(), compact = true)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(publication.title, style = MaterialTheme.typography.subtitle2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "), style = MaterialTheme.typography.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            historyPosition(progress)?.let { Text(it, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = .75f)) }
+        }
+        IconButton(remove, Modifier.size(48.dp).semantics { contentDescription = "Remove ${publication.title} from History" }, enabled = enabled) {
+            val color = MaterialTheme.colors.onSurface.copy(alpha = .75f)
+            Canvas(Modifier.size(22.dp).clearAndSetSemantics {}) {
+                val stroke = 1.5.dp.toPx()
+                drawLine(color, androidx.compose.ui.geometry.Offset(size.width*.15f,size.height*.25f), androidx.compose.ui.geometry.Offset(size.width*.85f,size.height*.25f), stroke)
+                drawRect(color, androidx.compose.ui.geometry.Offset(size.width*.27f,size.height*.3f), androidx.compose.ui.geometry.Size(size.width*.46f,size.height*.56f), style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                drawLine(color, androidx.compose.ui.geometry.Offset(size.width*.35f,size.height*.12f), androidx.compose.ui.geometry.Offset(size.width*.65f,size.height*.12f), stroke)
+            }
         }
     }
 }
 
 @Composable
-private fun PublicationMenu(title: String, history: Boolean, enabled: Boolean, expanded: Boolean,
-    expand: (Boolean) -> Unit, open: () -> Unit, details: () -> Unit, remove: () -> Unit) {
+internal fun DetailsCover(publication: Publication, covers: PublicationCovers?) {
+    CoverArtwork(publication, coverState(publication.id, covers), Modifier.size(96.dp, 144.dp).clip(MaterialTheme.shapes.small))
+}
+
+@Composable
+private fun CoverContextMenu(expanded: Boolean, dismiss: () -> Unit, enabled: Boolean,
+    select: () -> Unit, open: () -> Unit, details: () -> Unit, remove: () -> Unit) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(expanded) {
-        if (expanded) { withFrameNanos {}; focus.requestFocus() }
-    }
-    Box {
-        IconButton({ expand(!expanded) }, Modifier.size(48.dp).semantics { contentDescription = "Actions for $title" }) {
-            // A small scrim keeps the action discoverable over bright artwork in either theme.
-            Box(Modifier.size(32.dp).background(Color.Black.copy(alpha = .65f), MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
-                Text("⋮", color = Color.White, style = MaterialTheme.typography.h6, modifier = Modifier.clearAndSetSemantics {})
-            }
-        }
-        DropdownMenu(expanded, { expand(false) }, modifier = Modifier.onPreviewKeyEvent {
-            if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { expand(false); true } else false
-        }, properties = PopupProperties(focusable = true)) {
-            DropdownMenuItem({ expand(false); open() }, Modifier.focusRequester(focus)) { Text("Continue reading") }
-            DropdownMenuItem({ expand(false); details() }, Modifier.semantics { contentDescription = "Details for $title" }) { Text("Publication details") }
-            DropdownMenuItem({ expand(false); remove() }, enabled = enabled) { Text(if (history) "Remove from History" else "Remove from Library") }
-        }
+    LaunchedEffect(expanded) { if (expanded) { withFrameNanos {}; focus.requestFocus() } }
+    DropdownMenu(expanded, dismiss, modifier = Modifier.onPreviewKeyEvent {
+        if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { dismiss(); true } else false
+    }, properties = PopupProperties(focusable = true)) {
+        DropdownMenuItem({ dismiss(); select() }, Modifier.focusRequester(focus), enabled = enabled) { Text("Select publication") }
+        DropdownMenuItem({ dismiss(); details() }) { Text("Publication details") }
+        DropdownMenuItem({ dismiss(); open() }) { Text("Continue reading") }
+        DropdownMenuItem({ dismiss(); remove() }, enabled = enabled) { Text("Remove from Library") }
     }
 }

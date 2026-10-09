@@ -56,11 +56,13 @@ internal class ApplicationSession(
     }
     fun navigate(destination: Destination) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
+        if (destination != mutableDestination.value) collections.clearSelection()
         mutableDestination.value=destination
         when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); else -> Unit }
     }
     fun openSaved(snapshot: PublicationSnapshot, pdfRecreationIndex: Int? = null) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
+        collections.clearSelection()
         observer?.cancel()
         val option=sources.options.firstOrNull { it.source.id==snapshot.id.sourceId }
         // Resources are deliberately absent. Even valid stored rights never authorize bytes.
@@ -94,6 +96,7 @@ internal class ApplicationSession(
     fun back() {
         if(closed) return
         if(importing.value.busy) { cancelImport(); return }
+        if (opening.value is OpenPublicationState.Idle && collections.selection.value.isNotEmpty()) { collections.clearSelection(); return }
         if(opening.value !is OpenPublicationState.Idle) {
             (savedReader ?: searchSession.value).back(); savedReader?.close(); savedReader=null
             collections.leftReader(); observe(searchSession.value)

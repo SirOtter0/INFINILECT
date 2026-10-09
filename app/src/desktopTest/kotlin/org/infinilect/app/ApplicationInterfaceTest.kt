@@ -21,9 +21,9 @@ import kotlin.test.*
  * This is UI/semantics evidence, not physical Android or native Desktop acceptance. */
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class ApplicationInterfaceTest {
-    private class Source : PublicationSource {
+    private class Source(count: Int = 30) : PublicationSource {
         override val id = SourceId("original-ui-fixture")
-        val books = List(30) { i ->
+        val books = List(count) { i ->
             val id = PublicationId(id, "book-$i")
             Publication(id, "Original publication $i", PublicationType.BOOK, listOf("Fixture author $i"),
                 listOf(PublicationResource(id,"text",PublicationFormat.TEXT,"text/plain")), listOf("en"), rights = "Original test material")
@@ -47,7 +47,7 @@ class ApplicationInterfaceTest {
     }
     private inner class Fixture(val scope: TestScope, width: Int = 360, val height: Int = 640, fontScale: Float = 1f, count: Int = 3, artwork: Boolean = false) : AutoCloseable {
         val dispatcher = StandardTestDispatcher(scope.testScheduler)
-        val source = Source(); val data = FakeCollections()
+        val source = Source(maxOf(30, count)); val data = FakeCollections()
         val collections = ApplicationCollections(data.library,data.history,dispatcher)
         val settings = ApplicationAppearancePreferences(object : ApplicationAppearanceStore {
             override suspend fun load() = ApplicationThemeMode.SYSTEM
@@ -170,7 +170,7 @@ class ApplicationInterfaceTest {
     }
     @Test fun detailsUseKnownMetadataDoNotAcquireAndDismissWithoutLosingScreen() = runTest {
         Fixture(this).use { f ->
-            f.nav(Destination.LIBRARY);f.click("Actions for Original publication 0");f.click("Details for Original publication 0")
+            f.nav(Destination.LIBRARY);f.click("Original publication 0")
             assertTrue(f.visible("Publication details"));assertTrue(f.visible("Fixture author 0"))
             assertTrue(f.visible("Format checked when opening"));assertTrue(f.visible("Original test material"))
             assertEquals(0,f.source.metadataCalls);assertEquals(0,f.source.acquisitions)
@@ -231,7 +231,7 @@ class ApplicationInterfaceTest {
             f.scene.sendKeyEvent(KeyEvent(Key.Four,KeyEventType.KeyDown,isAltPressed=true));f.pump()
             assertEquals(Destination.SETTINGS,f.app.destination.value)
             f.scene.sendKeyEvent(KeyEvent(Key.One,KeyEventType.KeyDown,isAltPressed=true));f.pump();assertEquals(Destination.LIBRARY,f.app.destination.value)
-            f.click("Actions for Original publication 0");f.click("Details for Original publication 0")
+            f.click("Original publication 0")
             f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.pump();assertFalse(f.visible("Publication details"))
         }
     }
@@ -250,6 +250,7 @@ class ApplicationInterfaceTest {
         val directory=System.getenv("INFINILECT_UI_PREVIEW_DIRECTORY")?.let { java.nio.file.Path.of(it) }
         for ((width,name,dark) in listOf(Triple(390,"library-light-compact.png",false),Triple(1280,"library-dark-wide.png",true))) {
             Fixture(this,width,800,count=12,artwork=true).use { f ->
+                f.progress.submit(ReadingProgress(ReadingProgressId(f.source.books[0].id,"text",PublicationFormat.TEXT),ReadingLocator.Text(3,10),.3,2));f.pump()
                 f.nav(Destination.LIBRARY)
                 if (dark) { f.settings.change(ApplicationThemeMode.DARK);f.pump() }
                 assertTrue(f.visible("Original publication 0"))
@@ -273,12 +274,14 @@ class ApplicationInterfaceTest {
             assertEquals(a.top,b.top);assertTrue(b.left>=a.right)
             assertEquals(2f/3f,a.width/a.height,.02f)
             assertFalse(f.visible("Open"));assertFalse(f.visible("Remove"));assertFalse(f.visible("Publication details"))
-            assertTrue(f.visible("Actions for Original publication 0"))
+            assertFalse(f.visible("Actions for Original publication 0"));assertFalse(f.visible("EPUB"));assertFalse(f.visible("CBZ"))
         }
     }
-    @Test fun primaryCoverTapResumesAndDoesNotRequireDetails() = runTest {
+    @Test fun primaryCoverTapOpensDetailsAndReadingRequiresExplicitAction() = runTest {
         Fixture(this).use { f ->
             f.nav(Destination.LIBRARY);f.click("Original publication 0")
+            assertTrue(f.visible("Publication details"));assertIs<OpenPublicationState.Idle>(f.app.opening.value)
+            assertEquals(0,f.source.acquisitions);f.click("Open")
             assertIs<OpenPublicationState.Ready>(f.app.opening.value);assertEquals(1,f.source.acquisitions)
         }
     }
@@ -287,8 +290,9 @@ class ApplicationInterfaceTest {
             f.nav(Destination.LIBRARY)
             val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
             assertTrue(tile.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump()
-            assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
-            f.click("Details for Original publication 0");f.click("Close")
+            assertTrue(f.visible("1 selected"));assertEquals(0,f.source.acquisitions)
+            assertEquals(setOf(f.source.books[0].id),f.app.collections.selection.value)
+            assertNotNull(f.back).invoke();f.pump();assertEquals(Destination.LIBRARY,f.app.destination.value)
             val action=f.nodes().flatMap {it.config.getOrNull(SemanticsActions.CustomActions).orEmpty()}.first {it.label=="Publication details"}
             assertTrue(action.action());f.pump();assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
         }
@@ -297,10 +301,10 @@ class ApplicationInterfaceTest {
         Fixture(this).use { f ->
             val record=ReadingProgress(ReadingProgressId(f.source.books[0].id,"text",PublicationFormat.TEXT),ReadingLocator.Text(8,10),.8,1)
             f.progress.submit(record);f.pump();f.nav(Destination.LIBRARY)
-            f.click("Actions for Original publication 0");f.click("Remove from Library")
+            f.click("Original publication 0");f.click("Remove from Library")
             assertTrue(f.visible("Remove from Library?"));assertEquals(3,f.data.saved.size)
             f.click("Cancel");assertEquals(3,f.data.saved.size)
-            f.click("Actions for Original publication 0");f.click("Remove from Library");f.click("Remove")
+            f.click("Original publication 0");f.click("Remove from Library");f.click("Remove")
             assertEquals(2,f.data.saved.size);assertEquals(3,f.source.books.take(3).size);assertEquals(record,f.saved.last())
         }
     }
@@ -308,7 +312,7 @@ class ApplicationInterfaceTest {
         Fixture(this).use { f ->
             f.nav(Destination.HISTORY)
             val titles=(0..2).map {i->f.nodes().first {f.has(it,"Original publication $i")}.boundsInRoot.top}
-            assertTrue(titles[2]<titles[1]);assertTrue(titles[1]<titles[0]);assertTrue(f.visible("Continue reading"))
+            assertTrue(titles[2]<titles[1]);assertTrue(titles[1]<titles[0]);assertFalse(f.visible("Continue reading"))
             f.click("Original publication 2");assertIs<OpenPublicationState.Ready>(f.app.opening.value)
             assertEquals(f.source.books[2].id,assertNotNull(assertIs<OpenPublicationState.Ready>(f.app.opening.value).publication).id)
         }
@@ -316,7 +320,7 @@ class ApplicationInterfaceTest {
     @Test fun artworkLoadingIsLazyAndSharedAcrossLibraryHistory() = runTest {
         Fixture(this,count=30,artwork=true).use { f ->
             f.nav(Destination.LIBRARY);val initially=f.coverLoads
-            assertTrue(initially in 1..23);assertTrue(f.visible("EPUB"));assertTrue(f.visible("TEXT"))
+            assertTrue(initially in 1..23);assertFalse(f.visible("EPUB"));assertFalse(f.visible("TEXT"))
             f.nav(Destination.HISTORY);assertTrue(f.coverLoads<30)
             assertEquals(0,f.source.acquisitions)
         }
@@ -351,6 +355,11 @@ class ApplicationInterfaceTest {
 
     @Test fun historyPreviewContainsOnlyOriginalFixtureArtwork() = runTest {
         Fixture(this,360,800,count=8,artwork=true).use {f ->
+            val today=java.time.Instant.ofEpochMilli(kotlin.time.Clock.System.now().toEpochMilliseconds()).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            f.data.opened.entries.toList().forEachIndexed { i, (id, entry) ->
+                val days=(7-i)/2L
+                f.data.opened[id]=entry.copy(lastOpenedAtEpochMillis=today.minusDays(days).atTime(12,0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()+i)
+            }
             f.nav(Destination.HISTORY)
             System.getenv("INFINILECT_UI_PREVIEW_DIRECTORY")?.let { path ->
                 val directory=java.nio.file.Path.of(path);require(directory.isAbsolute&&!directory.startsWith(java.nio.file.Path.of("/workspace/INFINILECT")))
@@ -376,4 +385,141 @@ class ApplicationInterfaceTest {
             }
         }
     }
+    @Test fun longPressSelectionSupportsTapToggleSelectAllAndClearWithoutOpening() = runTest {
+        Fixture(this).use { f ->
+            f.nav(Destination.LIBRARY)
+            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            assertTrue(tile.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump()
+            assertTrue(f.visible("1 selected"));assertEquals(setOf(f.source.books[0].id),f.app.collections.selection.value)
+            f.click("Original publication 1");assertTrue(f.visible("2 selected"))
+            f.click("Original publication 0");assertEquals(setOf(f.source.books[1].id),f.app.collections.selection.value)
+            f.click("Select all");assertTrue(f.visible("3 selected"))
+            assertIs<OpenPublicationState.Idle>(f.app.opening.value);assertEquals(0,f.source.acquisitions)
+            assertFalse(f.visible("Mark as read"));assertFalse(f.visible("Mark as unread"))
+            f.click("Clear selection");assertTrue(f.app.collections.selection.value.isEmpty());assertFalse(f.visible("3 selected"))
+        }
+    }
+    @Test fun selectionBackAndEscapeKeepGridPositionProgressAndDestination() = runTest {
+        Fixture(this,1280,800,count=30).use { f ->
+            f.nav(Destination.LIBRARY);f.reach(20)
+            fun offset()=f.nodes().first {it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)!=null}.config[SemanticsProperties.VerticalScrollAxisRange].value()
+            val before=offset();val records=f.saved.toList()
+            fun selectVisible() { assertTrue(f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump() }
+            selectVisible();assertNotNull(f.back).invoke();f.pump()
+            assertTrue(f.app.collections.selection.value.isEmpty());assertEquals(Destination.LIBRARY,f.app.destination.value);assertEquals(before,offset())
+            selectVisible();f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump()
+            assertTrue(f.app.collections.selection.value.isEmpty());assertEquals(before,offset());assertEquals(records,f.saved)
+        }
+    }
+    @Test fun batchConfirmationCancelAndCommitKeepHistoryFilesAndSemanticProgress() = runTest {
+        Fixture(this,artwork=true).use { f ->
+            f.nav(Destination.LIBRARY);val records=f.saved.toList()
+            f.app.collections.select(f.source.books[0].id);f.pump();f.click("Select all");f.click("Remove from Library")
+            assertTrue(f.visible("Remove 3 from Library?"));assertEquals(3,f.data.saved.size)
+            f.click("Cancel");assertEquals(3,f.data.saved.size);assertTrue(f.visible("3 selected"))
+            f.click("Remove from Library");f.click("Remove")
+            assertTrue(f.data.saved.isEmpty());assertEquals(3,f.data.opened.size);assertEquals(records,f.saved)
+            assertEquals(30,f.source.books.size);assertTrue(f.visible("Your Library is empty"));assertEquals(0,f.source.acquisitions)
+        }
+    }
+    @Test fun partialBatchFailureKeepsFailedCoverSelectedAndRetryAvailable() = runTest {
+        Fixture(this).use { f ->
+            f.nav(Destination.LIBRARY);f.data.failedLibraryRemovals+=f.source.books[1].id
+            f.app.collections.selectAll();f.pump();f.click("Remove from Library");f.click("Remove")
+            assertEquals(setOf(f.source.books[1].id),f.data.saved.keys);assertTrue(f.visible("1 selected"))
+            assertTrue(f.visible("2 removed; 1 could not be removed. Remaining items are kept. Try again."))
+            f.data.failedLibraryRemovals.clear();f.click("Remove from Library");f.click("Remove")
+            assertTrue(f.data.saved.isEmpty());assertEquals(3,f.data.opened.size)
+        }
+    }
+    @Test fun historyCoverOpensDetailsAndCanRestoreLibraryWithoutDuplicatingPublication() = runTest {
+        Fixture(this).use { f ->
+            val id=f.source.books[2].id;f.data.saved.remove(id);f.app.collections.refreshLibrary();f.pump();f.nav(Destination.HISTORY)
+            f.click("Details for Original publication 2");assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
+            assertTrue(f.visible("Add to Library"));f.click("Add to Library");assertEquals(3,f.data.saved.size)
+            assertEquals(1,f.data.saved.values.count {it.publication.id==id});assertTrue(f.visible("Remove from Library"))
+            f.click("Close");f.click("Original publication 2");assertIs<OpenPublicationState.Ready>(f.app.opening.value)
+            assertEquals(id,assertNotNull(assertIs<OpenPublicationState.Ready>(f.app.opening.value).publication).id)
+        }
+    }
+    @Test fun historyDeleteIsConfirmedAndKeepsLibraryAndSavedLocator() = runTest {
+        Fixture(this,artwork=true).use { f ->
+            f.nav(Destination.HISTORY);val records=f.saved.toList();val id=f.source.books[2].id
+            f.click("Remove Original publication 2 from History");assertTrue(f.visible("Remove from History?"));assertEquals(3,f.data.opened.size)
+            f.click("Cancel");assertEquals(3,f.data.opened.size)
+            f.click("Remove Original publication 2 from History");f.click("Remove")
+            assertFalse(id in f.data.opened);assertTrue(id in f.data.saved);assertEquals(records,f.saved)
+            assertEquals(0,f.source.acquisitions)
+        }
+    }
+    @Test fun historyGroupsActualDatesAndDoesNotInventEpubPages() = runTest {
+        Fixture(this).use { f ->
+            val zone=java.time.ZoneId.systemDefault();val now=java.time.Instant.ofEpochMilli(kotlin.time.Clock.System.now().toEpochMilliseconds())
+            val today=now.atZone(zone).toLocalDate()
+            listOf(0L,1L,4L).forEachIndexed { i,days ->
+                val p=PublicationSnapshot.from(f.source.books[i]);f.data.opened[p.id]=HistoryEntry(p,today.minusDays(days).atTime(12,0).atZone(zone).toInstant().toEpochMilli())
+            }
+            f.nav(Destination.HISTORY);assertTrue(f.visible("Today"));assertTrue(f.visible("Yesterday"))
+            assertEquals(f.source.books.map {it.id}.take(3),f.app.collections.history.value.entries.map {it.publication.id})
+            assertFalse(f.nodes().any {it.config.getOrNull(SemanticsProperties.Text).orEmpty().any {t->t.text.startsWith("Page ") || t.text.startsWith("Chapter ")}})
+        }
+    }
+    @Test fun selectedCoversHaveAccessibleStateActionsAndBoundedToolbarOnSmallDarkScreen() = runTest {
+        Fixture(this,360,480,1.6f,count=12).use { f ->
+            f.settings.change(ApplicationThemeMode.DARK);f.pump();f.nav(Destination.LIBRARY)
+            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            val select=assertNotNull(tile.config.getOrNull(SemanticsActions.CustomActions)).first {it.label=="Select publication"}
+            assertTrue(select.action());f.pump()
+            val selected=f.nodes().first {it.config.getOrNull(SemanticsProperties.Selected)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            assertTrue(selected.config[SemanticsProperties.StateDescription].contains("Selected"))
+            assertTrue(f.visible("1 selected"));assertTrue(assertNotNull(f.appAppearance).dark)
+            val nav=f.nodes().first {f.has(it,"Navigate to Settings")};assertTrue(nav.boundsInRoot.bottom<=480);assertTrue(nav.boundsInRoot.height>=48)
+            assertTrue(f.nodes().any {it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)!=null && it.boundsInRoot.height>0})
+        }
+    }
+    @Test fun keyboardContextSelectionAndEscapeAreEquivalentToLongPress() = runTest {
+        Fixture(this,1280,800).use { f ->
+            f.nav(Destination.LIBRARY)
+            repeat(20) {
+                if(f.nodes().none {it.config.getOrNull(SemanticsProperties.Focused)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null}) {
+                    f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyUp));f.pump()
+                }
+            }
+            f.scene.sendKeyEvent(KeyEvent(Key.F10,KeyEventType.KeyDown,isShiftPressed=true));f.pump();f.click("Select publication")
+            assertTrue(f.visible("1 selected"));assertEquals(0,f.source.acquisitions)
+            f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump()
+            assertTrue(f.app.collections.selection.value.isEmpty());assertEquals(Destination.LIBRARY,f.app.destination.value)
+        }
+    }
+    @Test fun selectionAndDetailsPreviewsUseOnlyOriginalArtwork() = runTest {
+        Fixture(this,390,800,count=12,artwork=true).use { f ->
+            f.nav(Destination.LIBRARY);f.app.collections.select(f.source.books[0].id);f.app.collections.select(f.source.books[3].id);f.pump()
+            fun preview(name: String) {
+                System.getenv("INFINILECT_UI_PREVIEW_DIRECTORY")?.let { path ->
+                    val directory=java.nio.file.Path.of(path);require(directory.isAbsolute&&!directory.startsWith(java.nio.file.Path.of("/workspace/INFINILECT")))
+                    java.nio.file.Files.createDirectories(directory)
+                    f.scene.render(testScheduler.currentTime*1_000_000).use { image ->
+                        val bytes=assertNotNull(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)).use {it.bytes}
+                        java.nio.file.Files.write(directory.resolve(name),bytes)
+                    }
+                }
+            }
+            assertTrue(f.visible("2 selected"));preview("library-selection.png")
+            f.click("Clear selection");f.click("Original publication 0");assertTrue(f.visible("Open"));preview("publication-details.png")
+        }
+    }
+
+    @Test fun thousandEntryLibraryStaysLazyThroughSelectionAndDistantScrolling() = runTest {
+        Fixture(this,count=1000,artwork=true).use { f ->
+            f.nav(Destination.LIBRARY);assertTrue(f.coverLoads in 1..23)
+            f.app.collections.selectAll();f.pump();assertTrue(f.visible("1000 selected"))
+            assertEquals(1000,f.app.collections.selection.value.size)
+            assertTrue(f.coverLoads<30);assertTrue(f.covers.retainedEntries()<=24)
+            f.click("Clear selection");f.reach(950)
+            assertTrue(f.coverLoads<60);assertTrue(f.covers.retainedEntries()<=24)
+            assertEquals(0,f.source.acquisitions);assertEquals(0,f.source.metadataCalls)
+            assertEquals(1000,f.data.saved.size)
+        }
+    }
+
 }

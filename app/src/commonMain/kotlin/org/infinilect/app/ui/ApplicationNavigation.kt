@@ -29,10 +29,11 @@ internal fun applicationNavigationWide(width: Float) = width >= 840f
  * Alt+1..4 select the same destinations; tab/enter use standard selectable semantics. */
 @Composable
 internal fun ApplicationShell(destination: Destination, busy: Boolean, navigate: (Destination) -> Unit,
-    importAction: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
+    importAction: (@Composable () -> Unit)? = null, onEscape: () -> Boolean = { false }, content: @Composable () -> Unit) {
     val rootFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { rootFocus.requestFocus() }
     BoxWithConstraints(Modifier.fillMaxSize().focusRequester(rootFocus).onPreviewKeyEvent {
+        if (it.type == KeyEventType.KeyDown && it.key == Key.Escape && onEscape()) return@onPreviewKeyEvent true
         val target = when (it.key) { Key.One -> Destination.LIBRARY; Key.Two -> Destination.HISTORY; Key.Three -> Destination.SEARCH; Key.Four -> Destination.SETTINGS; else -> null }
         if (!busy && it.type == KeyEventType.KeyDown && it.isAltPressed && target != null) { navigate(target); true } else false
     }.focusable()) {

@@ -69,7 +69,7 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
-    progress: ReadingProgress? = null, close: () -> Unit, actions: @Composable () -> Unit) {
+    progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null, actions: @Composable () -> Unit) {
     val focus = remember { FocusRequester() }
     Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -81,8 +81,14 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         Text("Publication details", style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f).semantics { heading() })
                         TextButton(close, Modifier.focusRequester(focus).heightIn(min = 48.dp)) { Text("Close") }
                     }
-                    Text(publication.title, style = MaterialTheme.typography.h4)
-                    if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        cover?.invoke()
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(publication.title, style = MaterialTheme.typography.h5)
+                            if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
+                        }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
                     DetailLine("Source", source)
                     DetailLine("Format", publicationFormat(formats))
                     if (publication.languages.isNotEmpty()) DetailLine("Languages", publication.languages.joinToString(", "))
@@ -90,7 +96,6 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                     publication.rights?.let { DetailLine("Source rights statement", it) }
                     publication.sourceUrl?.let { DetailLine("Source reference", it) }
                     Text("Availability does not establish rights in every country. Saved metadata does not authorize a download; opening still checks the source.", style = MaterialTheme.typography.caption)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
                 }
             }
         }
