@@ -4,8 +4,9 @@ package org.infinilect.app.reader.epub
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -15,8 +16,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -34,10 +40,19 @@ import kotlin.math.ceil
 
 private const val EPUB_LOADING_DELAY_MILLIS = 180L
 
+private enum class EpubKeyboardStep { LINE_UP, LINE_DOWN, VIEWPORT_UP, VIEWPORT_DOWN }
+/** One presentation callback, not another position owner or a navigation queue. */
+private class EpubKeyboardScroll { var request: ((EpubKeyboardStep) -> Unit)? = null }
+
 @Composable
-internal fun EpubReader(reader: EpubReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String) {
+internal fun EpubReader(
+    reader: EpubReaderController, saveFailed: Boolean, onBack: () -> Unit, backLabel: String,
+    backHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> },
+    publicationActions: (@Composable () -> Unit)? = null,
+    notices: (@Composable () -> Unit)? = null,
+) {
     DisposableEffect(reader) {
-        // A new presentation restores the controller's live locator, not chapter entry.
+        // Presentation replacement restores the live semantic locator, never chapter entry.
         reader.presentationChanged()
         onDispose { reader.flush() }
     }
@@ -53,108 +68,154 @@ internal fun EpubReader(reader: EpubReaderController, saveFailed: Boolean, onBac
     val settings by reader.settings.collectAsState()
     val settingsSaveFailed by reader.settingsSaveFailed.collectAsState()
     val dark = when (settings.theme) { EpubReadingTheme.SYSTEM -> isSystemInDarkTheme(); EpubReadingTheme.LIGHT -> false; EpubReadingTheme.DARK -> true }
-    var showToc by remember(reader) { mutableStateOf(false) }
-    var showSettings by remember(reader) { mutableStateOf(false) }
+    val controls = remember(reader) { EpubReaderControls() }
+    val readingFocus = remember(reader) { FocusRequester() }
+    val keyboardScroll = remember(reader) { EpubKeyboardScroll() }
+    var readingHasFocus by remember(reader) { mutableStateOf(false) }
+    val contentsFocus = remember(reader) { FocusRequester() }
+    val settingsFocus = remember(reader) { FocusRequester() }
+    var returnFocus by remember(reader) { mutableStateOf<EpubReaderPanel?>(null) }
+    val closePanel = { returnFocus = controls.panel; controls.closePanel() }
+    LaunchedEffect(controls.panel) {
+        if (controls.panel == null) {
+            when (returnFocus) { EpubReaderPanel.CONTENTS -> contentsFocus.requestFocus(); EpubReaderPanel.SETTINGS -> settingsFocus.requestFocus(); null -> Unit }
+            returnFocus = null
+        }
+    }
+    backHandler(controls.visible || controls.panel != null) {
+        if (controls.panel != null) closePanel() else controls.dismiss()
+    }
+    val current = (state as? EpubReaderState.Ready) ?: displayed
+    val error = (state as? EpubReaderState.Error)?.message ?: current?.error
+    LaunchedEffect(reader, current?.presentation, controls.visible) {
+        if (current != null) {
+            withFrameNanos { }
+            if (controls.panel == null && !readingHasFocus) readingFocus.requestFocus()
+        }
+    }
     val density = LocalDensity.current
     var previousLayout by remember(reader) { mutableStateOf<Triple<Int, Float, Float>?>(null) }
-    // Density/font-scale can change without changing the outer pixel dimensions.
     LaunchedEffect(reader, density.density, density.fontScale) {
         previousLayout?.let { previous ->
             val layout = Triple(previous.first, density.density, density.fontScale)
             if (previous != layout) { reader.presentationChanged(); previousLayout = layout }
         }
     }
-    MaterialTheme(colors = if (dark) darkColors() else lightColors()) {
+    MaterialTheme(colors = epubReaderColors(dark)) {
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(8.dp).onSizeChanged {
+            BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().onSizeChanged {
                 val layout = Triple(it.width, density.density, density.fontScale)
                 if (previousLayout != null && previousLayout != layout) reader.presentationChanged()
                 previousLayout = layout
-            }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(reader.document.metadata.title, style = MaterialTheme.typography.h6, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Button(onClick = onBack, modifier = Modifier.weight(1f)) { Text(backLabel, maxLines = 2) }
-                    Button(onClick = { showToc = true }, modifier = Modifier.weight(1f)) { Text("Contents") }
-                    Button(onClick = { showSettings = true }, modifier = Modifier.weight(1f)) { Text("Settings") }
-                }
-                if (saveFailed) Text("Reading position could not be saved on this device.", color = MaterialTheme.colors.error)
-                if (settingsSaveFailed) Text("Reading settings could not be saved on this device.", color = MaterialTheme.colors.error)
-                val current = (state as? EpubReaderState.Ready) ?: displayed
-                val error = (state as? EpubReaderState.Error)?.message ?: current?.error
-                if (current == null) {
-                    if (error == null) CircularProgressIndicator()
-                    else Text(error, color = MaterialTheme.colors.error)
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TextButton(enabled = reader.canPrevious && !loading, onClick = reader::previous) { Text("Previous") }
-                        Text("${current.spineIndex + 1} / ${reader.document.spine.size} · ${(progression * 100).toInt().coerceIn(0, 100)}%", modifier = Modifier.weight(1f))
-                        TextButton(enabled = reader.canNext && !loading, onClick = reader::next) { Text("Next") }
+            }.epubReaderTap(controls).onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) false
+                else when {
+                    event.key == Key.F10 -> { controls.toggle(); true }
+                    event.key == Key.Escape -> {
+                        if (controls.panel != null) closePanel() else if (!controls.dismiss()) onBack()
+                        true
                     }
-                    error?.let {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(it, color = MaterialTheme.colors.error, modifier = Modifier.weight(1f))
-                            if (reader.canRetry) TextButton(onClick = reader::retry) { Text("Retry") }
+                    controls.panel == null && event.isAltPressed && event.key == Key.DirectionLeft -> {
+                        if (!loading) reader.previous(); true
+                    }
+                    controls.panel == null && event.isAltPressed && event.key == Key.DirectionRight -> {
+                        if (!loading) reader.next(); true
+                    }
+                    controls.panel == null && !event.isAltPressed && !event.isCtrlPressed && !event.isMetaPressed && !event.isShiftPressed &&
+                        (event.key == Key.PageUp || event.key == Key.PageDown) -> {
+                        keyboardScroll.request?.invoke(if (event.key == Key.PageUp) EpubKeyboardStep.VIEWPORT_UP else EpubKeyboardStep.VIEWPORT_DOWN)
+                        keyboardScroll.request != null
+                    }
+                    else -> false
+                }
+            }.onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || controls.panel != null || event.isAltPressed || event.isCtrlPressed || event.isMetaPressed || event.isShiftPressed) false
+                else {
+                    val step = when (event.key) {
+                        Key.DirectionUp -> EpubKeyboardStep.LINE_UP
+                        Key.DirectionDown -> EpubKeyboardStep.LINE_DOWN
+                        Key.PageUp -> EpubKeyboardStep.VIEWPORT_UP
+                        Key.PageDown -> EpubKeyboardStep.VIEWPORT_DOWN
+                        else -> null
+                    }
+                    if (step == null || keyboardScroll.request == null) false
+                    else { keyboardScroll.request?.invoke(step); true }
+                }
+            }.focusRequester(readingFocus).onFocusChanged { readingHasFocus = it.hasFocus }.focusable(), contentAlignment = Alignment.TopCenter) {
+                if (current == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (error == null) CircularProgressIndicator()
+                    }
+                } else key(reader, current.presentation) {
+                    // Chrome is an overlay: opening/closing it never changes list geometry.
+                    ChapterBody(reader, current, settings, keyboardScroll, Modifier.widthIn(max = 760.dp).fillMaxSize())
+                }
+                Column(Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxWidth()) {
+                    if (controls.visible) Surface(elevation = 0.dp) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            EpubIconButton(backLabel, EpubControlIcon.BACK, onBack)
+                            Text(reader.document.metadata.title, modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                                style = MaterialTheme.typography.subtitle1, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            EpubIconButton("Hide reading controls", EpubControlIcon.CLOSE, controls::toggle)
                         }
                     }
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                        key(reader, current.presentation) { ChapterBody(reader, current, settings, Modifier.widthIn(max = 760.dp).fillMaxSize()) }
-                        if (showLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp).semantics { contentDescription = "Preparing EPUB passage" })
+                    if (saveFailed || settingsSaveFailed || error != null || notices != null) Surface(elevation = 0.dp) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                            if (saveFailed) Text("Reading position could not be saved on this device.", color = MaterialTheme.colors.error)
+                            if (settingsSaveFailed) Text("Reading settings could not be saved on this device.", color = MaterialTheme.colors.error)
+                            error?.let {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(it, color = MaterialTheme.colors.error, modifier = Modifier.weight(1f))
+                                    if (reader.canRetry) TextButton(onClick = reader::retry) { Text("Retry") }
+                                }
+                            }
+                            notices?.invoke()
+                        }
+                    }
+                    if (showLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp).semantics { contentDescription = "Preparing EPUB passage" })
+                }
+                if (controls.visible) {
+                    EpubNavigationBar((current?.spineIndex ?: 0) + 1, reader.document.spine.size, progression,
+                        reader.canPrevious && !loading, reader.canNext && !loading, reader::previous, reader::next,
+                        { controls.open(EpubReaderPanel.CONTENTS) }, { controls.open(EpubReaderPanel.SETTINGS) }, contentsFocus, settingsFocus,
+                        modifier = Modifier.align(Alignment.BottomCenter))
+                } else Surface(Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = MaterialTheme.shapes.small, elevation = 0.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${epubProgressPercent(progression)}%", style = MaterialTheme.typography.caption,
+                            modifier = Modifier.padding(start = 12.dp).semantics { contentDescription = "${epubProgressPercent(progression)}% of book" })
+                        TextButton(controls::toggle, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Show reading controls" }) { Text("Controls") }
                     }
                 }
-            }
-        }
-        if (showToc) AlertDialog(onDismissRequest = { showToc = false }, title = { Text("Contents") }, text = {
-            LazyColumn(Modifier.heightIn(max = 400.dp)) {
-                itemsIndexed(reader.toc) { _, entry ->
-                    TextButton(onClick = { showToc = false; reader.navigate(entry.target) }, modifier = Modifier.fillMaxWidth().padding(start = (entry.depth.coerceAtMost(8) * 8).dp)) { Text(entry.label) }
+                when (controls.panel) {
+                    EpubReaderPanel.CONTENTS -> EpubContentsPanel(reader, current, maxHeight, closePanel)
+                    EpubReaderPanel.SETTINGS -> EpubSettingsPanel(settings, reader::presentationChanged, maxHeight, publicationActions, closePanel)
+                    null -> Unit
                 }
             }
-        }, confirmButton = { TextButton(onClick = { showToc = false }) { Text("Close") } })
-        if (showSettings) ReaderSettings(settings, reader::presentationChanged) { showSettings = false }
-    }
-}
-
-@Composable
-private fun ReaderSettings(settings: EpubReaderSettings, change: (EpubReaderSettings) -> Unit, close: () -> Unit) {
-    AlertDialog(onDismissRequest = close, title = { Text("Reading settings") }, text = {
-        Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-            SettingStep("Font size", "${settings.fontSize}", settings.fontSize > 14, settings.fontSize < 30,
-                { change(settings.copy(fontSize = (settings.fontSize - 2).coerceAtLeast(14))) }, { change(settings.copy(fontSize = (settings.fontSize + 2).coerceAtMost(30))) })
-            SettingStep("Line spacing", "${settings.lineSpacingPercent}%", settings.lineSpacingPercent > 120, settings.lineSpacingPercent < 200,
-                { change(settings.copy(lineSpacingPercent = (settings.lineSpacingPercent - 10).coerceAtLeast(120))) }, { change(settings.copy(lineSpacingPercent = (settings.lineSpacingPercent + 10).coerceAtMost(200))) })
-            SettingStep("Margins", "${settings.margin}", settings.margin > 8, settings.margin < 40,
-                { change(settings.copy(margin = (settings.margin - 4).coerceAtLeast(8))) }, { change(settings.copy(margin = (settings.margin + 4).coerceAtMost(40))) })
-            Text("Reading theme")
-            EpubReadingTheme.entries.forEach { theme ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(settings.theme == theme, onClick = { change(settings.copy(theme = theme)) }, modifier = Modifier.semantics { contentDescription = "Reading theme ${theme.name.lowercase()}" })
-                    TextButton(onClick = { change(settings.copy(theme = theme)) }) { Text(theme.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                }
-            }
-            Text("Settings apply to this EPUB session.", style = MaterialTheme.typography.caption)
         }
-    }, confirmButton = { TextButton(onClick = close) { Text("Done") } })
-}
-@Composable
-private fun SettingStep(label: String, value: String, less: Boolean, more: Boolean, decrease: () -> Unit, increase: () -> Unit) {
-    Text(label)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        TextButton(decrease, enabled = less, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Decrease $label" }) { Text("−") }
-        Text(value, modifier = Modifier.weight(1f))
-        TextButton(increase, enabled = more, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Increase $label" }) { Text("+") }
     }
 }
 
 internal fun epubListPrefix(block: EpubBlock): String = if (block.kind != EpubBlockKind.LIST_ITEM) "" else
     block.listMarker?.let { if (it.ordered) "${it.ordinal}. " else "• " } ?: "• "
 
-private data class EpubScrollSample(val index: Int, val pixels: Int, val scrolling: Boolean, val key: Any?, val ticket: Long)
+private data class EpubScrollSample(val index: Int, val pixels: Int, val scrolling: Boolean, val key: Any?, val ticket: Long, val layout: TextLayoutResult?)
 
 @Composable
-private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Ready, settings: EpubReaderSettings, modifier: Modifier) {
+private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Ready, settings: EpubReaderSettings, keyboard: EpubKeyboardScroll, modifier: Modifier) {
     val latestReady by rememberUpdatedState(ready)
     val list = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
+    val scrollJob = remember { arrayOfNulls<Job>(1) }
+    val density = LocalDensity.current
     val layouts = remember { mutableStateMapOf<Int, TextLayoutResult>() }
+    fun retainLayout(global: Int, layout: TextLayoutResult) {
+        layouts[global] = layout
+        val first = latestReady.chapter.startBlock + list.firstVisibleItemIndex
+        val initial = latestReady.chapter.startBlock + latestReady.initialPosition.first
+        if (layouts.size > 12) layouts.keys.filter { it != first && it != initial }
+            .maxByOrNull { kotlin.math.abs(it - first) }?.let(layouts::remove)
+    }
     val bufferStart = remember { intArrayOf(ready.chapter.startBlock) }
     SideEffect {
         if (bufferStart[0] != ready.chapter.startBlock) {
@@ -182,6 +243,27 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
     val latestMedia by rememberUpdatedState(media)
     val latestBitmaps by rememberUpdatedState(bitmaps)
     var restored by remember { mutableStateOf(false) }
+    var userScrolled by remember { mutableStateOf(false) }
+    DisposableEffect(keyboard, list, settings, density) {
+        val command: (EpubKeyboardStep) -> Unit = { step ->
+            if (restored) {
+                val line = with(density) { (settings.fontSize * settings.lineSpacingPercent / 100f).sp.toPx() }
+                val delta = when (step) {
+                    EpubKeyboardStep.LINE_UP -> -line
+                    EpubKeyboardStep.LINE_DOWN -> line
+                    EpubKeyboardStep.VIEWPORT_UP -> -list.layoutInfo.viewportSize.height * .85f
+                    EpubKeyboardStep.VIEWPORT_DOWN -> list.layoutInfo.viewportSize.height * .85f
+                }
+                scrollJob[0]?.cancel()
+                scrollJob[0] = scrollScope.launch { userScrolled = true; list.scrollBy(delta) }
+            }
+        }
+        keyboard.request = command
+        onDispose {
+            if (keyboard.request === command) keyboard.request = null
+            scrollJob[0]?.cancel()
+        }
+    }
     // Reset visible media on replacement; do not retain image jobs from an old chapter/layout.
     DisposableEffect(ready.ticket) { onDispose { reader.visibleMedia(ready.ticket, emptyList()) } }
     LaunchedEffect(ready.presentation) {
@@ -216,11 +298,11 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
     }
     LaunchedEffect(ready.presentation, restored) {
         if (!restored) return@LaunchedEffect
-        var userScrolled = false
         snapshotFlow {
             val key = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == list.firstVisibleItemIndex }?.key
-            EpubScrollSample(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, list.isScrollInProgress, key, latestReady.ticket)
-        }.collect { (index, pixels, scrolling, key, ticket) ->
+            EpubScrollSample(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, list.isScrollInProgress, key, latestReady.ticket,
+                layouts[latestReady.chapter.startBlock + list.firstVisibleItemIndex])
+        }.collect { (index, pixels, scrolling, key, ticket, layout) ->
             val frame = latestReady
             // The first layout after a rolling rebase may still contain old local indices.
             // Global paragraph keys must agree before a callback can persist its locator.
@@ -228,7 +310,6 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
             if (scrolling) userScrolled = true
             if (!userScrolled) return@collect
             val block = frame.chapter.blocks.getOrNull(index) ?: return@collect
-            val layout = layouts[frame.chapter.startBlock + index]
             // Loading presentation is never an authoritative saved position.
             if (block.image != null && (latestMedia[block.image] == null || (latestMedia[block.image] is EpubMediaState.Ready && latestBitmaps[block.image] == null))) return@collect
             val points = if (block.image != null || block.kind == EpubBlockKind.SEPARATOR) 0 else {
@@ -241,12 +322,18 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
             } else reader.report(frame.ticket, index, points)
         }
     }
-    LazyColumn(modifier, state = list, userScrollEnabled = restored, contentPadding = PaddingValues(horizontal = settings.margin.dp, vertical = 12.dp),
+    SelectionContainer {
+    LazyColumn(modifier, state = list, userScrollEnabled = restored,
+        contentPadding = PaddingValues(start = settings.margin.dp, end = settings.margin.dp, top = 12.dp, bottom = 72.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         itemsIndexed(ready.chapter.blocks, key = { index, _ -> ready.chapter.startBlock + index }) { index, block ->
             if (block.kind == EpubBlockKind.SEPARATOR) Divider(Modifier.padding(vertical = 12.dp))
             else if (block.image != null) LocalImage(block.image, bitmaps[block.image])
             else {
+                // Borrow the result already owned by this composed text node. Placement
+                // repins the actual first visible item after LazyColumn applies its new
+                // indices; measurement can still observe the previous scroll position.
+                val placedLayout = remember(block) { arrayOfNulls<TextLayoutResult>(1) }
                 val text = remember(block, linkColor) {
                     buildAnnotatedString {
                         append(epubListPrefix(block))
@@ -267,13 +354,17 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
                 Text(text, style = MaterialTheme.typography.body1.copy(fontSize = size.sp, lineHeight = (size * settings.lineSpacingPercent / 100).sp,
                     fontWeight = if (block.kind == EpubBlockKind.HEADING) FontWeight.Bold else FontWeight.Normal,
                     fontStyle = if (block.kind == EpubBlockKind.QUOTE || block.kind == EpubBlockKind.CAPTION) FontStyle.Italic else FontStyle.Normal,
-                    fontFamily = if (block.kind == EpubBlockKind.PREFORMATTED) FontFamily.Monospace else FontFamily.Default),
-                    modifier = Modifier.fillMaxWidth().padding(start = (if (block.kind == EpubBlockKind.QUOTE) 16 else (block.listMarker?.depth ?: 0) * 12).dp), onTextLayout = {
-                        layouts[ready.chapter.startBlock + index] = it
-                        if (layouts.size > 12) layouts.keys.filter { key -> key != ready.chapter.startBlock + index }.maxByOrNull { key -> kotlin.math.abs(key - (ready.chapter.startBlock + index)) }?.let(layouts::remove)
+                    fontFamily = when (block.kind) { EpubBlockKind.PREFORMATTED -> FontFamily.Monospace; EpubBlockKind.HEADING -> FontFamily.Default; else -> FontFamily.Serif }),
+                    modifier = Modifier.fillMaxWidth().padding(start = (if (block.kind == EpubBlockKind.QUOTE) 16 else (block.listMarker?.depth ?: 0) * 12).dp)
+                        .onGloballyPositioned {
+                            if (index == list.firstVisibleItemIndex) placedLayout[0]?.let { retainLayout(ready.chapter.startBlock + index, it) }
+                        }, onTextLayout = {
+                        placedLayout[0] = it
+                        retainLayout(ready.chapter.startBlock + index, it)
                     })
             }
         }
+    }
     }
 }
 

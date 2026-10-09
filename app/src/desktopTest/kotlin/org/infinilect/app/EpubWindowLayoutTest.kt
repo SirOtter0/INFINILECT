@@ -60,7 +60,7 @@ class EpubWindowLayoutTest {
             repeat(30){scope.advanceTimeBy(16);pump()}
         }
         fun click(label:String){
-            val n=nodes().first{!it.config.contains(SemanticsProperties.Disabled) && it.config.getOrNull(SemanticsActions.OnClick)?.action!=null && walk(it).any{child->child.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true}}
+            val n=nodes().first{!it.config.contains(SemanticsProperties.Disabled) && it.config.getOrNull(SemanticsActions.OnClick)?.action!=null && walk(it).any{child->child.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true || child.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label)==true}}
             assertTrue(n.config[SemanticsActions.OnClick].action!!.invoke());pump()
         }
         fun remount(){mounted=false;pump();mounted=true;pump()}
@@ -109,7 +109,7 @@ class EpubWindowLayoutTest {
         try{
             reader.initialize(null)
             Scene(this).use{f->
-                f.content{EpubReader(reader,false,{},"Back")};f.click("Next")
+                f.content{EpubReader(reader,false,{},"Back")};f.click("Show reading controls");f.click("Next")
                 assertEquals(128,ready(reader).chapter.startBlock)
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==text(128)}==true})
                 f.click("Previous");assertEquals(0,ready(reader).chapter.startBlock)

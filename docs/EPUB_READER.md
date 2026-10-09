@@ -6,6 +6,99 @@ its session presentation and bounded local media. This reader adds a separate **
 It supports a narrow EPUB2/EPUB3 XHTML subset on Android and Desktop with the same
 Compose UI. It does not claim generic EPUB compatibility or a completed v0.0.1.
 
+## PR #27: immersive reading controls
+
+Merged PR #26 is the engine baseline. The user reports physically on Android that
+EPUB reading performance is much better; that observation is separate from
+acceptance of this UI change, which is still pending.
+
+The EPUB surface opens with readable content and a small **Controls** button and
+whole-book percentage. Controls also toggle with a short central tap (middle 40%
+of width and middle 60% of height), after children have handled the gesture.
+Consumed links, selection, long presses, scrolling and multi-pointer gestures
+never toggle controls or introduce page turns. Text uses the platform serif family
+with normal system fallback; headings and controls use the standard UI family,
+and preformatted content remains monospace. Existing font size, spacing, margins,
+block styles, local images and links are preserved. Light/dark paper-and-ink
+palettes retain at least 4.5:1 normal-text/link contrast. No fonts are downloaded.
+
+Top and bottom toolbars overlay the centered, maximum-760dp reading column;
+showing/hiding controls does not change its width, scroll geometry, presentation
+ticket or saved locator. Toolbar overlays can temporarily cover edge content;
+hiding them restores the unobstructed surface. A bottom content inset lets the
+last paragraph scroll clear of the persistent Controls button. The platform and
+shared safe-area padding consume insets rather than doubling them.
+
+Contents and reading settings use compact, scrollable native modal panels capped
+by the actual viewport and a 480dp maximum width. Initial focus goes to Close;
+dismissal restores the opener. Android Back closes a panel, then controls, before
+leaving the reader. The contextual Back button still returns to Library, History
+or results as before. The existing Library membership action is inside the EPUB
+settings panel, using the same application callback; other readers are unchanged.
+Storage/history/progress warnings and controlled Retry remain accessible even
+with chrome hidden.
+
+Desktop keys: **F10** toggles controls; **Alt+Left/Right** invokes semantic
+Previous/Next; **Up/Down** and **Page Up/Down** scroll; **Escape** dismisses a panel,
+then controls, then returns to the opening screen. Tab/Shift+Tab and Enter operate
+normal controls. Modified selection shortcuts retain child handling. Stable root
+focus and one replaceable, cancellable presentation scroll callback survive body
+replacement without stealing focus from a toolbar button. Keyboard scrolling is
+user input, but only the resulting measured passage is reported as progress.
+
+The indicator says **Section X of N** for the current OPF spine document, and
+**X% of book** for existing semantic whole-book progression. It does not invent
+page numbers or count semantic windows as chapters. Previous/Next retains the
+existing passage/window and actual spine-boundary navigation. TOC/internal links,
+long-window prefetch, the 180ms delayed loading indicator, retained old passage
+and same-destination Retry are unchanged. Opening/closing a panel performs no
+parsing or progress submission. Typography uses the existing canonical reflow and
+semantic restoration. The same four global EPUB preferences and storage schema
+remain; panel/chrome/focus/selection state is transient and starts afresh after a
+presentation recreation.
+
+The larger reading viewport exposed the old 12-entry text-layout lookup evicting
+the first visible paragraph. Placement now pins the actual first visible result,
+and the scroll observer observes that result; the lookup still has **12 entries**.
+Per-composed-text references borrow existing immutable layouts and retire with
+lazy composition. Semantic/index, disk, parser, raster and bitmap budgets and
+publication ownership are untouched. No extra reading-position owner was added.
+
+Automated coverage adds **27 tests**: 10 common interaction/contrast checks and
+17 shared-UI headless Desktop tests for overlays, touch/links/selection/multitouch,
+panels/focus/Back, keyboard, deep reflow and fresh-owner preference/progress
+restoration, pending coalescing, errors/Retry, large-text/resize and large viewports.
+Existing window continuity assertions remain; their navigation test now opens the
+new initially hidden toolbar. Focused suites passed **497 Desktop /454 Android-host**.
+Full app suites passed **1,132 Desktop /1,025 Android-host**, zero failures/errors/skips.
+Android and Desktop application compilation passed; results are also recorded
+in PR #27. Core, parser/security/index, imports, CBZ/PDF/TEXT, dependencies, signing,
+permissions, release and database schemas are unchanged.
+
+Headless previews contain only original fictional text, are generated outside the
+repository, and are not physical Android/native Desktop screenshots. Font fallback,
+system bars, screen-reader/platform focus and touch selection need device checks.
+All current labels follow the application's existing English-only pattern; this
+change does not introduce a localization system or publisher CSS/font support.
+Native Desktop graphical acceptance and physical Android acceptance remain pending.
+
+Manual Android acceptance:
+
+1. Open a short EPUB and Montecristo; check comfortable light/dark reading and
+   large system text, portrait/landscape safe areas, and the centered reading column.
+2. Use Controls and central taps. Scroll, long-press/select/copy text, tap internal
+   links and use multi-touch: none should accidentally open controls or turn pages.
+3. Open/dismiss Contents and Settings, use contextual Back and Library membership;
+   verify TalkBack labels, focus, touch targets and no passage/progress jump.
+4. Deep in a long chapter, change font size/spacing/margins/theme; rotate and reopen,
+   including a process restart after saving. Preserve semantic progress/preferences.
+5. Traverse windows and spine boundaries both ways, navigate to distant TOC/link
+   targets and tap rapidly while loading. Retain the old passage, correct progress
+   and exact Retry destination; no duplicated/missing text or blank transitions.
+
+Desktop additionally: resize; test F10, Alt+Left/Right, Up/Down, Page Up/Down,
+Escape, Tab/Shift+Tab/Enter, modal focus return and mouse selection/links.
+
 ## Acquisition status and a reproducible development route
 
 Gutenberg remains experimental OPDS2 **catalog-only**: no OPDS0.9/RDF/mirror/guessed
