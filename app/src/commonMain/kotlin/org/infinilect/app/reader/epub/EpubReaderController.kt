@@ -200,6 +200,19 @@ internal class EpubReaderController(
         else start(retry.destination, navigation = false)
     }
     fun chapter(index: Int) { paths.getOrNull(index)?.let { load(it, EpubWindowRequest.Block(0)) } }
+    /** Measured viewport boundary only, with a current ticket. Never skip a window. */
+    fun scrollBoundary(ticket: Long, forward: Boolean) {
+        val ready = state.value as? EpubReaderState.Ready ?: return
+        if (closed || ticket != ready.ticket) return
+        val chapter = ready.chapter
+        if (forward) {
+            if (chapter.endBlock < chapter.totalBlocks) load(chapter.path, EpubWindowRequest.Block(chapter.endBlock), withinChapter = true)
+            else chapter(ready.spineIndex + 1)
+        } else {
+            if (chapter.startBlock > 0) load(chapter.path, EpubWindowRequest.Block(chapter.startBlock - 1), withinChapter = true, atEnd = true)
+            else paths.getOrNull(ready.spineIndex - 1)?.let { load(it, EpubWindowRequest.End) }
+        }
+    }
     private fun currentWindow(ready: EpubReaderState.Ready): EpubChapter = cache.values.firstOrNull {
         it.path == ready.chapter.path && visibleBlock in it.startBlock until it.endBlock
     } ?: ready.chapter

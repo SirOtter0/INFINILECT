@@ -60,7 +60,7 @@ class EpubWindowLayoutTest {
             repeat(30){scope.advanceTimeBy(16);pump()}
         }
         fun click(label:String){
-            val n=nodes().first{!it.config.contains(SemanticsProperties.Disabled) && it.config.getOrNull(SemanticsActions.OnClick)?.action!=null && walk(it).any{child->child.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true}}
+            val n=nodes().first{!it.config.contains(SemanticsProperties.Disabled) && it.config.getOrNull(SemanticsActions.OnClick)?.action!=null && walk(it).any{child->child.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true || child.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label)==true}}
             assertTrue(n.config[SemanticsActions.OnClick].action!!.invoke());pump()
         }
         fun remount(){mounted=false;pump();mounted=true;pump()}
@@ -104,15 +104,15 @@ class EpubWindowLayoutTest {
             }
         }finally{reader.close()}
     }
-    @Test fun existingPreviousNextControlsTraverseWindowsWithoutNewWindowControls()=runTest {
+    @Test fun existingKeyboardPreviousNextTraverseWindowsWithoutNewWindowControls()=runTest {
         val reader=EpubReaderController(Doc(),ReadingProgressId(publication,"book",PublicationFormat.EPUB),backgroundScope,Parser())
         try{
             reader.initialize(null)
             Scene(this).use{f->
-                f.content{EpubReader(reader,false,{},"Back")};f.click("Next")
+                f.content{EpubReader(reader,false,{},"Back")};f.scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(key=androidx.compose.ui.input.key.Key.DirectionRight,type=androidx.compose.ui.input.key.KeyEventType.KeyDown,isAltPressed=true));f.pump()
                 assertEquals(128,ready(reader).chapter.startBlock)
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==text(128)}==true})
-                f.click("Previous");assertEquals(0,ready(reader).chapter.startBlock)
+                f.scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(key=androidx.compose.ui.input.key.Key.DirectionLeft,type=androidx.compose.ui.input.key.KeyEventType.KeyDown,isAltPressed=true));f.pump();assertEquals(0,ready(reader).chapter.startBlock)
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==text(127)}==true})
             }
         }finally{reader.close()}

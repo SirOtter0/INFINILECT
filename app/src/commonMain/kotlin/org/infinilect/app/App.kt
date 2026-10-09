@@ -55,6 +55,7 @@ fun App(
     applicationSources: ApplicationSources,
     backHandler: @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit = { _, _ -> },
     localFilePicker: org.infinilect.app.imports.LocalFilePicker? = null,
+    readerAppearance: (ReaderAppearance?) -> Unit = {},
 ) {
     val application=remember(applicationSources) { applicationSources.applicationSession() }
     // Save only owned identity for Android recreation; never an external acquisition URI.
@@ -119,7 +120,22 @@ fun App(
                             application.collections,application::openSearch,modifier=Modifier.weight(1f).fillMaxWidth())
                     } else CollectionScreen(destination,application)
                 }
-                is OpenPublicationState.Ready, is OpenPublicationState.EpubReady, is OpenPublicationState.PageReady, is OpenPublicationState.PdfReady -> Column(Modifier.fillMaxSize()) {
+                is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(
+                    current.reader, saveFailed, application::back, backLabel, backHandler,
+                    appearanceChanged = readerAppearance,
+                    publicationActions = {
+                        LibraryAction(LibraryActionState(membership.inLibrary, membership.busy, membership.unavailable), application.collections::toggleLibrary)
+                    },
+                    notices = if (membership.unavailable || collectionError != null || historyFailed) ({
+                        if (membership.unavailable) {
+                            Text("Library storage is unavailable on this device.")
+                            Button(onClick = application.collections::refreshLibrary) { Text("Retry Library") }
+                        }
+                        collectionError?.let { Text(it, color = MaterialTheme.colors.error) }
+                        if (historyFailed) Text("Reading history could not be saved on this device.")
+                    }) else null,
+                )
+                is OpenPublicationState.Ready, is OpenPublicationState.PageReady, is OpenPublicationState.PdfReady -> Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         LibraryAction(LibraryActionState(membership.inLibrary,membership.busy,membership.unavailable),
                             application.collections::toggleLibrary)
@@ -135,7 +151,6 @@ fun App(
                             is OpenPublicationState.Ready -> TextReader(current.document,current.reading,saveFailed,application::back,backLabel)
                             is OpenPublicationState.PdfReady -> key(current.reader) { org.infinilect.app.reader.pdf.PdfReader(current.reader,saveFailed,application::back,backLabel) { savedPdfPage=it } }
                             is OpenPublicationState.PageReady -> key(current.reader) { org.infinilect.app.reader.page.PageReader(current.reader,saveFailed,application::back,backLabel) }
-                            is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(current.reader,saveFailed,application::back,backLabel)
                         }
                     }
                 }
