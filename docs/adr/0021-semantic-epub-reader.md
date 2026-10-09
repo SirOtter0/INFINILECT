@@ -55,3 +55,41 @@ builds, while historical TEXT remains compatible. Device UI/performance/restorat
 and production source verification remain review gates. No EPUB release/completed
 v0.0.1 claim. Future richer presentation must preserve this explicit ownership and
 security boundary, rather than treating prepared HTML as trusted app content.
+
+## PR #26 follow-up: bounded semantic windows (2026-10-08)
+
+The old whole-chapter model rejects real chapters above 2,048 blocks. The production
+reader now requests a window by semantic locator, owned anchor or transient block
+ordinal. The first request for a prepared chapter uses the unchanged bounded XML
+tree plus one semantic scan to write a private semantic file. Warm windows seek to
+checkpoints; anchors use bounded metadata and other locators scan record headers.
+No entire semantic chapter/tree or whole-book text index is retained in RAM. The
+legacy whole-model API keeps its original limits; unavailable cache storage falls
+back to bounded two-pass selection.
+
+Retain two windows of at most 128 blocks/65,536 UTF-16 units/8,192 append events
+each. A document's private file LRU has two chapters, 4MiB/file and 8MiB including
+construction; evict before writing, checksum/validate reads, never reuse after restart.
+Four shared file reservations cap the preparer at 16MiB even after failed deletion
+and document retirement; no failed deletion permits quota reuse.
+Close invalidates jobs, drains serialized IO and deletes files under the existing
+private session/owner-lock boundary. Existing bounded media is reused. No new dependency.
+
+User-reported Android multi-second boundary/Previous/Next pauses motivated removal
+of repeated XML/full semantic scans and cancelled duplicate prefetch. Identical
+pending destinations coalesce; an explicit request promotes matching lookahead.
+Reflow changes UI tickets without cancelling semantic preparation. Cached navigation
+is immediate; loading/error keeps the last passage/media, with a delayed thin loading
+overlay and Retry for the same failed destination. Pending targets never replace the
+last successful locator. Rolling keys/index rebasing preserve the paragraph/pixel
+position and reuse text; rebasing can still stop a fling, awaiting physical acceptance.
+There is no window UI or permanent cache setting.
+
+Global element paths, Unicode code-point offsets and chapter progression remain
+unchanged; no progress/publication identity/schema migration. Presentation intent
+and successfully reported progress remain distinct. Reflow/remount restores the
+live semantic position, stale callbacks cannot save, and failed/cancelled windows
+preserve the last successful locator. Owned NCX/nav/internal targets resolve later
+anchors. No archive/XML/network/security relaxation or new dependency.
+
+[Exact budgets, diagnostics and manual acceptance](../EPUB_READER.md#pr-26-long-chapters-with-bounded-semantic-windows).

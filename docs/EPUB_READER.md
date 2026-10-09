@@ -233,12 +233,15 @@ CSS is never interpreted or fetched.
 | XML payload per parse, streaming resource buffer | 1 MiB / 8 KiB |
 | XML nodes/depth/attributes per node | Existing 20,000 / 32 / 32 |
 | Attribute value / direct-node text | Existing 8,192 UTF-16 units each |
-| Chapter text / display block text | 262,144 / 8,192 UTF-16 units |
-| Blocks / text-append events / links / anchors per chapter | 2,048 / 8,192 / 512 / 4,096 |
-| Retained parsed chapter models | 2 (current + one previously used); no whole-book DOM |
+| Semantic window / individual block text | 65,536 / 8,192 UTF-16 units |
+| Blocks / text-append events per window | 128 / 8,192 |
+| Window descriptors / links / anchors per XHTML document | 512 / 512 / 4,096 |
+| Retained semantic windows / blocks / text | 2 / 256 / 131,072 UTF-16 units |
+| Legacy whole-model API blocks / text / append events | 2,048 / 262,144 / 8,192 (unchanged) |
 | TOC entries / nested list depth / label | 256 / 16 / 512 UTF-16 units |
 | Transient Compose text layouts | 12 |
-| Chapter navigation parse jobs | One serialized parse; latest generation wins |
+| Chapter navigation parse jobs | One serialized parse; latest request wins; identical requests coalesce |
+| Private semantic cache | 2 indexed chapters × 4 MiB; 8 MiB/document including construction; 16 MiB/preparer even after failed deletion |
 | Open/preparation / chapter navigation deadline | 60 seconds / 15 seconds |
 
 One parse transiently holds at most 1MiB XML bytes (bounded read helper additionally
@@ -246,9 +249,10 @@ uses up to another 1MiB in chunks plus 8KiB buffer), strict decoded XML ≤2MiB,
 one bounded tree with ≤20,000 nodes. Ordered SAX content coalesces character events;
 parts grow with element transitions, never with each character. Direct/ordered
 text copies are each bounded by XML text. The complete tree is discarded after
-one chapter/nav model is built. Two chapter models retain at most 524,288 UTF-16
-units each in run text and assembled block text combined across their two copies
-(~2MiB text payload overall), plus explicitly bounded blocks/spans/anchors/TOC.
+one window/nav model is built; standard-declaration normalization can temporarily
+hold another decoded XML copy. Two windows retain at most 131,072 UTF-16 units in
+run text and the same amount in assembled block text (about 512KiB character
+payload), plus explicitly bounded blocks/runs/anchors/TOC metadata.
 Object/layout overhead is bounded structurally but not claimed as a measured heap
 limit; device profiling remains pending. Only composed blocks create layout objects.
 
@@ -435,3 +439,266 @@ schema, two-chapter retention and raster/bitmap ownership. It still does not pro
 arbitrary SVG/CSS/font rendering, all named XHTML entities, UTF-16 XML, media
 fallback/overlays, DRM or universal EPUB conformance. Native Desktop graphical
 acceptance remains separate and pending.
+
+## PR #26: long chapters with bounded semantic windows
+
+The historical PR #25 Montecristo LIMIT result above is superseded by this
+reader change. The user reports PR #25 was subsequently merged and physically
+accepted on Android; that evidence established opening Montecristo, not complete
+reading of every chapter.
+
+USER-REPORTED PHYSICAL ANDROID: long chapters now work, but window boundaries and
+Previous/Next pause for several seconds. This prompted the performance follow-up;
+no physical-device profiling was supplied. Android re-acceptance remains pending.
+
+### Parsing and ownership
+
+The old production reader called the full-model `chapter()` API, which rejects
+the entire chapter on its 2,049th block. Splitting that already built list would
+still retain the whole semantic chapter and its XML tree. The reader now calls
+`window()` instead; the historical full-model API and its negative limit tests
+keep their original guards.
+
+A prepared document now builds a bounded, session-private semantic index on its
+first request for a chapter: read and validate the entire owned XHTML with hardened
+SAX, then emit each scratch block to a private file in **one** semantic scan.
+Only window checkpoints, anchors and ordinals stay in memory. After the complete
+scan succeeds, read the requested window and release the XML tree. Warm Block/End
+or anchor requests seek directly to a checkpoint; another locator scans record
+headers with an 8KiB scratch buffer, rather than retaining a whole-chapter address
+index or re-parsing XHTML. Text order, styles and global locators remain identical.
+A window stops at 128 blocks, 65,536 UTF-16 units or 8,192 append events. No text is
+truncated; a single oversized block still gives LIMIT, including in later content.
+
+The file LRU holds **two chapters, at most 4MiB each / 8MiB per document**, including
+incomplete construction. Evict before building; failed deletions prohibit quota
+reuse. The preparer shares four file reservations across its two documents: at most 16MiB
+additional session disk, including construction and failed-deletion files after
+a document retires. Such reservations are released only after deletion succeeds.
+Metadata is capped per file at 512 window descriptors, 4,096 anchors and 4,096 anchor ordinals.
+There is no retained chapter text/tree, whole-book index, whole-file serialization
+buffer or persistent cache schema. IO uses 8KiB buffers; individual encoded strings
+are bounded by the existing 8,192-unit block (at most 32KiB UTF-8). Adjacent inline
+runs now use linear StringBuilder coalescing instead of repeatedly copying growing
+strings; whitespace/heading predicates are reused.
+
+Files have random owned names inside the existing locked **private application
+session**, never publisher-selected paths. No ZIP extraction or external content
+exposure. In-memory file/window SHA-256 checksums, strict lengths/UTF-8/field limits,
+NOFOLLOW_LINKS and manifest/spine ownership checks guard reads. Corrupt/missing files
+are discarded and rebuilt from validated source. Cache files are never trusted or
+reused after restart. Document close cancels work, drains serialized IO and deletes
+owned files before releasing ZIP/session ownership; unlocked stale sessions are
+cleaned under the existing owner-lock policy. OS deletion failures are best-effort,
+as with prepared ZIPs; they cannot allow unbounded new cache files. Capacity/storage
+failure uses the original bounded two-pass selection instead of rejecting supported
+content. Capacity failures are remembered only for that document's owned spine paths.
+
+This remains bounded **tree parsing on a cold chapter**, not streaming XML: 1MiB
+source XML, 20,000 nodes/depth32 and individual-block limits remain unchanged. Cold
+publication preparation still verifies archive CRCs and structural XHTML; reopening
+builds a fresh index. One serialized reader parse and one serialized document-cache
+operation permit no unbounded navigation queue. No new dependency.
+
+The controller retains two windows: at most 256 blocks, 131,072 text units and
+16,384 append events/runs. During preparation, these two windows may coexist with
+one incoming window and one scratch block: at most 385 semantic block objects and
+204,800 text units in this working set (about 800KiB character payload counting run
+and assembled-text copies). Temporary concatenation/building allocations and object
+headers are additional, bounded by the individual block/XML limits; these numbers
+are structural ownership bounds, not measured Android heap/RSS. A scan keeps at most
+512 window descriptors, 4,096 anchor positions and 4,096 anchor ordinals; offsets
+are bounded by the 20,000 XML nodes. Retained windows keep at most 8,192 anchor records.
+The transient source-byte/chunk/decoded-text/tree budgets in the table still apply.
+Image work is unchanged: one provider decode, two decoded images and two distinct
+UI bitmaps, with existing byte/pixel limits. Windowing creates no image buffers.
+
+### Navigation and semantic continuity
+
+LazyColumn presents the current and one neighboring window with stable global
+block keys. Scroll direction replaces the old neighbor while preserving the same
+visible paragraph and local pixel position. An explicit index rebase is necessary
+because Compose's nearby-key lookup can miss removal of 128 items. That rebase may
+end an ongoing inertial fling; physical scroll feel still needs device acceptance.
+There is no window indicator or permanent window control. Existing Previous/Next
+traverse windows (previous ends at the preceding window's final block), then the
+ordered spine at the actual chapter boundary.
+
+A failed load preserves the current passage and its media, including chapter/link
+navigation. A delayed (180ms) thin loading overlay does not move the passage or blank
+the reader. Retry repeats the failed destination; it never sends the reader to chapter
+one. Repeated identical pending requests coalesce; requesting an active lookahead
+promotes that job instead of cancelling/restarting parsing. Recent destinations use
+the two-window RAM cache synchronously or the bounded file LRU without XHTML work.
+
+Lookahead starts when a window becomes current, providing a neighboring window of
+runway, and also prepares the adjacent spine at a long chapter's boundary, using the
+existing chapter-entry destination of Previous/Next. Reflow/remount changes UI tickets without discarding still-valid semantic IO. Rolling updates
+keep the scroll observer alive and reuse annotated text; old local indices cannot
+save until their global paragraph keys agree with the new window. Loading/failed
+or prefetched destinations never overwrite the last successful locator.
+
+TOC/NCX, EPUB3 nav and owned internal links select the window containing their
+anchor, including late numeric IDs. Global element paths, segment offsets and
+Unicode code-point logical starts remain identical to the old parser. Durable
+locators still store canonical spine path + element path + code-point offset +
+whole-chapter progression. Window ordinal and pixels are never persisted. Old
+locators restore directly; a missing element uses whole-chapter progression, and
+a removed spine path retains the established first-chapter fallback. Publication
+identity, progress encoding and storage schemas are unchanged.
+
+During an active session, the last presented locator owns reading progress; an
+unacknowledged navigation target owns only restoration intent. A presentation
+remount or typography/viewport change preserves the appropriate semantic locator
+and retires obsolete callbacks. Buffered, requested, decoded and failed windows
+never advance progress. A new long-chapter target is acknowledged only after the
+UI restores/measures it and any initial image is ready or has a controlled fallback.
+The established whole-small-chapter navigation contract remains compatible.
+Close cancels work, flushes legitimate pending progress, releases windows/media and
+closes the owned document. Cancellation or stale generations cannot publish/save.
+
+PR #25 declaration/NBSP/numeric-ID/static raster-cover compatibility is unchanged,
+as are ZIP/collision/expansion bounds, single URI decoding, owned-only resources,
+DTD/entity restrictions and encryption rejection. No browser, JS, arbitrary SVG
+renderer or network/resource fallback is introduced. Broader EPUB/CSS/font/encoding
+conformance remains outside the supported subset.
+
+### Automated original-book verification
+
+The five supplied originals were accessible. An external, uncommitted diagnostic
+on both Desktop and Android-host imported each file, entered every spine document,
+walked all windows forward/backward, resolved its TOC and restored a deep saved
+locator through fresh preparation. Every block, run, style, offset and anchor was
+compared with an external whole-chapter reference derived from the PR #25 visitor.
+Only that diagnostic reference lifts the whole-model limits to build the oracle;
+production limits and existing test assertions are not relaxed. No original book,
+artwork, external harness or generated artifact is committed.
+
+| Original EPUB2 publication | Spine documents | Semantic blocks | Windows across all documents | Result on both hosts |
+| --- | ---: | ---: | ---: | --- |
+| El conde de Montecristo | 26 | 63,190 | 512 | Complete semantic traversal; all 22 formerly oversized documents pass |
+| El arte de la guerra | 15 | 453 | 15 | Pass |
+| De la brevedad de la vida | 22 | 48 | 22 | Pass |
+| Analectas | 50 | 1,344 | 50 | Pass |
+| Las meditaciones de Marco Aurelio | 3 | 506 | 7 | Pass |
+
+Montecristo's largest document produces 3,269 semantic blocks including its heading.
+Comparison proves no missing/duplicated semantic content at boundaries; it does not
+claim publisher-layout fidelity, device rendering or measured memory/performance.
+Automated object-count/text/job bounds pass; physical memory profiling remains pending.
+
+### Initial PR #26 automated verification
+
+Verified production/test revision: `fa63da856bef2ac63d2396a3f9746c4202a9d32d`.
+The following evidence update changes documentation only. Forty-three original
+synthetic tests were added: parser16, controller23, headless Compose3 and owned-import
+integration1. The initial 3,001-paragraph reader reproduction failed with LIMIT
+before correction. Existing whole-model limit/security assertions remain intact;
+the integration failure fixture now uses an oversized individual block because
+2,049 legal paragraphs are readable.
+
+- Final focused EPUB/navigation/security/import/continuity: **329 Desktop / 315
+  Android-host**, zero failures, errors or skipped tests.
+- Complete app regression: **1,072 Desktop / 984 Android-host**, zero failures,
+  errors or skipped tests, counted from JUnit XML without the external book harness.
+- Android `:androidApp:compileDebugKotlin` and Desktop `:desktopApp:compileKotlin`
+  passed. Core is unchanged; unrelated core tests were not rerun.
+- The separate external original-book diagnostic passed **5/5 on each host** on
+  the same verified production/test revision, including complete reference comparison.
+- Full diff review, `git diff --check`, clean working tree and exact signing-secret,
+  private-key, attachment-path and generated-artifact scans passed. No new dependency,
+  schema, permissions, signing configuration or temporary CI workflow.
+
+### Performance diagnosis and host measurements
+
+At reviewed HEAD `b8e075af018b6e0218f5636a59d12cddf780dcb0`, every uncached window
+re-read/validated the complete XHTML and scanned all semantics twice. Rolling
+lookahead evicted the just-read neighbor; Next could cancel an equivalent prefetch,
+reflow cancelled semantic work, and ticket changes rebuilt text/restarted its scroll
+observer. Four deterministic controller tests reproduced the initial wasted-work paths
+before correction; another failed on inverse lookahead targeting End rather than
+the existing Previous button's chapter entry. Session-wide file reservations also
+prevent failed cleanup from freeing quota for subsequent documents. The host did **not** reproduce several-second pauses or
+establish a physical Android CPU/GC/Compose breakdown; those pauses are user-reported evidence.
+
+External, uncommitted diagnostics used the actual Montecristo spine document23
+(3,269 blocks), Linux amd64 / AMD EPYC 9V74 / JDK21.0.12.1. Eight warm-ups, 30 window/
+cold-index/anchor/locator samples and 15 controller turns per direction. Android-host
+is another JVM test worker on this Linux host, not Android-device performance. Times
+include coroutine dispatch; no wall-clock pass/fail threshold is imposed on tests.
+Cold means an evicted semantic index in an already-prepared document; OS file caches
+and JIT are warmed, not a first-ever application launch. A separate headless Skia
+700×600 probe compared the old/new UI functions with the same current controller
+and original synthetic 5,200-block models, excluding parser IO: 8 warm-ups /30 turns,
+16.308 ms median (p95 37.228) before versus 10.312 ms (p95 19.499) after. This isolates
+presentation work, not complete old/new app latency, Android frames or graphical
+Desktop acceptance; benchmark order/JIT/render-backend differences remain limits.
+
+| Path, median (p95) ms | Desktop before | Desktop after | Android-host before | Android-host after |
+| --- | ---: | ---: | ---: | ---: |
+| Window request, previously full scans / now indexed | 26.759 (45.105) | 0.911 (1.189) | 36.770 (48.525) | 0.938 (1.717) |
+| Cold index + selected window | same uncached path | 16.602 (25.997) | same uncached path | 16.647 (31.562) |
+| Controller Next, same rapid protocol | 25.032 (40.783) | 0.371 (1.167) | 26.053 (37.268) | 0.880 (2.935) |
+| Controller Previous | unmeasured | 0.424 (1.524) | unmeasured | 0.774 (9.316) |
+| Next after completed prefetch | unmeasured | 0.040 (0.458) | unmeasured | 0.051 (0.910) |
+| Prefetch completion | unmeasured | 0.483 (1.291) | unmeasured | 0.800 (2.158) |
+| Warm distant anchor | unmeasured | 0.836 (1.075) | unmeasured | 0.694 (1.144) |
+| Warm deep locator | unmeasured | 3.891 (11.244) | unmeasured | 2.265 (4.787) |
+
+The initial Desktop median stages were resource read 1.089ms, SAX5.892ms,
+validation2.018ms, full index scan7.935ms and second materialization scan7.637ms;
+Android-host respectively 1.283/7.437/2.286/10.523/10.602ms. Warm indexing removes
+those source/XML/full-semantic operations. The measured two chapter files occupied
+511,167 bytes; after repeated turns the reader retained 256 blocks /9,609 text units.
+Deterministic tests also enforce the maximum RAM/disk/job budgets through eviction,
+construction, cancellation and close. These are ownership/work-count bounds, not
+measured Android heap/RSS or a promise of unchanged total process memory. Host cold
+median and p95 improve in the final run; earlier measurements showed tail variability.
+Scheduling, JIT/GC, disk and device capabilities matter; <100ms cached navigation and imperceptible
+prefetch are engineering targets, with physical measurement still required.
+
+### Overnight follow-up verification
+
+Verified production/test revision: `bfd201b78d941ece6824fa8bb5f5052c067c025c`.
+The following commit changes only
+architecture/measurement/evidence documentation. Thirty-three deterministic tests
+were added in this follow-up: cache19, navigation/recovery12, headless Compose2.
+Five controller performance reproductions failed before correction; existing
+PR #21–26 assertions were not weakened or disabled.
+
+- Focused EPUB/import/continuity/progress: **478 Desktop /455 Android-host**,
+  zero failures/errors/skips.
+- Complete app: **1,105 Desktop /1,015 Android-host**, zero failures/errors/skips,
+  counted from JUnit XML with external diagnostics excluded. Existing EPUB2/EPUB3,
+  ZIP/XML/URI security, owned import/progress and CBZ/PDF/TEXT tests are included.
+- Android `:androidApp:compileDebugKotlin` and Desktop `:desktopApp:compileKotlin`
+  passed. Core is unchanged; unrelated core suites were not rerun.
+- Full incremental diff review, `git diff --check` and exact signing-secret,
+  private-key, attachment-path and generated-artifact scans passed. No dependency,
+  schema, permissions, signing configuration or temporary CI change.
+
+The five original books passed again on both hosts, with full forward/backward
+reference comparison, every spine/TOC target, deep fresh-owner reopen and private
+cache cleanup. No originals, generated diagnostic artifacts or external harnesses
+are committed. Android re-acceptance and native Desktop graphical acceptance remain
+pending; current host performance is not physical acceptance.
+
+### Manual Android re-acceptance — pending
+
+1. In Montecristo, scroll through several consecutive long-window boundaries and
+   use Previous/Next in both directions; note cold versus revisited response times.
+   Check chapter endings and no missing/duplicated paragraphs.
+2. Use Contents/internal links to distant passages; return to recent passages.
+   Tap rapidly while loading; no repeated work, blank screen or stale destination.
+3. If a destination is delayed, the old passage remains readable with only a subtle
+   loading line. If a recoverable error occurs, Retry reaches the same destination
+   and the last valid progress remains intact. No hostile fixture is needed.
+4. Deep in a long chapter, change font/margins and rotate; retain the semantic passage.
+   Close/reopen via Library/History, restart after a save interval, and open another
+   book and return. Fresh preparation/indexing is expected after reopen.
+5. Repeat a short chapter and the other four originals. Check local covers/Contents
+   and existing CBZ/PDF/TEXT behavior. During an extended session, observe responsiveness
+   and available device memory; no device memory/performance claim is made here.
+
+The rolling index rebase can still end an inertial fling; physical scroll feel,
+Android performance/memory and native Desktop graphical acceptance remain pending.

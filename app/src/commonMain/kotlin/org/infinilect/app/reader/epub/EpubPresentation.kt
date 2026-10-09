@@ -22,8 +22,12 @@ internal data class EpubBlock(
 }
 internal data class EpubChapter(
     val path: EpubEntryPath, val blocks: List<EpubBlock>, val anchors: Map<String, EpubPosition>,
+    val startBlock: Int = 0, val totalBlocks: Int = blocks.size,
+    val totalCodePoints: Int = blocks.sumOf { it.codePoints },
 ) {
-    val codePoints = blocks.sumOf { it.codePoints }
+    // Logical starts/paths/offsets always refer to the whole XHTML document.
+    val codePoints = totalCodePoints
+    val endBlock get() = startBlock + blocks.size
     fun locate(locator: ReadingLocator.Epub?): Pair<Int, Int> {
         if (locator == null || blocks.isEmpty()) return 0 to 0
         val matching = blocks.indices.filter { blocks[it].elementPath == locator.elementPath }
@@ -42,9 +46,26 @@ internal data class EpubChapter(
 }
 internal data class EpubTocEntry(val label: String, val target: EpubTarget, val depth: Int)
 
+internal object EpubWindowPolicy {
+    const val BLOCKS = 128
+    const val TEXT_UNITS = 65_536
+    const val APPEND_EVENTS = 8192
+    const val INDEX_ENTRIES = 512
+    const val RETAINED = 2
+}
+internal sealed interface EpubWindowRequest {
+    data class Block(val index: Int) : EpubWindowRequest
+    data class Locator(val value: ReadingLocator.Epub) : EpubWindowRequest
+    data class Anchor(val value: String) : EpubWindowRequest
+    data object End : EpubWindowRequest
+}
+
 /** Presentation only; implementations may open manifest-owned resources, never URLs. */
 internal interface EpubParser {
+    /** Compatibility full-model API: retains its original 2,048-block ceiling. */
     suspend fun chapter(document: EpubDocument, path: EpubEntryPath): EpubChapter
+    /** Production readers use bounded windows; small existing implementations remain compatible. */
+    suspend fun window(document: EpubDocument, path: EpubEntryPath, request: EpubWindowRequest = EpubWindowRequest.Block(0)): EpubChapter = chapter(document, path)
     suspend fun toc(document: EpubDocument): List<EpubTocEntry>
 }
 internal expect fun defaultEpubParser(): EpubParser

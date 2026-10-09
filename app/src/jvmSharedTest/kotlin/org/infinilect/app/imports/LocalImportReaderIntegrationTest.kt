@@ -25,9 +25,10 @@ class LocalImportReaderIntegrationTest {
         val store=SqlCollectionsStore({JdbcSqliteDriver("jdbc:sqlite:${root.resolve("collections.sqlite")}",collectionsJdbcProperties()).also(::initializeCollectionsSchema)})
         val progress=ProgressPersistence(FileReadingProgressStore(root.resolve("progress")),clock={100L})
         val collections=ApplicationCollections(store.library,store.history,release=store::close)
+        val preferences=org.infinilect.app.reader.epub.EpubSettingsPersistence(org.infinilect.app.reader.epub.FileEpubReaderSettingsStore(root.resolve("settings")))
         val sources=ApplicationSources(listOf(SourceOption("Imported files",local,true,true,true)),progress=progress,collections=collections,
-            textPreparer=text,epubPreparer=epub,pagePreparer=pages,localImports=local){}
-        suspend fun close(){sources.close();sources.awaitProgressClosed()}
+            textPreparer=text,epubPreparer=epub,pagePreparer=pages,localImports=local,epubSettings=preferences){}
+        suspend fun close(){sources.close();sources.awaitProgressClosed();sources.awaitPreferencesClosed()}
     }
     private fun picker(bytes:ByteArray)=object:LocalFilePicker {
         override suspend fun pick()=LocalFileSelection("misleading.txt") { object:ResourceContent {
@@ -178,7 +179,7 @@ class LocalImportReaderIntegrationTest {
         val root=Files.createTempDirectory("local-epub-reading-limit");val owner=Owner(root);val session=ApplicationSession(owner.sources,this)
         val fixture=epub2Fixture().apply {
             entries["OPS/large.xhtml"]=("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Original large chapter</title></head><body>"+
-                "<p>Original bounded paragraph</p>".repeat(2049)+"</body></html>").encodeToByteArray()
+                "<p>"+"<span>${"x".repeat(256)}</span>".repeat(33)+"</p>"+"</body></html>").encodeToByteArray()
             opf{it.replace("</manifest>","<item id=\"large\" href=\"large.xhtml\" media-type=\"application/xhtml+xml\"/></manifest>")
                 .replace("</spine>","<itemref idref=\"large\"/></spine>")}
         }
@@ -196,4 +197,37 @@ class LocalImportReaderIntegrationTest {
         } finally {session.close();owner.close();root.toFile().deleteRecursively()}
     }
 
+    @Test fun longImportedChapterSurvivesOriginalDeletionFreshOwnerAndOtherPublication()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("local-long-epub");val first=Owner(root);val session=ApplicationSession(first.sources,this)
+        val fixture=epub2Fixture().apply {
+            change("OPS/chapter.xhtml"){it.replace(Regex("<body>.*</body>",RegexOption.DOT_MATCHES_ALL),"<body>"+(0..3000).joinToString(""){i->"<p id=\"${if(i==0)"start" else "$i"}\">Original passage $i 📖</p>"}+"</body>")}
+            change("OPS/Nav/toc.ncx"){it.replace("#start","#2800")}
+        }
+        val original=Files.write(root.resolve("original.bin"),fixture.zip())
+        lateinit var snapshot:PublicationSnapshot;lateinit var expected:ReadingLocator.Epub
+        try {
+            session.importLocal(picker(Files.readAllBytes(original)));val open=assertIs<OpenPublicationState.EpubReady>(ready(session))
+            open.reader.navigate(open.reader.toc.single().target)
+            val deep=withTimeout(15_000){assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(open.reader.state.first{it is org.infinilect.app.reader.epub.EpubReaderState.Ready || it is org.infinilect.app.reader.epub.EpubReaderState.Error})}
+            assertEquals(listOf(0,2800),deep.chapter.blocks[deep.initialPosition.first].elementPath)
+            expected=deep.chapter.locator(deep.initialPosition.first,12);snapshot=PublicationSnapshot.from(open.publication)
+            open.reader.report(deep.ticket,deep.initialPosition.first,12)
+            open.reader.presentationChanged(org.infinilect.app.reader.epub.EpubReaderSettings(fontSize=28,margin=36))
+            session.back();Files.delete(original);first.collections.flushHistory()
+            assertEquals(snapshot.id,value(first.store.library.list()).single().publication.id)
+            assertEquals(snapshot.id,value(first.store.history.listRecent()).single().publication.id)
+        }finally{session.close();first.close()}
+        root.resolve("cache").toFile().deleteRecursively();val second=Owner(root);val reopened=ApplicationSession(second.sources,this)
+        try {
+            val other=epub2Fixture().apply{change("OPS/chapter.xhtml"){it.replace("</body>","<p>Another original publication</p></body>")}}
+            reopened.importLocal(picker(other.zip()));val foreign=assertIs<OpenPublicationState.EpubReady>(ready(reopened))
+            assertNotEquals(snapshot.id,foreign.publication.id);assertEquals(0 to 0,assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(foreign.reader.state.value).initialPosition);reopened.back()
+            for(destination in listOf(Destination.LIBRARY,Destination.HISTORY)){
+                reopened.navigate(destination);reopened.openSaved(snapshot)
+                val restored=assertIs<org.infinilect.app.reader.epub.EpubReaderState.Ready>(assertIs<OpenPublicationState.EpubReady>(ready(reopened)).reader.state.value)
+                assertEquals(expected,restored.chapter.locator(restored.initialPosition.first,restored.initialPosition.second))
+                assertEquals(28,assertIs<OpenPublicationState.EpubReady>(reopened.opening.value).reader.settings.value.fontSize);reopened.back()
+            }
+        }finally{reopened.close();second.close();root.toFile().deleteRecursively()}
+    }
 }

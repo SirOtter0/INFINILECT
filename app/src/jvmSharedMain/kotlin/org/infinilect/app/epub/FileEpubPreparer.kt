@@ -35,6 +35,7 @@ internal class FileEpubPreparer(private val directory: Path?, private val limits
     private val jobs = ConcurrentHashMap.newKeySet<Job>()
     private val contents = ConcurrentHashMap.newKeySet<ResourceContent>()
     private var root: Path?=null
+    private var semanticFiles: EpubSemanticFiles?=null
     private var ownerFile: RandomAccessFile?=null
     private var lock: FileLock?=null
     private var shutdown: Job?=null
@@ -70,7 +71,7 @@ internal class FileEpubPreparer(private val directory: Path?, private val limits
                                 val pkg = readEpubPackage(zip, entries, limits, currentCoroutineContext().job)
                                 currentCoroutineContext().ensureActive()
                                 check(!closed.get())
-                                val value = PreparedEpub(publication.id, pkg, zip, dispatcher) {
+                                val value = PreparedEpub(publication.id, pkg, zip, dispatcher, checkNotNull(semanticFiles)) {
                                     doc ->
                                     cleanup.launch {
                                         try {
@@ -182,6 +183,7 @@ internal class FileEpubPreparer(private val directory: Path?, private val limits
             ownerFile = handle
             lock = handle.channel.tryLock() ?: throw EpubException(EpubFailure.STORAGE)
             root = session
+            semanticFiles = EpubSemanticFiles(session)
             return session
         }
         catch (error: Throwable) {
@@ -242,7 +244,7 @@ internal class FileEpubPreparer(private val directory: Path?, private val limits
     }
 }
 
-private class PreparedEpub(override val publicationId: PublicationId, pkg: EpubPackage, private val zip: ZipFile, private val dispatcher: CoroutineDispatcher, private val dispose: (PreparedEpub)->Unit): EpubDocument {
+private class PreparedEpub(override val publicationId: PublicationId, pkg: EpubPackage, private val zip: ZipFile, private val dispatcher: CoroutineDispatcher, semanticFiles: EpubSemanticFiles, private val dispose: (PreparedEpub)->Unit): EpubDocument, EpubSemanticCacheOwner {
     lateinit var file: Path
     override val packagePath = pkg.path
     override val metadata = pkg.metadata
@@ -255,7 +257,14 @@ private class PreparedEpub(override val publicationId: PublicationId, pkg: EpubP
     .toSet()
     private val closed = AtomicBoolean()
     private var released = false
-    private val releaseLock = Any()
+    private val releaseMutex = Mutex()
+    private val semantics = lazy { EpubSemanticCache(semanticFiles) }
+    override fun semanticCache(): EpubSemanticCache {
+        if (closed.get()) throw CancellationException("EPUB document closed")
+        val value = semantics.value
+        if (closed.get()) { value.invalidate(); throw CancellationException("EPUB document closed") }
+        return value
+    }
     private val mutex = Mutex()
     private val handles = ConcurrentHashMap.newKeySet<EntryContent>()
     override suspend fun openResource(path: EpubEntryPath): ResourceContent {
@@ -288,6 +297,7 @@ private class PreparedEpub(override val publicationId: PublicationId, pkg: EpubP
     }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        if (semantics.isInitialized()) semantics.value.invalidate()
         handles.forEach {
             try {
                 it.close()
@@ -297,12 +307,15 @@ private class PreparedEpub(override val publicationId: PublicationId, pkg: EpubP
         }
         dispose(this)
     }
-    fun release() = synchronized(releaseLock) {
+    suspend fun release() = releaseMutex.withLock {
         if (!released) {
             // Cleanup is best-effort and must still release the owner lock/session
             // when a provider reports an IOException while closing its descriptor.
-            try { zip.close() } catch (_: java.io.IOException) { }
-            finally { released = true }
+            try { if (semantics.isInitialized()) semantics.value.closeAndJoin() }
+            finally {
+                try { zip.close() } catch (_: java.io.IOException) { }
+                finally { released = true }
+            }
         }
     }
 }
@@ -352,7 +365,7 @@ private class EntryContent(private val input: java.io.InputStream, override val 
     }
 }
 private val sessionPattern = Regex("session-[0-9a-f-]{36}")
-private val payloadPattern = Regex("epub-[0-9a-f-]{36}\\.zip")
+private val payloadPattern = Regex("(?:epub-[0-9a-f-]{36}\\.zip|epub-semantic-[0-9a-f-]{36}\\.bin)")
 private fun deleteFile(path: Path) {
     try {
         if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) Files.deleteIfExists(path)
