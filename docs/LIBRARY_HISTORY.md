@@ -296,3 +296,12 @@ Internet Archive remains public CC0-only and revision=null; Library membership
 never skips its fresh metadata/acquisition boundary. Gutenberg is an experimental metadata-only catalog; saved opens are unavailable
 and keep user state. See [policy](GUTENBERG.md).
 No persisted record or publication content is logged during this test.
+
+## Application presentation
+
+The [adaptive application interface](APPLICATION_UI.md) shares publication cards,
+metadata-only details, empty/error states and Library/History navigation. Existing
+collection membership and persistence contracts above are unchanged. A progress
+summary appears only when the active application has a known legitimate record;
+absence is not reported as 0%. Reader return restores the destination and remembered
+collection viewport.

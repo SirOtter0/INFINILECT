@@ -38,27 +38,26 @@ class MainActivity : ComponentActivity() {
         picker = AndroidDocumentPicker(this)
         setContent {
             var appearance by remember { mutableStateOf<ReaderAppearance?>(null) }
+            var appAppearance by remember { mutableStateOf(ReaderAppearance(false, Color.White)) }
+            val systemAppearance = resolveSystemAppearance(appAppearance, appearance)
             // Draw opaque reading paper behind transparent bars, including Android
             // 15+ enforced edge-to-edge. Insets remain consumed once by this owner.
-            DisposableEffect(appearance) {
-                val reader = appearance
-                // The existing application MaterialTheme is light; reader appearance
-                // is scoped to EPUB and must not carry over to other destinations.
-                val style = if (reader?.dark == true) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+            DisposableEffect(systemAppearance) {
+                val reader = systemAppearance
+                // EPUB appearance overrides the application only for the reader lifetime.
+                val style = if (reader.dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
                         else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
-                if (reader != null) {
-                    if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        // Our opaque backdrop supplies contrast in both navigation modes.
-                        window.isNavigationBarContrastEnforced = false
-                    }
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    // Our opaque backdrop supplies contrast in both navigation modes.
+                    window.isNavigationBarContrastEnforced = false
                 }
                 onDispose { }
             }
-            Box(Modifier.fillMaxSize().background(appearance?.background ?: Color.White).safeDrawingPadding().imePadding()) {
+            Box(Modifier.fillMaxSize().background(systemAppearance.background).safeDrawingPadding().imePadding()) {
                 App(sources, localFilePicker = picker, backHandler = { enabled, onBack ->
                     BackHandler(enabled = enabled, onBack = onBack)
-                }, readerAppearance = { appearance = it })
+                }, readerAppearance = { appearance = it }, applicationAppearance = { appAppearance = it })
             }
         }
     }

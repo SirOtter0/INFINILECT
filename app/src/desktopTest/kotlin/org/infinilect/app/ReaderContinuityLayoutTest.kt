@@ -33,7 +33,9 @@ class ReaderContinuityLayoutTest {
         fun nodes() = scene.semanticsOwners.flatMap { walk(it.unmergedRootSemanticsNode) }
         fun text(n: SemanticsNode, label: String) = n.config.getOrNull(SemanticsProperties.Text)?.any { it.text == label } == true
         fun click(label: String) {
+            // Search submission is a content action; the new Search navigation tab is a separate control.
             val node = assertNotNull(nodes().firstOrNull { !it.config.contains(SemanticsProperties.Disabled) &&
+                it.config.getOrNull(SemanticsProperties.Role) != Role.Tab &&
                 it.config.getOrNull(SemanticsActions.OnClick)?.action != null && walk(it).any { child -> text(child, label) } },
                 "Enabled control $label must be present")
             assertTrue(node.config[SemanticsActions.OnClick].action!!.invoke()); pump()

@@ -454,3 +454,10 @@ production comic sources remain out of scope. Future local-file support needs a
 separate platform acquisition boundary feeding this preparer; PageReader does not
 become a filesystem reader. Prepared archives are disposable cache data, independent
 of Library/History and ReadingProgress.
+
+### Application presentation
+
+The adaptive application shell, metadata cards/dialogs and independent appearance
+preference are documented in [Application interface](APPLICATION_UI.md).
+Application navigation/session ownership and reader progress remain separate from
+presentation; reader engines and collection schemas are unchanged.

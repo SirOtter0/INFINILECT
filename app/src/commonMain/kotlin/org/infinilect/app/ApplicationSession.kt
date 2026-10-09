@@ -9,7 +9,7 @@ import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.core.*
 
-internal enum class Destination { SEARCH, LIBRARY, HISTORY }
+internal enum class Destination { SEARCH, LIBRARY, HISTORY, SETTINGS }
 
 /** Small session navigation. Saved metadata resolves only IDs via an existing owning source.
  * A collection open uses a separate reader session so search/query/results remain intact.

@@ -24,6 +24,8 @@ internal class ProgressPersistence(
     private val signal = Channel<Unit>(Channel.CONFLATED)
     private val pending = MutableStateFlow<Map<ReadingProgressId, ReadingProgress>>(emptyMap())
     private val recent = MutableStateFlow<Map<ReadingProgressId, ReadingProgress>>(emptyMap())
+    /** Read-only, bounded session summaries for UI; never authority for opening bytes. */
+    val recentProgress = recent.asStateFlow()
     private val mutableSaveFailed = MutableStateFlow(false)
     val saveFailed: StateFlow<Boolean> = mutableSaveFailed.asStateFlow()
     private var closed = false
