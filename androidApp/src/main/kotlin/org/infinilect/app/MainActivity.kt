@@ -7,6 +7,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.*
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -33,10 +37,28 @@ class MainActivity : ComponentActivity() {
         sources = ViewModelProvider(this, factory)[ReaderRuntime::class.java].sources
         picker = AndroidDocumentPicker(this)
         setContent {
-            Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+            var appearance by remember { mutableStateOf<ReaderAppearance?>(null) }
+            // Draw opaque reading paper behind transparent bars, including Android
+            // 15+ enforced edge-to-edge. Insets remain consumed once by this owner.
+            DisposableEffect(appearance) {
+                val reader = appearance
+                // The existing application MaterialTheme is light; reader appearance
+                // is scoped to EPUB and must not carry over to other destinations.
+                val style = if (reader?.dark == true) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                        else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                if (reader != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        // Our opaque backdrop supplies contrast in both navigation modes.
+                        window.isNavigationBarContrastEnforced = false
+                    }
+                }
+                onDispose { }
+            }
+            Box(Modifier.fillMaxSize().background(appearance?.background ?: Color.White).safeDrawingPadding().imePadding()) {
                 App(sources, localFilePicker = picker, backHandler = { enabled, onBack ->
                     BackHandler(enabled = enabled, onBack = onBack)
-                })
+                }, readerAppearance = { appearance = it })
             }
         }
     }

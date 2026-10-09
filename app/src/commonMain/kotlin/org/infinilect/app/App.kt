@@ -55,6 +55,7 @@ fun App(
     applicationSources: ApplicationSources,
     backHandler: @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit = { _, _ -> },
     localFilePicker: org.infinilect.app.imports.LocalFilePicker? = null,
+    readerAppearance: (ReaderAppearance?) -> Unit = {},
 ) {
     val application=remember(applicationSources) { applicationSources.applicationSession() }
     // Save only owned identity for Android recreation; never an external acquisition URI.
@@ -121,6 +122,7 @@ fun App(
                 }
                 is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(
                     current.reader, saveFailed, application::back, backLabel, backHandler,
+                    appearanceChanged = readerAppearance,
                     publicationActions = {
                         LibraryAction(LibraryActionState(membership.inLibrary, membership.busy, membership.unavailable), application.collections::toggleLibrary)
                     },

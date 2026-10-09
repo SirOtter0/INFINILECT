@@ -104,15 +104,15 @@ class EpubWindowLayoutTest {
             }
         }finally{reader.close()}
     }
-    @Test fun existingPreviousNextControlsTraverseWindowsWithoutNewWindowControls()=runTest {
+    @Test fun existingKeyboardPreviousNextTraverseWindowsWithoutNewWindowControls()=runTest {
         val reader=EpubReaderController(Doc(),ReadingProgressId(publication,"book",PublicationFormat.EPUB),backgroundScope,Parser())
         try{
             reader.initialize(null)
             Scene(this).use{f->
-                f.content{EpubReader(reader,false,{},"Back")};f.click("Show reading controls");f.click("Next")
+                f.content{EpubReader(reader,false,{},"Back")};f.scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(key=androidx.compose.ui.input.key.Key.DirectionRight,type=androidx.compose.ui.input.key.KeyEventType.KeyDown,isAltPressed=true));f.pump()
                 assertEquals(128,ready(reader).chapter.startBlock)
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==text(128)}==true})
-                f.click("Previous");assertEquals(0,ready(reader).chapter.startBlock)
+                f.scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(key=androidx.compose.ui.input.key.Key.DirectionLeft,type=androidx.compose.ui.input.key.KeyEventType.KeyDown,isAltPressed=true));f.pump();assertEquals(0,ready(reader).chapter.startBlock)
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==text(127)}==true})
             }
         }finally{reader.close()}

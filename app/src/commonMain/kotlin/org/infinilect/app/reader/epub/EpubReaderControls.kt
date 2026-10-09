@@ -67,7 +67,7 @@ internal fun EpubNavigationBar(
     onPrevious: () -> Unit, onNext: () -> Unit, onContents: () -> Unit, onSettings: () -> Unit,
     contentsFocus: FocusRequester, settingsFocus: FocusRequester, modifier: Modifier = Modifier,
 ) {
-    Surface(modifier.widthIn(max = 760.dp).fillMaxWidth(), elevation = 0.dp) {
+    Surface(modifier.widthIn(max = 760.dp).fillMaxWidth().epubTapBarrier(), elevation = 0.dp) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
             Divider(color = MaterialTheme.colors.onSurface.copy(alpha = .12f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

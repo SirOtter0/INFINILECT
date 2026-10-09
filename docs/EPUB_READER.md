@@ -9,95 +9,111 @@ Compose UI. It does not claim generic EPUB compatibility or a completed v0.0.1.
 ## PR #27: immersive reading controls
 
 Merged PR #26 is the engine baseline. The user reports physically on Android that
-EPUB reading performance is much better; that observation is separate from
-acceptance of this UI change, which is still pending.
+EPUB performance is much better. Initial PR #27 physical testing found a functional
+reader but three UX defects: navigation required opening chrome, Controls/percentage
+remained permanently visible, and Android bars stayed light in dark reading mode.
+These are user-reported pre-fix observations; acceptance of this follow-up is pending.
 
-The EPUB surface opens with readable content and a small **Controls** button and
-whole-book percentage. Controls also toggle with a short central tap (middle 40%
-of width and middle 60% of height), after children have handled the gesture.
-Consumed links, selection, long presses, scrolling and multi-pointer gestures
-never toggle controls or introduce page turns. Text uses the platform serif family
-with normal system fallback; headings and controls use the standard UI family,
-and preformatted content remains monospace. Existing font size, spacing, margins,
-block styles, local images and links are preserved. Light/dark paper-and-ink
-palettes retain at least 4.5:1 normal-text/link contrast. No fonts are downloaded.
+Normal reading now shows **only publication content**. Short, stationary, unconsumed
+single-pointer taps use the actual viewport width: left 25% moves backward, center
+50% toggles chrome, right 25% moves forward. Center includes the exact 25%/75% dividing
+coordinates. Lateral navigation scrolls **85% of the viewport**, keeping **15% overlap**;
+it does not jump an entire chapter. At a measured scroll boundary, the current ticket
+requests the next/previous semantic window, or the adjacent spine document when the
+actual chapter boundary is reached. Backward chapter entry restores its ending
+passage. Publication endpoints do nothing safely. Existing serialized preparation,
+prefetch/cache, global paragraph keys and rolling rebase are reused.
 
-Top and bottom toolbars overlay the centered, maximum-760dp reading column;
-showing/hiding controls does not change its width, scroll geometry, presentation
-ticket or saved locator. Toolbar overlays can temporarily cover edge content;
-hiding them restores the unobstructed surface. A bottom content inset lets the
-last paragraph scroll clear of the persistent Controls button. The platform and
-shared safe-area padding consume insets rather than doubling them.
+Links, text selection, long presses, vertical drags and multi-pointer input get first
+refusal through the final pointer pass; no page-turn drag gesture is introduced.
+Opaque toolbar/warning areas consume even blank/disabled-control touches. Native
+panels own their input. Pending navigation and active viewport scrolls do not acquire
+an unbounded tap queue. Callback registration follows the current ticket, and tap
+navigation validates visible global keys against the current model before using
+scroll bounds. A controlled pending-window test exposed a previous end-of-buffer
+sentinel being treated as chapter completion: after rebase, it could alternate
+lookahead direction and saved position without new input. Only a real chapter end
+now reports the chapter's final block; temporary window edges keep the measured
+first-visible semantic locator and cannot trigger that oscillation.
+Requests and failed targets never become progress: only the
+existing measured/presented semantic locator can be saved. Errors retain the previous
+passage and expose the existing controlled Retry action.
 
-Contents and reading settings use compact, scrollable native modal panels capped
-by the actual viewport and a 480dp maximum width. Initial focus goes to Close;
-dismissal restores the opener. Android Back closes a panel, then controls, before
-leaving the reader. The contextual Back button still returns to Library, History
-or results as before. The existing Library membership action is inside the EPUB
-settings panel, using the same application callback; other readers are unchanged.
-Storage/history/progress warnings and controlled Retry remain accessible even
-with chrome hidden.
+Hidden chrome has no persistent Controls button, percentage or reserved button inset.
+Nonvisual accessibility actions toggle controls or move by a viewport. **F10** also
+exposes controls on Desktop. Shown top/bottom toolbars offer contextual Back, Contents,
+Settings, **Previous/Next spine-section navigation**, and existing whole-book progress.
+The indicator says **Section X of N**, never a window count or fabricated page number.
+Alt+Left/Right keeps the existing semantic window/section navigation. Up/Down and
+Page Up/Down scroll; Escape dismisses a panel, then chrome, then returns to the opening
+screen. Tab/Shift+Tab and Enter operate controls. Modified selection shortcuts retain
+child handling.
 
-Desktop keys: **F10** toggles controls; **Alt+Left/Right** invokes semantic
-Previous/Next; **Up/Down** and **Page Up/Down** scroll; **Escape** dismisses a panel,
-then controls, then returns to the opening screen. Tab/Shift+Tab and Enter operate
-normal controls. Modified selection shortcuts retain child handling. Stable root
-focus and one replaceable, cancellable presentation scroll callback survive body
-replacement without stealing focus from a toolbar button. Keyboard scrolling is
-user input, but only the resulting measured passage is reported as progress.
+Toolbars overlay the centered maximum-760dp reading column; opening/closing chrome
+or panels changes no list geometry, presentation ticket or locator. Visible toolbars
+can temporarily cover edge text. Settings/Contents are compact scrollable native modal
+panels, constrained to the viewport and a 480dp maximum width. Android Back closes the
+panel before chrome; closing a panel restores opener focus. Icon controls have labels
+and minimum 48dp targets. Library membership uses the same action inside Settings;
+other readers retain their UI.
 
-The indicator says **Section X of N** for the current OPF spine document, and
-**X% of book** for existing semantic whole-book progression. It does not invent
-page numbers or count semantic windows as chapters. Previous/Next retains the
-existing passage/window and actual spine-boundary navigation. TOC/internal links,
-long-window prefetch, the 180ms delayed loading indicator, retained old passage
-and same-destination Retry are unchanged. Opening/closing a panel performs no
-parsing or progress submission. Typography uses the existing canonical reflow and
-semantic restoration. The same four global EPUB preferences and storage schema
-remain; panel/chrome/focus/selection state is transient and starts afresh after a
-presentation recreation.
+Text uses platform serif with system fallback, headings use the UI family, and
+preformatted text remains monospace. Light/dark paper-and-ink palettes preserve 4.5:1
+normal text/link contrast. Existing font size, spacing, margins and System/Light/Dark
+preferences use the same global persistence. Typography and viewport changes use
+canonical semantic restoration, including deep long-chapter positions. The 12-entry
+text-layout lookup pins the first visible paragraph; borrowed composed-text layouts
+retire with lazy composition. Semantic/index, disk, parse, image and bitmap budgets,
+publication/session ownership, ZIP/XML security and progress schemas are unchanged.
 
-The larger reading viewport exposed the old 12-entry text-layout lookup evicting
-the first visible paragraph. Placement now pins the actual first visible result,
-and the scroll observer observes that result; the lookup still has **12 entries**.
-Per-composed-text references borrow existing immutable layouts and retire with
-lazy composition. Semantic/index, disk, parser, raster and bitmap budgets and
-publication ownership are untouched. No extra reading-position owner was added.
+### Android system bars
 
-Automated coverage adds **27 tests**: 10 common interaction/contrast checks and
-17 shared-UI headless Desktop tests for overlays, touch/links/selection/multitouch,
-panels/focus/Back, keyboard, deep reflow and fresh-owner preference/progress
-restoration, pending coalescing, errors/Retry, large-text/resize and large viewports.
-Existing window continuity assertions remain; their navigation test now opens the
-new initially hidden toolbar. Focused suites passed **497 Desktop /454 Android-host**.
-Full app suites passed **1,132 Desktop /1,025 Android-host**, zero failures/errors/skips.
-Android and Desktop application compilation passed; results are also recorded
-in PR #27. Core, parser/security/index, imports, CBZ/PDF/TEXT, dependencies, signing,
-permissions, release and database schemas are unchanged.
+A presentation-only appearance callback reports the EPUB paper color and resolved
+System/Light/Dark mode while the reader is mounted; disposal restores application
+appearance. MainActivity draws that opaque color **before** its safe-area padding,
+behind transparent bars. The existing Activity edge-to-edge helper applies explicit
+light/dark SystemBarStyle, including matching icon contrast. It does not depend on
+setting deprecated status/navigation bar background colors, which Android 15+ can
+ignore when edge-to-edge is enforced. Insets remain consumed once. On API 29+ the
+navigation contrast scrim is disabled for EPUB because the opaque backdrop provides
+contrast, for both gesture and three-button navigation. Supported API 26–28 uses the
+Activity compatibility implementation. Exiting EPUB restores the existing light
+application appearance; Dark is not forced on other destinations.
 
-Headless previews contain only original fictional text, are generated outside the
-repository, and are not physical Android/native Desktop screenshots. Font fallback,
-system bars, screen-reader/platform focus and touch selection need device checks.
-All current labels follow the application's existing English-only pattern; this
-change does not introduce a localization system or publisher CSS/font support.
-Native Desktop graphical acceptance and physical Android acceptance remain pending.
+Automated tests verify shared appearance synchronization, theme resolution, remount
+and disposal. Compilation verifies the Android integration. Native bar pixels/icons,
+OEM-enforced scrims, gesture/three-button navigation and TalkBack need physical checks;
+headless Android-host tests cannot establish these graphical observations. This is
+color/inset integration, not system-bar hiding or a fullscreen redesign.
 
-Manual Android acceptance:
+Follow-up coverage adds **14 tests** (6 common boundary/theme/gesture tests and
+8 headless shared-UI tests), retaining prior assertions and adapting removed-control
+interactions to accessibility/keyboard actions. Focused suites passed **511 Desktop /
+460 Android-host**; the loading-overlay regression failed before its barrier and
+passed afterward. Final full app regression passed **1,146 Desktop /1,031 Android-host**,
+zero failures/errors/skips. Android and Desktop compilation passed with JDK 21.
+Core suites were not rerun because core is unchanged. Diff and secret/artifact checks
+passed. Native system bars are not covered by the host graphical tests.
+Labels follow the existing English-only pattern; no font downloads, publisher CSS,
+new dependency, parser/cache redesign or localization system is added. Physical
+Android re-acceptance and native Desktop graphical acceptance remain pending.
 
-1. Open a short EPUB and Montecristo; check comfortable light/dark reading and
-   large system text, portrait/landscape safe areas, and the centered reading column.
-2. Use Controls and central taps. Scroll, long-press/select/copy text, tap internal
-   links and use multi-touch: none should accidentally open controls or turn pages.
-3. Open/dismiss Contents and Settings, use contextual Back and Library membership;
-   verify TalkBack labels, focus, touch targets and no passage/progress jump.
-4. Deep in a long chapter, change font size/spacing/margins/theme; rotate and reopen,
-   including a process restart after saving. Preserve semantic progress/preferences.
-5. Traverse windows and spine boundaries both ways, navigate to distant TOC/link
-   targets and tap rapidly while loading. Retain the old passage, correct progress
-   and exact Retry destination; no duplicated/missing text or blank transitions.
+Manual Android re-acceptance:
 
-Desktop additionally: resize; test F10, Alt+Left/Right, Up/Down, Page Up/Down,
-Escape, Tab/Shift+Tab/Enter, modal focus return and mouse selection/links.
+1. Open a short EPUB and Montecristo: default chrome/progress is absent. Tap left,
+   center and right; check viewport overlap and discovery/dismissal of controls.
+2. Traverse long windows in both directions and actual chapter boundaries; verify no
+   omitted/duplicate text, rapid-tap corruption or position loss. Overlay Previous/Next
+   should navigate actual spine sections; TOC/internal deep links still work.
+3. Scroll, select/copy, long-press and use links/multi-touch. They must not trigger tap
+   navigation; buttons, panel backgrounds and disabled/blank toolbar areas must not
+   pass taps to the passage.
+4. Switch System/Light/Dark, including system appearance changes. Check bar backgrounds
+   and icon contrast, rotation and safe areas, gesture and three-button navigation;
+   leave the reader and confirm normal application appearance returns.
+5. Deep in a chapter, change typography, rotate, close/reopen and restart after saving.
+   Confirm semantic progress/preferences, readable pending content, Retry and TalkBack
+   actions/focus. Desktop separately: F10, keys, resize, mouse selection and links.
 
 ## Acquisition status and a reproducible development route
 
