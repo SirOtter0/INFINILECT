@@ -5,7 +5,7 @@ package org.infinilect.app.discovery
 import io.ktor.client.engine.mock.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.*
 import org.infinilect.app.archive.*
 import org.infinilect.app.gutenberg.*
 import org.infinilect.app.ui.*
@@ -14,6 +14,59 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class DiscoveryProviderTest {
+    @Test fun emptyIndexedFirstPageDoesNotHideLaterPages() {
+        val query="subject:\"Adventure\""
+        val first=ArchiveMetadata.search("""{"response":{"numFound":21,"docs":[]}}""".toByteArray(),query,1)
+        assertTrue(first.publications.isEmpty())
+        assertEquals(2,ArchiveUrls.page(assertNotNull(first.nextPageToken),query))
+        val last=ArchiveMetadata.search("""{"response":{"numFound":21,"docs":[]}}""".toByteArray(),query,3)
+        assertNull(last.nextPageToken)
+    }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun slowThumbnailDoesNotHoldTheCatalogMetadataLock()=runTest {
+        val coverStarted=CompletableDeferred<Unit>()
+        val queryStarted=CompletableDeferred<Unit>()
+        val source=GutenbergSource(MockEngine(MockEngineConfig().apply {
+            dispatcher=StandardTestDispatcher(testScheduler)
+            addHandler { request ->
+                if(request.url.host=="www.gutenberg.org") { coverStarted.complete(Unit); awaitCancellation() }
+                else {
+                    val query=request.url.parameters["query"]
+                    if(query=="Cervantes") queryStarted.complete(Unit)
+                    respond(if(query!=null) previewPage(query,publications=withImage("https://www.gutenberg.org/cache/epub/84/pg84.cover.medium.jpg")) else previewRoot,
+                        headers=headersOf(HttpHeaders.ContentType,"application/json"))
+                }
+            }
+        }))
+        try {
+            source.discover(DiscoveryRequest("books"))
+            val cover=backgroundScope.launch { source.coverThumbnail(PublicationId(source.id,"84")) }
+            runCurrent(); coverStarted.await()
+            val query=backgroundScope.async { source.discover(DiscoveryRequest("Cervantes")) }
+            runCurrent()
+            assertTrue(queryStarted.isCompleted,"A pending image must not block catalog metadata")
+            cover.cancel();runCurrent()
+            assertEquals(1,query.await().entries.size)
+        } finally {source.close()}
+    }
+
+    @Test fun supportedGenreAliasesRetainRightsSubsetAndPageTokenBinding()=runTest {
+        val queries=mutableListOf<String>()
+        val source=InternetArchiveSource(MockEngine {request ->
+            queries+=request.url.parameters["q"]!!
+            respond("""{"response":{"numFound":11,"docs":[{"identifier":"original-book","title":"Original","subject":["Adventure"]}]}}""",headers=headersOf(HttpHeaders.ContentType,"application/json"))
+        })
+        try {
+            for(genre in listOf(Genre.ADVENTURE,Genre.PHILOSOPHY,Genre.ROMANCE,Genre.HISTORY)) {
+                val page=source.discover(DiscoveryRequest("",genre))
+                source.discover(DiscoveryRequest("",genre),assertNotNull(page.nextToken))
+                assertEquals(queries[queries.lastIndex-1],queries.last())
+                assertTrue(queries.last().contains("licenseurl:")); assertTrue(queries.last().contains("NOT access-restricted-item:true"))
+            }
+            assertTrue(queries.first().contains("subject:\"Adventure stories\" OR subject:\"Adventure\""))
+            assertTrue(queries[4].contains("subject:\"Love stories\" OR subject:\"Romance\""))
+        } finally {source.close()}
+    }
     @Test fun archiveMapsOnlySuppliedMetadataAndLeavesResourcesUnauthorized() {
         val entries=mutableListOf<DiscoveryEntry>()
         val json="""{"response":{"numFound":1,"docs":[{"identifier":"original-book","title":"A title","creator":["Author"],"language":["en"],"subject":["Science fiction -- History and criticism"],"description":"<p>Original &amp; inert.</p>","rights":"A supplied rights statement"}]}}"""

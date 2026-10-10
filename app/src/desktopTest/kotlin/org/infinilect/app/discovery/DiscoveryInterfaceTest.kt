@@ -128,4 +128,73 @@ class DiscoveryInterfaceTest {
             f.app.navigate(Destination.HOME);f.appearance.changeDiscovery(DiscoveryPreferences(homeEnabled=true,interests=setOf(Genre.PHILOSOPHY)));f.pump();f.capture("discovery-home-$suffix.png")
         }
     }
+
+    @Test fun remountingSearchKeepsItsScrolledPassageAndDoesNotRefetchCompletedResults()=runTest {
+        Fixture(this,390,900).use { f ->
+            f.search()
+            fun grid()=f.nodes().first { it.config.getOrNull(SemanticsActions.ScrollToIndex)!=null && it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)!=null }
+            assertTrue(grid().config[SemanticsActions.ScrollToIndex].action!!.invoke(8)); f.pump()
+            val before=grid().config[SemanticsProperties.VerticalScrollAxisRange].value()
+            assertTrue(before>0)
+            val calls=f.source.calls+f.gutenberg.calls
+            f.app.navigate(Destination.HOME); f.pump(); f.app.navigate(Destination.SEARCH); f.pump()
+            assertEquals(before,grid().config[SemanticsProperties.VerticalScrollAxisRange].value())
+            assertEquals(calls,f.source.calls+f.gutenberg.calls)
+        }
+    }
+
+    @Test fun clearSearchCancelsPendingResultsPreservesFiltersAndHasAccessibleAction()=runTest {
+        Fixture(this,390,900).use { f ->
+            f.search(); f.app.discovery.language("en"); f.pump()
+            val gate=CompletableDeferred<DiscoveryPage>()
+            f.source.respond={_,_->gate.await()}
+            f.app.discovery.edit("pending"); advanceTimeBy(350); f.pump()
+            f.click("Clear search")
+            assertEquals("",f.app.discovery.state.value.query)
+            assertEquals("en",f.app.discovery.state.value.language)
+            assertTrue(f.app.discovery.state.value.entries.isEmpty())
+            gate.complete(DiscoveryPage(listOf(f.source.entry("obsolete")))); advanceTimeBy(350); f.pump()
+            assertFalse(f.visible("Clear search")); assertFalse(f.app.discovery.state.value.loading)
+            assertTrue(f.app.discovery.state.value.entries.isEmpty())
+        }
+    }
+
+    @Test fun repeatedHomeSearchDetailsAndDiscoveryChangesHaveStableLazyIdentities()=runTest {
+        Fixture(this,390,900).use { f ->
+            f.appearance.changeDiscovery(DiscoveryPreferences(homeEnabled=true)); f.pump()
+            repeat(30) { index ->
+                f.app.navigate(Destination.SEARCH); f.app.discovery.edit("Cervantes $index"); advanceTimeBy(350); f.pump()
+                f.click("Details for Original reading 0"); f.click("Close")
+                f.app.navigate(Destination.HOME); f.pump()
+                f.appearance.changeDiscovery(DiscoveryPreferences(homeEnabled=index%2==0)); f.pump()
+            }
+            assertTrue(f.data.opened.isEmpty()); assertTrue(f.data.saved.isEmpty())
+            assertTrue(f.visible("Hello, Alex!"))
+        }
+    }
+
+    @Test fun enterActivatesFocusedClearButtonRatherThanSubmittingTheEnclosingSearchField()=runTest {
+        Fixture(this,1280,900).use { f ->
+            f.search()
+            val button=f.nodes().first { f.has(it,"Clear search") && it.config.getOrNull(SemanticsActions.RequestFocus)?.action!=null }
+            assertTrue(button.config[SemanticsActions.RequestFocus].action!!.invoke()); f.pump()
+            f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyUp));f.pump()
+            assertEquals("",f.app.discovery.state.value.query)
+        }
+    }
+
+    @Test fun enterSubmitsFocusedQueryImmediatelyWithoutWaitingForTheTypingDebounce()=runTest {
+        Fixture(this,1280,900).use { f ->
+            f.search()
+            val field=f.nodes().first {it.config.getOrNull(SemanticsActions.SetText)?.action!=null}
+            assertTrue(field.config[SemanticsActions.SetText].action!!.invoke(androidx.compose.ui.text.AnnotatedString("Cervantes")))
+            assertTrue(field.config[SemanticsActions.RequestFocus].action!!.invoke()); f.pump()
+            assertNull(f.app.discovery.state.value.request)
+            val time=testScheduler.currentTime
+            f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyUp));f.pump()
+            assertEquals(time,testScheduler.currentTime)
+            assertEquals("Cervantes",f.app.discovery.state.value.request?.query)
+            assertTrue(f.app.discovery.state.value.entries.isNotEmpty())
+        }
+    }
 }

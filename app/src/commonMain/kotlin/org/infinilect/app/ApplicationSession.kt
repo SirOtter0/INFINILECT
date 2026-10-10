@@ -23,8 +23,8 @@ internal class ApplicationSession(
 ) : ApplicationSessionLifetime {
     private val job=SupervisorJob(scope.coroutineContext[Job])
     private val scope=CoroutineScope(scope.coroutineContext+job)
-    private val discoveryOptions = sources.options
-    private val discoveryCatalog = DiscoveryCatalog(discoveryOptions.map { it.source }, this.scope, clock)
+    private val discoveryOptions = sources.options.filterNot { it.developmentOnly }
+    private val discoveryCatalog = DiscoveryCatalog(discoveryOptions.map { it.source }, this.scope, sources.discoveryDiagnostics, clock)
     val discovery = DiscoveryController(discoveryOptions, discoveryCatalog, this.scope)
     val homeDiscovery = HomeDiscovery(discoveryOptions.filter { it.source is DiscoverySource }, discoveryCatalog, this.scope, clock)
     val catalogOptions get() = discoveryOptions
@@ -88,8 +88,19 @@ internal class ApplicationSession(
         if (destination != Destination.SEARCH) discovery.pause()
         if (destination != Destination.HOME) homeDiscovery.pause()
         mutableDestination.value=destination
+        if (destination == Destination.SEARCH) discovery.resume()
         if (destination == Destination.HOME) refreshHomeProgress() else { homeGeneration++; homeLookup?.cancel() }
         when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); Destination.HOME -> { collections.refreshLibrary(); collections.refreshHistory() }; else -> Unit }
+    }
+    /** Platform backgrounding retires requests without disposing retained readers or source clients. */
+    fun pauseDiscovery() { discovery.pause(); homeDiscovery.pause() }
+    fun resumeDiscovery() {
+        if (closed || opening.value !is OpenPublicationState.Idle) return
+        when (destination.value) {
+            Destination.SEARCH -> discovery.resume()
+            Destination.HOME -> sources.appearance?.state?.value?.takeIf { it.loaded }?.let { homeDiscovery.refresh(it.discovery) }
+            else -> Unit
+        }
     }
     fun openSaved(snapshot: PublicationSnapshot, pdfRecreationIndex: Int? = null) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return

@@ -36,7 +36,8 @@ class ReaderContinuityLayoutTest {
             // Search submission is a content action; the new Search navigation tab is a separate control.
             val node = assertNotNull(nodes().firstOrNull { !it.config.contains(SemanticsProperties.Disabled) &&
                 it.config.getOrNull(SemanticsProperties.Role) != Role.Tab &&
-                it.config.getOrNull(SemanticsActions.OnClick)?.action != null && walk(it).any { child -> text(child, label) } },
+                it.config.getOrNull(SemanticsActions.OnClick)?.action != null && walk(it).any { child ->
+                    text(child, label) || child.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true } },
                 "Enabled control $label must be present")
             assertTrue(node.config[SemanticsActions.OnClick].action!!.invoke()); pump()
         }

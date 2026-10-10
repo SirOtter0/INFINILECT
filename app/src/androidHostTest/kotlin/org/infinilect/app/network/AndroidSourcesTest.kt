@@ -15,6 +15,12 @@ import org.infinilect.core.PublicationId
 import org.infinilect.core.SourceId
 
 class AndroidSourcesTest {
+    @Test fun androidDemosRequireAnExplicitDeveloperRequestAndAreNeverEnabledByDebugAlone() {
+        assertFalse(org.infinilect.app.developerSourcesEnabled(true, false))
+        assertFalse(org.infinilect.app.developerSourcesEnabled(false, true))
+        assertFalse(org.infinilect.app.developerSourcesEnabled(false, false))
+        assertTrue(org.infinilect.app.developerSourcesEnabled(true, true))
+    }
     @Test fun resultKeysCanBeSerializedForAndroidBundleSaveability() {
         val key = PublicationId(SourceId("internet-archive"), "gmb-2015-93040").resultKey()
         assertIs<Serializable>(key)

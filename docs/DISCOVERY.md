@@ -9,10 +9,10 @@ acquisition permission, dependency, application ID or signing change.
 
 | Source | Search / browse | Categories | Language | Pagination | Artwork | Acquisition | Rights / limitations |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Internet Archive | Existing advanced-search API; unified literal title/author/keyword search; exact subject browse | Supplied `subject`; seven documented exact aliases/segments | Supplied tags, locally filtered | Source-owned token, 10/page | Catalog covers not exposed by this verified adapter; typographic fallback | Existing refreshed public CC0 TEXT subset; PDF delivery metadata exists but this app option does not enable PDF reading; EPUB/CBZ acquisition remains disabled | Search remains its narrow CC0/texts subset. Item/file restrictions, current license and delivery validation remain authoritative; CC0 search indexing is not worldwide eligibility |
+| Internet Archive | Existing advanced-search API; unified literal title/author/keyword search; exact subject browse | Supplied `subject`; seven documented subjects with exact aliases/segments | Supplied tags, locally filtered | Source-owned token, 10/page | Catalog covers not exposed by this verified adapter; typographic fallback | Existing refreshed public CC0 TEXT subset; PDF delivery metadata exists but this app option does not enable PDF reading; EPUB/CBZ acquisition remains disabled | Search remains its narrow CC0/texts subset. Item/file restrictions, current license and delivery validation remain authoritative; CC0 search indexing is not worldwide eligibility |
 | Project Gutenberg | Experimental development OPDS2 search; general keyword discovery, no verified genre browse route | Optional OPDS subject names; the live classics page did not supply subjects | Supplied tags, locally filtered | Advertised validated `next`, 25/page | Advertised medium/small JPEG thumbnail only on exact per-book Gutenberg routes; optional/fallback | **Catalog only**, resources empty. No EPUB/TEXT download or legacy RDF/mirror fallback | Preserve dedicated rights when supplied; absent means unknown. USA rights prose and metadata CC0 do not establish worldwide book rights |
 | Imported files | Existing private title/author lookup; `*` lists imports | Not present in saved metadata; never guess from title | Available saved language metadata | UI slices 25 matches/page; existing source is bounded | Existing real EPUB/CBZ thumbnails; PDF/TEXT fallback | Existing owned local resources, unchanged | No network; publication-specific library/history/progress retained |
-| Original debug EPUB/comic demos | Existing explicitly selectable fixtures, not public discovery | None | Only supplied data | Small original fixture sets | Existing/fallback | Existing development route only | Excluded from default unified queries and Home discovery |
+| Original debug EPUB/comic demos | Explicit developer-only fixtures; hidden from normal discovery | None | Only supplied data | Small original fixture sets | Existing/fallback | Existing development route only | Excluded from the normal source selector, unified queries and Home discovery |
 | OAPEN | Diagnostic REST/OAI-PMH access experiments only | Not an app source | Not an app source | Not an app source | None implemented | No `OapenSource` | Prior REST403 and alternate metadata are separate from verified delivery |
 | Standard Ebooks | Planned, no implemented source | — | — | — | — | No integration | No guessed endpoint or new provider |
 
@@ -27,9 +27,9 @@ is created for each result. Opening details requires no Library membership.
 Opening content routes through the result's own source and existing fresh metadata,
 rights/resource validation, owned preparation and semantic locator restoration.
 
-Search supports independent source filters, 350ms debounce, Enter/IME submission,
+Search supports a compact filter panel, inline Clear search, independent source filters, 350ms debounce, Enter/IME submission,
 per-source retry and explicit More. Editing cancels obsolete work immediately;
-generation checks reject stale results. One failed provider leaves other results
+generation checks inside state updates reject stale results. Tab return preserves scroll/results and resumes only interrupted requests, including the exact pending pagination token. Platform backgrounding retires discovery without closing the retained application session; foregrounding resumes its visible destination. One failed provider leaves other results
 intact. Duplicate submit coalesces. Failed pagination keeps previous results and
 retries the failed token. Four pages/source are retained, then users refine the
 query. Filtering languages is **local over loaded pages**, not a guarantee of a
@@ -38,7 +38,7 @@ regional tags; missing language is excluded. Other supplied languages remain
 visible when no filter is selected. No persistent recent-search record yet.
 
 Archive's unified free text is escaped as a literal phrase; `*` is an explicit
-browse-all request. A fixed enum supplies quoted subject filters. User operators
+browse-all request. A fixed enum supplies quoted subject filters and exact OR aliases (for example Adventure stories/Adventure and Love stories/Romance). User operators
 cannot break the outer source subset or impersonate a genre query. The existing
 source-level advanced-search diagnostic contract is unchanged. Categories map
 only exact supplied names or `--` subject segments, never title guesses. Unsupported
@@ -96,7 +96,7 @@ Explicit budgets:
   same-key callers borrow one cancellable job. Last borrower cancellation retires it.
   Search retains ≤100 entries/source (40 for Archive's four 10-entry pages), Home
   at most four pages/100 raw candidates. Active production sources number three;
-  debug demos add only their small existing fixtures. Buffers do not grow with time.
+  developer demos remain separately owned for explicit development workflows and are not part of normal discovery. Buffers do not grow with time.
 - Per entry: title2048, eight authors×256, eight languages×64, sixteen subjects×256,
   synopsis4096 and verbatim source rights≤16,384 UTF-16 units. Optional Archive display
   fields are independently capped/ignored when malformed; identity and acquisition
@@ -110,7 +110,7 @@ Explicit budgets:
   validated ID; never guessed when absent. No credentials/query/fragment/redirect,
   arbitrary URL or publication payload. MIME JPEG, ≤512KiB actual stream and ≤512×768
   encoded dimensions, 3s request timeout, existing bounded sampled decoder. At most
-  one thumbnail task in the shared pipeline (up to two other catalog tasks). Artwork
+  one thumbnail task in the shared pipeline and the source image gate (up to two other catalog tasks). Image HTTP/decode no longer holds the serialized Gutenberg catalog-state lock; slow artwork cannot block unrelated metadata search. Artwork
   has **no publication format/acquisition authority**. Missing/failed art uses a
   typographic cover; negative thumbnail results may persist in that session cache.
 - Closing cancels catalog/controller/Home work and clears metadata and advertised
@@ -167,3 +167,110 @@ Android acceptance remains pending:
 6. Check narrow/rotated screens, large fonts, dark system bars, TalkBack, keyboard
    focus/Enter/Escape and Desktop resizing. Native Desktop graphical acceptance is
    separate and pending.
+
+
+## Android acceptance follow-up
+
+USER-REPORTED PHYSICAL ANDROID: most search/discovery, persistence and acquisition
+checks worked, but Home/online discovery and Search → Home → Search caused frequent
+closures; cover browsing was slow; Adventure appeared empty. These reports are
+reproduction evidence. No device crash stack or device performance measurement was
+available during this follow-up. The fatal Android crash root cause remains
+**unconfirmed**, and this PR is **not ready for merge** on automated results alone.
+
+Five deterministic defects were reproduced before changing production:
+
+- A source cancelling its own transport task propagated `CancellationException`
+  into an otherwise live consumer, leaving Search/Home loading indefinitely.
+  Caller/owner cancellation still propagates; independent transport cancellation
+  now becomes a controlled retryable failure. This is a loading defect, not proof
+  of the reported process crash.
+- Leaving during pagination retained content but did not resume the pending token.
+  Interrupted loads now resume on return; completed results are not refreshed.
+- Search's composition-local effect scrolled to the beginning on every remount.
+  The search viewport intent now belongs above the tab composition.
+- `DiscoveryState.entries` flattened/deduplicated on each read. One immutable
+  snapshot per state and memoized Home ranking avoid repeated presentation work;
+  stable item keys/types, thumbnail dimensions and all cache budgets are retained.
+- Gutenberg thumbnail HTTP/decode held the catalog metadata mutex. It now uses
+  a separate one-permit image gate under the same source cancellation ownership;
+  metadata mutations remain serialized. No bitmap cache or resource-budget increase.
+
+Adventure verification: five bounded public metadata requests on 2026-10-10,
+all HTTP200, no acquisition. Adventure stories alone returned indexed total0;
+Adventure stories OR Adventure returned33; Philosophy415; Love stories OR
+Romance21; History1323. Only two records/request were inspected. These totals are
+provider snapshots within the existing CC0/texts subset, not worldwide legal
+eligibility or full-catalog coverage. Language filtering remains local; an empty
+filtered page retains its source pagination token and does not imply an empty genre. An empty Archive response page also retains explicit pagination when the bounded indexed total reports later pages; the existing four-page UI limit still applies.
+
+Normal debug APKs no longer automatically enable demos. Android requires the
+explicit `developmentSourcesEnabled` factory argument *and* a debuggable app;
+Desktop's existing explicit environment/property switches remain. Fixture sources
+remain available to tests/developers, but are excluded from normal discovery.
+The filter panel and contextual help retain language, privacy and rights caveats;
+rights also remain in details/results. Clear search keeps source/language/genre
+choices; Reset filters restores defaults without clearing the typed query.
+
+Debug Android diagnostics use `INFINILECTDiscovery` with source ID and an enum
+failure category only. No search query, metadata, exception message, profile,
+Library/History, URI, password or filesystem path is logged by this hook.
+To capture a device failure with Android platform-tools:
+
+```sh
+adb logcat -v threadtime INFINILECTDiscovery:W AndroidRuntime:E '*:S' > infinilect-pr29-logcat.txt
+```
+
+Keep it running while reproducing Search Cervantes → Home → Search, then stop
+with Ctrl+C. Immediately after a closure also capture the crash buffer:
+
+```sh
+adb logcat -b crash -d -v threadtime > infinilect-pr29-crash.txt
+```
+
+Share the relevant INFINILECT `FATAL EXCEPTION`/`Caused by` section and diagnostic
+lines after redacting personal data and unrelated apps. Report whether Android
+instead displayed an application-not-responding dialog. No device access, physical
+fix acceptance, Android FPS, TalkBack or native Desktop graphical acceptance is
+claimed here.
+
+Focused physical re-acceptance:
+
+1. Search Cervantes, scroll, switch Home/Search repeatedly and change the query;
+   repeat during loading/pagination and after background/foreground.
+2. Toggle Home discovery rapidly; open/close details; exercise offline/reconnect
+   and source retries. Capture Logcat if a closure occurs.
+3. Browse many covers in Search and Home. Verify smoothness on the device.
+4. Check Adventure, Philosophy, Romance and History; exercise languages/More and
+   distinguish this limited CC0 subset from the full Archive catalog.
+5. Confirm demos are absent, × clears without resetting filters, filters/help
+   remain accessible at large text sizes, and Enter/Back/Escape work.
+6. Recheck existing profile/Library/History and saved local EPUB/CBZ/PDF/TEXT
+   positions, plus unchanged acquisition validation and Gutenberg catalog-only behavior.
+
+
+Host performance evidence (Linux amd64, JDK21.0.12.1): the exact former
+flatten/deduplicate getter versus the new retained snapshot, 100 synthetic entries,
+20,000 reads, median of five warmed samples. Former expression: 53.603274ms and
+151,360,048 thread-allocated bytes. Snapshot: 0.788056ms and 48 bytes of measurement
+overhead. This isolates repeated list allocation; it is not an Android frame-time,
+network-latency or memory-pressure measurement. A timing threshold is deliberately
+not a unit-test assertion. Slow-thumbnail regression uses a controlled transport
+barrier and proves a second catalog request reaches HTTP before the image completes.
+
+Keyboard verification covers both Enter on the query (immediate Search) and Enter
+on the focused trailing × (Clear search). Filters expose checked state and ≥48dp
+hit targets. The continuity fixture now finds the submit icon by its accessible
+name, retaining every source/preparation/remount assertion.
+
+Final focused selections: Desktop95 and Android-host57 tests, all passed with zero
+failures/errors/skips, including controller/navigation, transport cancellation,
+pagination, genres, privacy, thumbnail contention, headless UI/keyboard, retained
+reading-session continuity and the unchanged 24-test spread UI suite. The initial
+full run had a text-button lookup failure in the continuity fixture and a spread
+fixture initialization-wait failure (`Spread 0 must be fully presented`). The former
+was repaired for the accessible icon; the complete spread suite subsequently passed
+unchanged. The final complete suites passed: Desktop1361 and Android-host1174,
+with zero failures/errors/skips. Android `:androidApp:assembleDebug` and Desktop
+`:desktopApp:compileKotlin` passed on JDK21 / Gradle9.7.1. Core and reader engines
+were unchanged. No assertion was relaxed; no test was disabled or skipped.

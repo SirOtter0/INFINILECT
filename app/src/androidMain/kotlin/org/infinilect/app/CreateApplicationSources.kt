@@ -15,7 +15,7 @@ import org.infinilect.app.progress.ProgressStorageFailure
 import org.infinilect.app.collections.*
 
 /** Extract the application-private path immediately; neither cache nor sources retain Context. */
-fun createApplicationSources(context: Context): ApplicationSources {
+fun createApplicationSources(context: Context, developmentSourcesEnabled: Boolean = false): ApplicationSources {
     val appContext = context.applicationContext
     val appCache = try { context.applicationContext.cacheDir.toPath() } catch (_: Exception) { null }
     val cbzDirectory = try { androidCbzPreparationDirectory(appContext.cacheDir) } catch (_: Exception) { null }
@@ -30,12 +30,15 @@ fun createApplicationSources(context: Context): ApplicationSources {
         if (debuggable) Log.w("INFINILECTProgress", "${failure.operation}/${failure.stage}/${failure.reason}")
     }, collections = ApplicationCollections(store.library,store.history,release = store::close),
         textDirectory = org.infinilect.app.reader.androidTextDirectory(appContext.cacheDir.toPath()),
-        developmentEpubEnabled = debuggable,
+        developmentEpubEnabled = developerSourcesEnabled(debuggable, developmentSourcesEnabled),
         epubDirectory = org.infinilect.app.epub.androidEpubDirectory(appContext.cacheDir.toPath()),
-        epubSettingsDirectory = settingsDirectory, developmentComicEnabled = debuggable,
+        epubSettingsDirectory = settingsDirectory, developmentComicEnabled = developerSourcesEnabled(debuggable, developmentSourcesEnabled),
         pageSettingsDirectory = pageSettingsDirectory,
         appearanceDirectory = try { appContext.filesDir.toPath().resolve(org.infinilect.app.ui.APPLICATION_APPEARANCE_DIRECTORY) } catch (_: Exception) { null },
         cbzPreparationDirectory = cbzDirectory,
+        discoveryDiagnostics = { diagnostic ->
+            if (debuggable) Log.w("INFINILECTDiscovery", "source=${diagnostic.source.value}; failure=${diagnostic.failure}")
+        },
         importDirectory = try { org.infinilect.app.imports.androidImportDirectory(appContext.filesDir) } catch (_: Exception) { null })
 }
 
@@ -65,3 +68,6 @@ internal fun androidEpubSettingsDirectory(privateFilesDir: File): Path =
 
 internal fun androidPageSettingsDirectory(privateFilesDir: File): Path =
     privateFilesDir.toPath().resolve(org.infinilect.app.reader.page.PAGE_SETTINGS_DIRECTORY_NAME)
+
+/** Debugging alone is not permission to expose fixture sources to normal users. */
+internal fun developerSourcesEnabled(debuggable: Boolean, requested: Boolean) = debuggable && requested

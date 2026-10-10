@@ -52,7 +52,7 @@ import org.infinilect.app.ui.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.isSystemInDarkTheme
 
-internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false, val pdfReadingEnabled: Boolean = false)
+internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false, val pdfReadingEnabled: Boolean = false, val developmentOnly: Boolean = false)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -68,6 +68,7 @@ fun App(
     var profileEditor by remember { mutableStateOf(false) }
     val homePosition = rememberLazyListState()
     val discoveryPosition = rememberLazyGridState()
+    val discoveryViewport = remember(application) { org.infinilect.app.discovery.DiscoverySearchViewport() }
     val homeProgress by application.homeProgress.collectAsState()
     val mode = appearanceState.mode
     val appearanceFailed by (applicationSources.appearance?.saveFailed ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
@@ -139,7 +140,7 @@ fun App(
                                             applicationSources.appearance, homePosition,
                                             importAction = if (localFilePicker != null && applicationSources.localImports != null && !importing.busy) ({ application.importLocal(localFilePicker) }) else null,
                                             editProfile = { profileEditor = true }, settingsFailed = appearanceFailed)
-                                        Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition)
+                                        Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, progressRecords.values.toList())
                                         Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) })

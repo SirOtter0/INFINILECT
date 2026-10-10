@@ -360,7 +360,7 @@ window acceptance. Those checks remain pending.
 ## Search and Home discovery (PR #29)
 
 Unified Search uses the existing design system with responsive cover results,
-source attribution, optional metadata details, filters and per-source retry/More.
+source attribution, optional metadata details, a compact filter panel/contextual help, inline Clear search and per-source retry/More. Tab return keeps the query, filters, completed results and scroll; interrupted requests resume without refreshing completed catalogs.
 Home retains its offline local sections and adds explicitly enabled source-backed
 rows. Settings stores optional local genre interests, personalization opt-out and
 reset in the existing bounded appearance/profile record. Readers, Library/History

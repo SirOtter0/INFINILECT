@@ -62,8 +62,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (::sources.isInitialized) sources.resumeDiscovery()
+    }
+
     override fun onStop() {
-        if (::sources.isInitialized) sources.flushProgress()
+        if (::sources.isInitialized) { sources.pauseDiscovery(); sources.flushProgress() }
         super.onStop()
     }
 

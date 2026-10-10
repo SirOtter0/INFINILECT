@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.text.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.input.ImeAction
@@ -21,56 +23,63 @@ import org.infinilect.app.*
 import org.infinilect.app.ui.*
 import org.infinilect.core.*
 
+/** Owned above the tab composition; a remount is not a new search/scroll intent. */
+internal class DiscoverySearchViewport {
+    private var previous: DiscoveryRequest? = null
+    fun changed(request: DiscoveryRequest?): Boolean {
+        if (previous == request) return false
+        previous = request
+        return true
+    }
+}
+
 @Composable
-internal fun UnifiedSearchScreen(application: ApplicationSession, position: LazyGridState) {
+internal fun UnifiedSearchScreen(application: ApplicationSession, position: LazyGridState, viewport: DiscoverySearchViewport) {
     val controller = application.discovery
     val state by controller.state.collectAsState()
-    LaunchedEffect(state.request) { position.scrollToItem(0) }
+    LaunchedEffect(state.request) { if (viewport.changed(state.request)) position.scrollToItem(0) }
+    LaunchedEffect(controller) { controller.resume() }
     var detail by remember { mutableStateOf<DiscoveryEntry?>(null) }
     var filters by remember { mutableStateOf(false) }
+    var help by remember { mutableStateOf(false) }
     DisposableEffect(controller) { onDispose { controller.pause() } }
     BoxWithConstraints(Modifier.fillMaxSize().semantics { paneTitle = DiscoveryStrings.TITLE }.padding(horizontal = 16.dp)) {
         val headerLimit = maxHeight / 2
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.fillMaxWidth().heightIn(max = headerLimit).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(state.query, controller::edit, Modifier.weight(1f).onPreviewKeyEvent {
+            Column(Modifier.fillMaxWidth().heightIn(max = headerLimit).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Bubble only unhandled keys: focused trailing buttons must own Enter.
+                    OutlinedTextField(state.query, controller::edit, Modifier.weight(1f).onKeyEvent {
                         if (it.type == KeyEventType.KeyDown && it.key == Key.Enter) { controller.submit(); true } else false
                     }, label = { Text(DiscoveryStrings.SEARCH_LABEL) }, singleLine = true,
+                        trailingIcon = if (state.query.isNotEmpty()) ({
+                            IconButton({ controller.edit("") }, Modifier.size(48.dp).semantics { contentDescription = DiscoveryStrings.CLEAR_SEARCH }) { CloseSearchIcon() }
+                        }) else null,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { controller.submit() }))
-                    TextButton(controller::submit, Modifier.heightIn(min = 48.dp)) { Text(DiscoveryStrings.SEARCH) }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton({ filters = !filters }, Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (filters) DiscoveryStrings.EXPANDED else DiscoveryStrings.COLLAPSED }) { Text(DiscoveryStrings.SOURCES_FILTERS) }
-                    if (state.genre != null) TextButton({ controller.genre(null) }, Modifier.heightIn(min = 48.dp)) { Text(DiscoveryStrings.CLEAR_GENRE) }
-                }
-                if (filters) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        application.catalogOptions.forEach { option ->
-                            FilterChoice(option.name, option.source.id in state.enabled) { controller.filter(option.source.id) }
-                        }
+                    IconButton(controller::submit, Modifier.size(48.dp).semantics { contentDescription = DiscoveryStrings.SEARCH }) {
+                        DestinationIcon(Destination.SEARCH, MaterialTheme.colors.onSurface)
                     }
-                    Text(DiscoveryStrings.LANGUAGE_NOTICE, style = MaterialTheme.typography.caption)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        item { FilterChoice(DiscoveryStrings.ALL_LANGUAGES, state.language == null) { controller.language(null) } }
-                        items(DISCOVERY_LANGUAGES.entries.toList()) { (code, label) -> FilterChoice(label, state.language == code) { controller.language(code) } }
-                    }
-                    Text(DiscoveryStrings.PRIVACY, style = MaterialTheme.typography.caption)
                 }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(Genre.entries.toList()) { genre -> FilterChoice(genre.label, state.genre == genre) { controller.browse(genre) } }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton({ filters = true }, Modifier.heightIn(min = 48.dp).semantics { stateDescription = DiscoveryStrings.selectedSources(state.enabled.size) }) { Text(DiscoveryStrings.SOURCES_FILTERS) }
+                    Text("${state.enabled.size}", style = MaterialTheme.typography.caption, modifier = Modifier.weight(1f))
+                    IconButton({ help = true }, Modifier.size(48.dp).semantics { contentDescription = DiscoveryStrings.SEARCH_HELP }) { Text("?", style = MaterialTheme.typography.h6) }
                 }
-                if (state.genre != null) Text(DiscoveryStrings.GENRE_NOTICE, style = MaterialTheme.typography.caption)
+                if (state.genre != null || state.language != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.genre?.let { genre -> FilterChoice(genre.label, true) { controller.genre(null) } }
+                    state.language?.let { language -> FilterChoice(DISCOVERY_LANGUAGES.getValue(language), true) { controller.language(null) } }
+                    TextButton(controller::resetFilters, Modifier.heightIn(min = 48.dp)) { Text(DiscoveryStrings.RESET_FILTERS) }
+                }
             }
             LazyVerticalGrid(GridCells.Adaptive(148.dp), Modifier.weight(1f).fillMaxWidth(), state = position,
                 contentPadding = PaddingValues(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "status", contentType = "status") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite })
                         if (state.invalidQuery) Text(DiscoveryStrings.QUERY_ERROR, color = MaterialTheme.colors.error)
                         if (state.request == null) Text(DiscoveryStrings.SEARCH_INTRO)
                         else if (state.catalogs.isEmpty()) Text(DiscoveryStrings.NO_SOURCES)
-                        else if (!state.loading && state.entries.isEmpty() && state.catalogs.none { it.failed }) Text(DiscoveryStrings.NO_MATCHES)
+                        else if (!state.loading && state.entries.isEmpty() && state.catalogs.none { it.failed }) Text(if (state.genre == null) DiscoveryStrings.NO_MATCHES else DiscoveryStrings.NO_GENRE_MATCHES)
                         state.catalogs.forEach { source ->
                             if (source.failed) Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(DiscoveryStrings.sourceUnavailable(application.sourceName(source.id)), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
@@ -79,29 +88,64 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                         }
                     }
                 }
-                items(state.entries, key = { it.publication.id.resultKey() }) { entry ->
+                items(state.entries, key = { it.publication.id.resultKey() }, contentType = { "publication" }) { entry ->
                     DiscoveryTile(entry, application, Modifier.fillMaxWidth()) { detail = entry }
                 }
-                item(span = { GridItemSpan(maxLineSpan) }, key = "more") {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "more", contentType = "status") {
                     Column {
                         state.catalogs.filter { it.nextToken != null }.forEach { result ->
                             if (result.pages < 4) TextButton({ controller.more(result.id) }, Modifier.heightIn(min = 48.dp), enabled = !result.loading && !result.failed) { Text(DiscoveryStrings.moreFrom(application.sourceName(result.id))) }
                             else Text(DiscoveryStrings.PAGE_LIMIT, style = MaterialTheme.typography.caption)
                         }
                         Text(DiscoveryStrings.RIGHTS, style = MaterialTheme.typography.caption)
-                        Text(DiscoveryStrings.COVER_NOTE, style = MaterialTheme.typography.caption)
                     }
                 }
             }
         }
+        if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text(DiscoveryStrings.FILTERS) },
+            text = {
+                Column(Modifier.heightIn(max = maxHeight * .6f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(DiscoveryStrings.SOURCE_SECTION, style = MaterialTheme.typography.subtitle2)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        application.catalogOptions.forEach { option -> FilterChoice(option.name, option.source.id in state.enabled) { controller.filter(option.source.id) } }
+                    }
+                    Text(DiscoveryStrings.LANGUAGE_SECTION, style = MaterialTheme.typography.subtitle2)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChoice(DiscoveryStrings.ALL_LANGUAGES, state.language == null) { controller.language(null) }
+                        DISCOVERY_LANGUAGES.forEach { (code, label) -> FilterChoice(label, state.language == code) { controller.language(code) } }
+                    }
+                    Text(DiscoveryStrings.SUBJECT_SECTION, style = MaterialTheme.typography.subtitle2)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Genre.entries.forEach { genre -> FilterChoice(genre.label, state.genre == genre) { controller.genre(genre.takeUnless { it == state.genre }) } }
+                    }
+                }
+            }, confirmButton = { TextButton({ filters = false }, Modifier.heightIn(min = 48.dp)) { Text(DiscoveryStrings.DONE) } },
+            dismissButton = { TextButton(controller::resetFilters, Modifier.heightIn(min = 48.dp)) { Text(DiscoveryStrings.RESET_FILTERS) } })
+        if (help) AlertDialog(onDismissRequest = { help = false }, title = { Text(DiscoveryStrings.SEARCH_HELP) },
+            text = { Column(Modifier.heightIn(max = maxHeight * .6f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(DiscoveryStrings.GENRE_NOTICE); Text(DiscoveryStrings.LANGUAGE_NOTICE); Text(DiscoveryStrings.RIGHTS); Text(DiscoveryStrings.PRIVACY); Text(DiscoveryStrings.COVER_NOTE)
+            } }, confirmButton = { TextButton({ help = false }) { Text(DiscoveryStrings.DONE) } })
     }
     detail?.let { DiscoveryDetails(it, application) { detail = null } }
 }
 
 @Composable
+private fun CloseSearchIcon() {
+    val color = MaterialTheme.colors.onSurface
+    Canvas(Modifier.size(20.dp).clearAndSetSemantics {}) {
+        drawLine(color, androidx.compose.ui.geometry.Offset(size.width * .25f, size.height * .25f), androidx.compose.ui.geometry.Offset(size.width * .75f, size.height * .75f), 2.dp.toPx())
+        drawLine(color, androidx.compose.ui.geometry.Offset(size.width * .75f, size.height * .25f), androidx.compose.ui.geometry.Offset(size.width * .25f, size.height * .75f), 2.dp.toPx())
+    }
+}
+
+@Composable
 private fun FilterChoice(label: String, selected: Boolean, click: () -> Unit) {
-    OutlinedButton(click, Modifier.heightIn(min = 48.dp).semantics { this.selected = selected },
-        colors = ButtonDefaults.outlinedButtonColors(backgroundColor = if (selected) MaterialTheme.colors.primary.copy(alpha = .14f) else MaterialTheme.colors.surface)) { Text(label) }
+    Box(Modifier.heightIn(min = 48.dp).clip(MaterialTheme.shapes.small).toggleable(value = selected, role = Role.Checkbox, onValueChange = { click() })
+        .semantics { this.selected = selected }.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(label, style = MaterialTheme.typography.body2, modifier = Modifier
+            .background(if (selected) MaterialTheme.colors.primary.copy(alpha = .14f) else MaterialTheme.colors.onSurface.copy(alpha = .06f), MaterialTheme.shapes.small)
+            .padding(horizontal = 12.dp, vertical = 8.dp))
+    }
 }
 
 @Composable

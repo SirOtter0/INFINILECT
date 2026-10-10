@@ -8,11 +8,13 @@ import org.infinilect.app.SourceOption
 import org.infinilect.core.*
 
 internal data class CatalogResults(val id: SourceId, val entries: List<DiscoveryEntry> = emptyList(),
-    val nextToken: String? = null, val loading: Boolean = false, val failed: Boolean = false, val pages: Int = 0, val pendingToken: String? = null)
+    val nextToken: String? = null, val loading: Boolean = false, val failed: Boolean = false, val pages: Int = 0, val pendingToken: String? = null,
+    val interrupted: Boolean = false)
 internal data class DiscoveryState(val query: String = "", val request: DiscoveryRequest? = null,
     val enabled: Set<SourceId> = emptySet(), val genre: Genre? = null, val language: String? = null,
     val catalogs: List<CatalogResults> = emptyList(), val generation: Long = 0, val invalidQuery: Boolean = false) {
-    val entries get() = distinctEntries(catalogs.flatMap { it.entries })
+    // Immutable snapshot: scrolling/readers of the same state borrow one list.
+    val entries = distinctEntries(catalogs.flatMap { it.entries })
     val loading get() = catalogs.any { it.loading }
 }
 /** One latest intent and at most one active page per source; old callbacks cannot mutate new intent. */
@@ -25,7 +27,9 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
     private var debounce: Job? = null
     private val requests = mutableMapOf<SourceId, Job>()
     private var sequence = 0L
+    private var interruptedEdit = false
     fun edit(raw: String) {
+        if (!job.isActive) return
         retire()
         mutable.value = mutable.value.copy(query = raw.take(1024), request = null, catalogs = emptyList(), generation = sequence, invalidQuery = false)
         debounce = scope.launch { delay(350); submit() }
@@ -38,8 +42,14 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
     fun genre(value: Genre?) { mutable.value = state.value.copy(genre = value); submit() }
     fun language(value: String?) { mutable.value = state.value.copy(language = value); submit() }
     fun browse(value: Genre) { mutable.value = state.value.copy(query = "", genre = value); submit() }
+    fun resetFilters() {
+        mutable.value = state.value.copy(enabled = options.filter { it.source is DiscoverySource || it.source.id.value == "local-imports" }.map { it.source.id }.toSet(), genre = null, language = null)
+        submit()
+    }
     private fun retire() { sequence++; debounce?.cancel(); debounce = null; requests.values.forEach { it.cancel() }; requests.clear() }
     fun submit() {
+        if (!job.isActive) return
+        interruptedEdit = false
         val current = state.value
         val query = try { normalizedQuery(current.query) } catch (_: IllegalArgumentException) {
             retire()
@@ -64,18 +74,27 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
         val generation = state.value.generation
         val request = state.value.request ?: return
         val previous = state.value.catalogs.firstOrNull { it.id == id } ?: return
-        mutable.update { s -> s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = true, failed = false, pendingToken = token) else it }) }
+        mutable.update { s -> s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = true, failed = false, pendingToken = token, interrupted = false) else it }) }
         requests[id] = scope.launch {
             try {
                 val page = catalog.load(id, request, token)
                 ensureActive()
-                if (state.value.generation != generation) return@launch
                 val entries = distinctEntries((if (token == null) emptyList() else previous.entries) + page.entries).take(100)
-                mutable.update { s -> s.copy(catalogs = s.catalogs.map { if (it.id == id) CatalogResults(id, entries, page.nextToken, pages = if (token == null) 1 else previous.pages + 1) else it }) }
+                mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) CatalogResults(id, entries, page.nextToken, pages = if (token == null) 1 else previous.pages + 1) else it }) }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (state.value.generation == generation) mutable.update { s -> s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = false, failed = true) else it }) } }
+            catch (_: Exception) { mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = false, failed = true) else it }) } }
         }
     }
-    fun pause() { retire(); mutable.value = state.value.copy(generation = sequence, catalogs = state.value.catalogs.map { it.copy(loading = false, failed = it.failed || it.loading) }) }
+    fun pause() {
+        interruptedEdit = interruptedEdit || debounce?.isActive == true
+        retire()
+        mutable.value = state.value.copy(generation = sequence, catalogs = state.value.catalogs.map { it.copy(loading = false, interrupted = it.interrupted || it.loading) })
+    }
+    /** Screen return resumes only interrupted work, never refreshes a completed search. */
+    fun resume() {
+        if (!job.isActive) return
+        if (interruptedEdit) { submit(); return }
+        state.value.catalogs.filter { it.interrupted && !it.loading }.forEach { fetch(it.id, it.pendingToken) }
+    }
     fun close() { retire(); job.cancel(); mutable.value = DiscoveryState() }
 }

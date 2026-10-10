@@ -16,6 +16,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.infinilect.app.network.platformHttpEngine
 import org.infinilect.app.network.PROJECT_USER_AGENT
 import org.infinilect.app.search.SearchException
@@ -33,6 +35,7 @@ internal class GutenbergSource(
 ) : PublicationSource, DiscoverySource, AutoCloseable {
     override val id = GUTENBERG_ID
     private val requestLock = Mutex()
+    private val imageGate = Semaphore(1)
     private val closed = AtomicBoolean()
     private val lifetime = SupervisorJob()
     private val client = HttpClient(engine) {
@@ -40,12 +43,13 @@ internal class GutenbergSource(
         install(HttpTimeout) { connectTimeoutMillis = 5_000; requestTimeoutMillis = 15_000; socketTimeoutMillis = 15_000 }
     }
     private val catalog = GutenbergCatalog(::bytes)
-    private suspend fun <T> operation(block: suspend () -> T): T {
+    private suspend fun <T> operation(serializedCatalog: Boolean = true, block: suspend () -> T): T {
         check(!closed.get()) { "Gutenberg source is closed." }
         // Each caller owns its child; source close also cancels all active requests.
         currentCoroutineContext().ensureActive()
         val request = CoroutineScope(currentCoroutineContext() + lifetime).async {
-            requestLock.withLock { check(!closed.get()); userFacing(block) }
+            if (serializedCatalog) requestLock.withLock { check(!closed.get()); userFacing(block) }
+            else imageGate.withPermit { check(!closed.get()); userFacing(block) }
         }
         try { return request.await() } finally { request.cancel() }
     }
@@ -71,7 +75,9 @@ internal class GutenbergSource(
     internal suspend fun coverThumbnail(id: PublicationId): org.infinilect.app.covers.CoverArtwork? {
         owns(id)
         val url = synchronized(thumbnailLock) { thumbnails.remove(id)?.also { thumbnails[id] = it } } ?: return null
-        return operation {
+        // The one bounded cover worker must not hold mutable catalog state hostage
+        // during image I/O/decode. Still source-owned, cancellable and single-flight.
+        return operation(serializedCatalog = false) {
             val encoded = client.prepareGet(url) {
                 header(HttpHeaders.UserAgent, PROJECT_USER_AGENT); header(HttpHeaders.Accept, "image/jpeg")
                 header(HttpHeaders.AcceptEncoding, "identity")

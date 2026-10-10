@@ -10,9 +10,12 @@ import org.infinilect.core.*
  * Two active metadata requests, eight 25-entry LRU pages, five-minute TTL.
  * Same-key callers borrow one task; the last cancelling borrower retires it. */
 internal class DiscoveryTimeout : Exception("Catalog request timed out")
+internal class DiscoveryInterrupted : Exception("Catalog transport interrupted")
+internal enum class DiscoveryFailure { TIMEOUT, TRANSPORT_CANCELLED, INVALID_RESPONSE, REQUEST_FAILED }
+internal data class DiscoveryDiagnostic(val source: SourceId, val failure: DiscoveryFailure)
 
 internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
-    scope: CoroutineScope, private val now: () -> Long) {
+    scope: CoroutineScope, private val diagnostics: (DiscoveryDiagnostic) -> Unit = {}, private val now: () -> Long) {
     private val job = SupervisorJob(scope.coroutineContext[Job])
     private val scope = CoroutineScope(scope.coroutineContext + job)
     private val gate = Semaphore(2)
@@ -61,6 +64,19 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
                 pages[key] = Cached(page, now())
             }
             return page
+        } catch (cancelled: CancellationException) {
+            // A transport may cancel its own task while the borrowing screen is still alive.
+            // Only caller/owner cancellation is lifecycle cancellation; otherwise surface a retryable failure.
+            currentCoroutineContext().ensureActive(); job.ensureActive()
+            report(id, DiscoveryFailure.TRANSPORT_CANCELLED)
+            throw DiscoveryInterrupted()
+        } catch (error: Exception) {
+            report(id, when (error) {
+                is DiscoveryTimeout -> DiscoveryFailure.TIMEOUT
+                is IllegalArgumentException -> DiscoveryFailure.INVALID_RESPONSE
+                else -> DiscoveryFailure.REQUEST_FAILED
+            })
+            throw error
         } finally {
             withContext(NonCancellable) {
                 lock.withLock {
@@ -68,6 +84,10 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
                 }
             }
         }
+    }
+    private fun report(id: SourceId, failure: DiscoveryFailure) {
+        // Diagnostic code receives no query, metadata, profile, path or exception message.
+        runCatching { diagnostics(DiscoveryDiagnostic(id, failure)) }
     }
     internal suspend fun retainedPages() = lock.withLock { pages.size }
     private val cleanup = this.scope.launch(start = CoroutineStart.UNDISPATCHED) {

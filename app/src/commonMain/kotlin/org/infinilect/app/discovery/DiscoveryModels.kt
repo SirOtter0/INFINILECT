@@ -6,7 +6,7 @@ import org.infinilect.core.*
 
 /** Display metadata is separate from resource authority and durable publication identity. */
 internal data class DiscoveryEntry(val publication: Publication, val subjects: List<String> = emptyList(), val description: String? = null, val thumbnail: String? = null) {
-    val genres get() = subjects.flatMap(::mappedGenres).toSet()
+    val genres = subjects.flatMap(::mappedGenres).toSet()
 }
 internal data class DiscoveryPage(val entries: List<DiscoveryEntry>, val nextToken: String? = null)
 internal enum class Genre(val label: String, val archiveSubject: String) {
@@ -14,10 +14,12 @@ internal enum class Genre(val label: String, val archiveSubject: String) {
     MYSTERY("Mystery", "Detective and mystery stories"), HISTORY("History", "History"),
     PHILOSOPHY("Philosophy", "Philosophy"), ADVENTURE("Adventure", "Adventure stories"),
     ROMANCE("Romance", "Love stories");
+    /** Exact, source-supplied subject aliases, not inferred work categories. */
+    val archiveSubjects = listOf(archiveSubject, label).distinctBy { it.lowercase() }
 }
 /** Exact subject segments/aliases only; never infer a genre from title or author. */
 internal fun mappedGenres(subject: String): Set<Genre> = subject.split("--").map { it.trim().lowercase() }.flatMap { segment ->
-    Genre.entries.filter { segment == it.archiveSubject.lowercase() || segment == it.label.lowercase() }
+    Genre.entries.filter { genre -> genre.archiveSubjects.any { segment == it.lowercase() } }
 }.toSet()
 internal fun normalizedQuery(raw: String): String {
     require(raw.length <= 1024 && raw.none { it.code < 32 && !it.isWhitespace() || it.code in 127..159 })
@@ -41,12 +43,21 @@ internal object DiscoveryStrings {
     const val COLLAPSED = "Collapsed"
     const val SOURCES_FILTERS = "Sources & filters"
     const val CLEAR_GENRE = "Clear genre"
+    const val CLEAR_SEARCH = "Clear search"
+    const val FILTERS = "Filters"
+    const val SOURCE_SECTION = "Sources"
+    const val LANGUAGE_SECTION = "Language"
+    const val SUBJECT_SECTION = "Subject · Internet Archive"
+    const val RESET_FILTERS = "Reset filters"
+    const val DONE = "Done"
+    const val SEARCH_HELP = "About catalog search"
     const val LANGUAGE_NOTICE = "Languages filter returned metadata. Missing language is excluded."
     const val ALL_LANGUAGES = "All languages"
-    const val GENRE_NOTICE = "Genre browsing uses Internet Archive's exact subject filter and its existing CC0 catalog subset."
+    const val GENRE_NOTICE = "Subjects search Internet Archive's limited CC0 text catalog, not the whole Archive. Exact subject aliases are used. Languages filter loaded pages; more pages may contain matches."
     const val NO_SOURCES = "Select at least one source. Subject browsing currently requires Internet Archive."
     const val QUERY_ERROR = "Use at most 256 characters and no control characters."
     const val SEARCH_INTRO = "Search across catalogs, or explore a subject above. Nothing is downloaded by browsing."
+    const val NO_GENRE_MATCHES = "No matches in the loaded CC0 catalog pages. Load more, change the language, or try another subject."
     const val NO_MATCHES = "No matches on loaded pages. Load more or try another query, source or language."
     const val PAGE_LIMIT = "Showing up to 100 results per source. Refine your search for more."
     const val CATALOG_ONLY = "Catalog metadata only. Acquisition is unavailable for this source."
@@ -83,6 +94,7 @@ internal object DiscoveryStrings {
     fun sourceUnavailable(name: String) = "$name could not respond."
     fun retrySource(name: String) = "Retry $name"
     fun moreFrom(name: String) = "More from $name"
+    fun selectedSources(count: Int) = "$count sources selected"
 }
 /** Display-only limits; no delivery links or identifiers are invented. */
 internal fun boundedEntry(entry: DiscoveryEntry) = entry.copy(publication = entry.publication.copy(

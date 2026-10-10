@@ -29,6 +29,7 @@ class ApplicationSources internal constructor(
     internal val appearance: org.infinilect.app.ui.ApplicationAppearancePreferences? = null,
     internal val pdfPreparer: org.infinilect.app.reader.pdf.PdfPreparer? = null,
     private val sessionDispatcher: CoroutineDispatcher? = null,
+    internal val discoveryDiagnostics: (org.infinilect.app.discovery.DiscoveryDiagnostic) -> Unit = {},
     private val releaseSources: () -> Unit,
 ) {
     private var session: ApplicationSessionLifetime? = null
@@ -61,6 +62,8 @@ class ApplicationSources internal constructor(
     }
 
     fun flushProgress() { session?.flushProgress(); epubSettings?.flush(); pageSettings?.flush() }
+    fun pauseDiscovery() { (session as? ApplicationSession)?.pauseDiscovery() }
+    fun resumeDiscovery() { (session as? ApplicationSession)?.resumeDiscovery() }
 
     /** Join the independent preference writer before a Desktop process intentionally exits. */
     suspend fun awaitPreferencesClosed() { epubSettings?.awaitClosed(); pageSettings?.awaitClosed(); appearance?.awaitClosed() }

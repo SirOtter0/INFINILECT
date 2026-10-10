@@ -124,7 +124,9 @@ internal object ArchiveMetadata {
                 .also { collect(DiscoveryEntry(it, doc.displayStrings("subject",16,256),
                     doc.displayStrings("description",4,4096).joinToString("\n\n").let(::catalogPlainText))) }
         }
-        val next = if (docs.isNotEmpty() && page < 1000 && page.toLong() * ArchiveUrls.PAGE_SIZE < found)
+        // An empty response page can coexist with an indexed later page. Offer bounded,
+        // explicit pagination rather than claiming the complete subject/query is empty.
+        val next = if (page < 1000 && page.toLong() * ArchiveUrls.PAGE_SIZE < found)
             ArchiveUrls.token(query, page + 1) else null
         return SearchPage(publications, next)
     }

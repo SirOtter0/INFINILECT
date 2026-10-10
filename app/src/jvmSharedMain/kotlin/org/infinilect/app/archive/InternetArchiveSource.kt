@@ -74,7 +74,13 @@ internal class InternetArchiveSource(
                     append('"'); append(request.query.replace("\\", "\\\\").replace("\"", "\\\"")); append('"')
                 }
             }
-            request.genre?.let { if (isNotEmpty()) append(" AND "); append("subject:\"${it.archiveSubject}\"") }
+            request.genre?.let { genre ->
+                if (isNotEmpty()) append(" AND ")
+                val subjects = genre.archiveSubjects
+                if (subjects.size > 1) append('(')
+                append(subjects.joinToString(" OR ") { "subject:\"$it\"" })
+                if (subjects.size > 1) append(')')
+            }
         }
         val normalized = query.also { require(it.length in 1..768 && it.none { char -> char.isISOControl() }) }
         val page = token?.let { ArchiveUrls.page(it, normalized) } ?: 1
