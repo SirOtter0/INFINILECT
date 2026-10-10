@@ -9,7 +9,7 @@ import org.infinilect.core.*
 
 internal data class CatalogResults(val id: SourceId, val entries: List<DiscoveryEntry> = emptyList(),
     val nextToken: String? = null, val loading: Boolean = false, val failed: Boolean = false, val pages: Int = 0, val pendingToken: String? = null,
-    val interrupted: Boolean = false)
+    val interrupted: Boolean = false, val failure: CatalogErrorKind? = null)
 internal data class DiscoveryState(val query: String = "", val request: DiscoveryRequest? = null,
     val enabled: Set<SourceId> = emptySet(), val genre: Genre? = null, val language: String? = null,
     val catalogs: List<CatalogResults> = emptyList(), val generation: Long = 0, val invalidQuery: Boolean = false) {
@@ -74,7 +74,7 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
         val generation = state.value.generation
         val request = state.value.request ?: return
         val previous = state.value.catalogs.firstOrNull { it.id == id } ?: return
-        mutable.update { s -> s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = true, failed = false, pendingToken = token, interrupted = false) else it }) }
+        mutable.update { s -> s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = true, failed = false, pendingToken = token, interrupted = false, failure = null) else it }) }
         requests[id] = scope.launch {
             try {
                 val page = catalog.load(id, request, token)
@@ -82,7 +82,7 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
                 val entries = distinctEntries((if (token == null) emptyList() else previous.entries) + page.entries).take(100)
                 mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) CatalogResults(id, entries, page.nextToken, pages = if (token == null) 1 else previous.pages + 1) else it }) }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = false, failed = true) else it }) } }
+            catch (error: Exception) { mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = false, failed = true, failure = when (error) { is CatalogSourceException -> error.kind; is DiscoveryTimeout -> CatalogErrorKind.TIMEOUT; is DiscoveryInterrupted -> CatalogErrorKind.CANCELLED; else -> null }) else it }) } }
         }
     }
     fun pause() {

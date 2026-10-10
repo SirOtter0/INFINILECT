@@ -274,3 +274,16 @@ unchanged. The final complete suites passed: Desktop1361 and Android-host1174,
 with zero failures/errors/skips. Android `:androidApp:assembleDebug` and Desktop
 `:desktopApp:compileKotlin` passed on JDK21 / Gradle9.7.1. Core and reader engines
 were unchanged. No assertion was relaxed; no test was disabled or skipped.
+
+
+### Gutenberg Android diagnostics follow-up
+
+The user reports that previous Home/Search crashes are no longer apparent during
+latest manual testing, but repeated Gutenberg OPDS2 search/Retry fails while
+Archive succeeds. This is user-reported evidence, not a confirmed network cause.
+Search now preserves safe typed Gutenberg failure messages and Retry, including
+TLS/connection/timeouts/HTTP/format/JSON/OPDS/search-link distinctions. Debug
+`INFINILECTGutenberg` logs sanitized request and parsing stages without queries,
+bodies, profile or reading data. See [GUTENBERG.md](GUTENBERG.md#pr-29-android-failure-diagnosis)
+for platform differences, unchanged security boundaries and package-filtered
+Logcat instructions. Host checks do not establish physical Android compatibility.

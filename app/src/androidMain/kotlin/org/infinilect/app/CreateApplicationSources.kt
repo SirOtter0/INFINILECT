@@ -36,6 +36,15 @@ fun createApplicationSources(context: Context, developmentSourcesEnabled: Boolea
         pageSettingsDirectory = pageSettingsDirectory,
         appearanceDirectory = try { appContext.filesDir.toPath().resolve(org.infinilect.app.ui.APPLICATION_APPEARANCE_DIRECTORY) } catch (_: Exception) { null },
         cbzPreparationDirectory = cbzDirectory,
+        gutenbergDiagnostics = { diagnostic ->
+            if (debuggable) {
+                val line = "stage=${diagnostic.stage}; endpoint=${diagnostic.host}${diagnostic.path}; " +
+                    "status=${diagnostic.status}; parsing=${diagnostic.parsing}; durationMs=${diagnostic.durationMillis}; " +
+                    "failure=${diagnostic.failure}; exception=${diagnostic.exceptionClass}; cause=${diagnostic.causeClass}; cancelled=${diagnostic.cancelled}"
+                if (diagnostic.failure == null || diagnostic.cancelled) Log.d("INFINILECTGutenberg", line)
+                else Log.w("INFINILECTGutenberg", line)
+            }
+        },
         discoveryDiagnostics = { diagnostic ->
             if (debuggable) Log.w("INFINILECTDiscovery", "source=${diagnostic.source.value}; failure=${diagnostic.failure}")
         },

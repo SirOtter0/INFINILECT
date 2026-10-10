@@ -148,4 +148,33 @@ class DiscoveryLifecycleRegressionTest {
             assertFalse(home.state.value.loading);assertTrue(home.state.value.rows.isEmpty());assertEquals(0,catalog.retainedPages())
         } finally {home.close();catalog.close()}
     }
+    @Test fun classifiedStaleFailureCannotOverwriteNewIntentAcrossHomeSearchNavigation()=runTest {
+        val source=CatalogFixture();val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
+        source.respond={request,_->if(request.query=="Cervantes") {
+            entered.complete(Unit);withContext(NonCancellable){release.await()};throw CatalogSourceException(CatalogErrorKind.TLS)
+        }else DiscoveryPage(listOf(source.entry("current")))}
+        val owner=ApplicationSources(listOf(SourceOption("Gutenberg",source))){}
+        val app=ApplicationSession(owner,backgroundScope,StandardTestDispatcher(testScheduler)){0}
+        try {
+            app.navigate(Destination.SEARCH);app.discovery.edit("Cervantes");app.discovery.submit();runCurrent();entered.await()
+            app.navigate(Destination.HOME);app.navigate(Destination.SEARCH)
+            app.discovery.edit("Frankenstein");app.discovery.submit();runCurrent()
+            release.complete(Unit);runCurrent()
+            assertEquals("Frankenstein",app.discovery.state.value.query)
+            assertEquals("current",app.discovery.state.value.entries.single().publication.id.localId)
+            assertTrue(app.discovery.state.value.catalogs.none {it.failed || it.failure!=null})
+        }finally{release.complete(Unit);app.close();owner.close()}
+    }
+    @Test fun outerCatalogTimeoutKeepsItsCategoryAndNoPendingResults()=runTest {
+        val source=CatalogFixture();source.respond={_,_->awaitCancellation()}
+        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0}
+        val controller=DiscoveryController(listOf(SourceOption("Gutenberg",source)),catalog,backgroundScope)
+        try {
+            controller.edit("Cervantes");controller.submit();runCurrent()
+            advanceTimeBy(20_000);runCurrent()
+            assertEquals(CatalogErrorKind.TIMEOUT,controller.state.value.catalogs.single().failure)
+            assertTrue(controller.state.value.catalogs.single().failed)
+            assertFalse(controller.state.value.loading);assertTrue(controller.state.value.entries.isEmpty())
+        }finally{controller.close();catalog.close()}
+    }
 }

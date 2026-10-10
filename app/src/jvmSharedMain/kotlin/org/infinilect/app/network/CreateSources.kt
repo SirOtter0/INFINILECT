@@ -33,8 +33,9 @@ internal fun createSources(
     appearanceDirectory: Path? = progressDirectory?.parent?.resolve(org.infinilect.app.ui.APPLICATION_APPEARANCE_DIRECTORY),
     importDirectory: Path? = progressDirectory?.parent?.resolve(org.infinilect.app.imports.IMPORT_DIRECTORY_NAME),
     discoveryDiagnostics: (org.infinilect.app.discovery.DiscoveryDiagnostic) -> Unit = {},
+    gutenbergDiagnostics: (org.infinilect.app.gutenberg.GutenbergDiagnostic) -> Unit = {},
 ): ApplicationSources {
-    val gutenberg = try { GutenbergSource() } catch (error: Throwable) { collections?.close(); cache.close(); throw error }
+    val gutenberg = try { GutenbergSource(diagnostics = gutenbergDiagnostics) } catch (error: Throwable) { collections?.close(); cache.close(); throw error }
     val archive = try { InternetArchiveSource() }
     catch (error: Throwable) { collections?.close(); try { gutenberg.close() } finally { cache.close() }; throw error }
     val progress = ProgressPersistence(

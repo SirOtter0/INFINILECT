@@ -197,4 +197,17 @@ class DiscoveryInterfaceTest {
             assertTrue(f.app.discovery.state.value.entries.isNotEmpty())
         }
     }
+    @Test fun classifiedGutenbergFailureIsAccessibleWhileArchiveResultsAndRetryRemainUsable()=runTest {
+        Fixture(this,390,900).use {f->
+            f.gutenberg.respond={_,_->throw CatalogSourceException(CatalogErrorKind.TLS)}
+            f.search()
+            val message=catalogFailureMessage("Project Gutenberg (experimental)",CatalogErrorKind.TLS)
+            assertTrue(f.visible(message))
+            assertTrue(f.app.discovery.state.value.entries.all {it.publication.id.sourceId==f.source.id})
+            f.gutenberg.respond={_,_->DiscoveryPage(listOf(f.gutenberg.entry("recovered")))}
+            f.click(DiscoveryStrings.retrySource("Project Gutenberg (experimental)"))
+            assertTrue(f.app.discovery.state.value.catalogs.none {it.failed})
+            assertTrue(f.app.discovery.state.value.entries.any {it.publication.id.sourceId==f.gutenberg.id})
+        }
+    }
 }

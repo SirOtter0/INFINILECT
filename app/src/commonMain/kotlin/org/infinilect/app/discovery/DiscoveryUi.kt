@@ -82,7 +82,7 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                         else if (!state.loading && state.entries.isEmpty() && state.catalogs.none { it.failed }) Text(if (state.genre == null) DiscoveryStrings.NO_MATCHES else DiscoveryStrings.NO_GENRE_MATCHES)
                         state.catalogs.forEach { source ->
                             if (source.failed) Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(DiscoveryStrings.sourceUnavailable(application.sourceName(source.id)), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
+                                Text(catalogFailureMessage(application.sourceName(source.id), source.failure), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
                                 TextButton({ controller.retry(source.id) }, Modifier.heightIn(min = 48.dp).semantics { contentDescription = DiscoveryStrings.retrySource(application.sourceName(source.id)) }) { Text(DiscoveryStrings.RETRY) }
                             }
                         }

@@ -264,3 +264,129 @@ The production-preview service is **not proven available** by this investigation
 If `/ebooks/search.opds/` disappears tomorrow, this implementation still works
 against its selected experimental interface: **no executable path references it**.
 If development OPDS2 changes/unavailable, show a safe error; never fall back to legacy.
+
+## PR #29 Android failure diagnosis
+
+USER-REPORTED PHYSICAL ANDROID: the latest APK no longer showed the earlier
+Home/Search closures during the user's checks, but Gutenberg repeatedly failed
+for `cervantes`, including explicit Retry; Archive returned results. No Android
+exception/HTTP trace was supplied. The device failure's root cause is **not yet
+confirmed**. Host success is not Android acceptance.
+
+The confirmed defect was diagnostic loss: TLS, HTTP403, malformed JSON and missing
+search links all became indistinguishable failures in unified Search. Four
+regressions failed before correction. Search now retains a transient typed source
+failure with a safe message and the existing Retry. Caller/owner cancellation
+still propagates; it is not turned into a displayed failure. Independent source
+failures and generation checks still protect successful Archive/current results.
+
+Classification covers connection/DNS, TLS/certificates, timeout, HTTP403, HTTP429,
+other HTTP errors, rejected redirects, response format, JSON syntax, invalid OPDS,
+unsupported/missing search link, cancellation and unexpected internal failures.
+Original exceptions remain causes for diagnostic classification; their messages,
+stack traces and remote bodies are never displayed or logged by this hook.
+
+Debug Android uses `INFINILECTGutenberg`: root/search/pagination/detail/thumbnail
+stage; fixed sanitized host/path (no query or publication ID); HTTP status when
+received; headers/body/JSON/document/search-link parsing stage; monotonic duration;
+exception/cause class; category; cancellation flag. Success/cancellation uses
+Debug, failures Warning. A failed logger cannot alter search behavior. Release
+builds do not log these records. The existing `INFINILECTDiscovery` hook remains.
+
+The endpoint is still `https://opds-test.pglaf.org/opds/`, with the advertised
+`https://opds-test.pglaf.org/opds/search{?query,title,author}` template. No alternative
+provider, legacy feed, permissive TLS manager, hostname override, custom Android
+trust store, proxy, permission, redirect policy, compression acceptance, timeout
+increase or acquisition route was added. JSON/HTTP/image/cache bounds are unchanged.
+The existing adapter requires exact absolute owned links/templates; generic
+relative-template expansion remains outside its verified source-specific subset.
+
+Android uses Ktor Android/HttpURLConnection; Desktop uses Ktor Java/Java HTTP.
+They share the source, headers, parser and policy, but not their OS TLS trust store,
+proxy behavior or HTTP implementation. The manifest already grants INTERNET;
+HTTPS uses platform verification and no network-security exception. There is no
+physical device or Android emulator available in this environment. Android-host
+execution uses a Linux JVM and cannot verify Android's certificate store,
+NetworkSecurityPolicy, mobile network, geoblocking or device time.
+
+Focused Android verification with the new debug build:
+
+1. Open the app; collect its PID with `adb shell pidof -s org.infinilect.app`.
+2. On a POSIX shell, capture only that process and these diagnostic tags:
+
+   ```sh
+   INFINILECT_PID="$(adb shell pidof -s org.infinilect.app)"
+   adb logcat --pid="$INFINILECT_PID" -v threadtime INFINILECTGutenberg:D INFINILECTDiscovery:W AndroidRuntime:E '*:S' > infinilect-gutenberg.txt
+   ```
+
+3. Search Frankenstein, Cervantes and Pride and Prejudice, first with all languages,
+   then English/Spanish where results supply those languages. Try explicit More
+   where offered, one Retry after failure, and Home → Search during loading.
+4. Verify Archive results remain available, Gutenberg stays catalog-only, and
+   cancellation/query clearing does not resurrect stale content. No book payload
+   should be downloaded merely for catalog browsing; advertised thumbnails are
+   optional and bounded.
+5. Stop capture with Ctrl+C. Share the Gutenberg diagnostic lines and the safe UI
+   message. If a request fails, the last network/parsing stage determines whether
+   evidence is pre-response or post-response. Redact any unrelated/personal data.
+
+Do not change networks, certificates or endpoints speculatively to make a test
+pass. The debug trace is required to select a targeted device correction if the
+failure remains. Physical Android re-acceptance and native Desktop graphical
+acceptance remain pending.
+
+### Production-path host verification (2026-10-10)
+
+The actual source, URL policy, parser and catalog filtering were exercised with
+both `JavaHttpEngine` and `AndroidClientEngine` on managed Linux amd64/JDK21.
+The environment's proxy and system CA trust were configured only in an external
+diagnostic, not in the application. This is neither Android OS execution nor a
+physical-device TLS/network test. No permissive trust manager was used.
+
+| Search | Unfiltered publications | English publications | HTTP result, both engines |
+| --- | --- | --- | --- |
+| Frankenstein | 8 | 5 | 200 |
+| Cervantes | 25 | 16 | 200; next page advertised |
+| Pride and Prejudice | 8 | 7 | 200 |
+| `cervantes` (exact reported casing) | 25 | 16 | 200; explicit next page yielded 25 |
+
+Root discovery returned `application/json`, an accepted OPDS2 representation,
+and the expected absolute search template. Across these checks the two engines
+made 28 bounded requests, all HTTP200, consuming 1,162,330 bytes. Closing the
+source while receiving a search response cancelled the request on each engine.
+All publications remained resources0/catalog-only; no publication payload was
+downloaded. Desktop decoded an advertised JPEG thumbnail to 100×149. Android-host
+received that JPEG with HTTP200 but lacks Android's native bitmap decoder; its
+stub exception is an environment limitation, not evidence of a device image bug.
+
+The reported phone failure was not reproduced. These results rule out a current
+universal endpoint/template/parser failure in the checked host environment; they
+do not establish which device network, TLS, HTTP or parsing stage fails. The
+targeted debug trace above remains necessary for a confirmed Android correction.
+
+### Automated verification of this follow-up
+
+Twenty new test methods retain the existing OPDS2/security assertions and exercise
+safe classification, owned/unsupported links, URL encoding, status/redirects,
+format/size limits, JSON/OPDS/search-link errors, pagination, cancellation, Retry,
+independent Archive results, stale Home/Search responses and accessible feedback.
+The first four tests failed before the diagnostic correction. No test was skipped,
+disabled or weakened.
+
+| Check | Result |
+| --- | --- |
+| Focused Desktop | 144 passed |
+| Focused Android-host | 129 passed |
+| Full Desktop app regression | 1,381 passed |
+| Full Android-host app regression | 1,193 passed |
+| Android `:androidApp:assembleDebug` | Passed |
+| Desktop `:desktopApp:compileKotlin` | Passed |
+
+All suites had zero failures/errors/skips. JDK21.0.12.1 / Gradle9.7.1, managed
+Linux amd64 with externally configured headless Compose runtime. Full app suites
+retain EPUB/CBZ/PDF/TEXT, import, acquisition, progress and bounded ownership tests.
+Core was unchanged; unrelated core suites were not rerun. The 314 source/test/build/
+resource hashes remained unchanged during verification. `git diff --check` passed;
+394 tracked/nonignored files were scanned without signing-secret, generated-artifact
+or temporary-workflow findings. Native Android network/graphical and native Desktop
+graphical acceptance are not established by these results.

@@ -5,12 +5,11 @@ package org.infinilect.app.gutenberg
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import kotlinx.serialization.json.*
-import org.infinilect.app.search.SearchException
 import org.infinilect.core.*
 import org.infinilect.app.discovery.*
 
-internal class InvalidOpdsException(cause: Throwable? = null) :
-    SearchException("Project Gutenberg's experimental catalog returned unsupported data.", cause)
+internal class InvalidOpdsException(cause: Throwable? = null, kind: CatalogErrorKind = CatalogErrorKind.INVALID_OPDS) :
+    CatalogSourceException(kind, cause)
 
 /** Actual development OPDS2 JSON subset. No XML, generic templates, or acquisition fallback. */
 internal object GutenbergOpds2Parser {
@@ -54,7 +53,8 @@ internal object GutenbergOpds2Parser {
         }
         if (objects.isNotEmpty()) invalid()
         cancelled()
-        val root = try { json.parseToJsonElement(text) as? JsonObject } catch (_: Exception) { null } ?: invalid()
+        val root = try { json.parseToJsonElement(text) as? JsonObject }
+        catch (error: kotlinx.serialization.SerializationException) { throw InvalidOpdsException(error, CatalogErrorKind.INVALID_JSON) } ?: invalid()
         var nodes = 0
         fun bound(element: JsonElement) {
             if (++nodes > 20_000) invalid()
@@ -94,9 +94,9 @@ internal object GutenbergOpds2Parser {
         val links = links(root)
         val self = links.singleOrNull { "self" in relations(it) } ?: invalid()
         if (self.string("href") != GUTENBERG_ROOT || self.string("type") != "application/opds+json") invalid()
-        val search = links.singleOrNull { "search" in relations(it) } ?: invalid()
+        val search = links.singleOrNull { "search" in relations(it) } ?: throw InvalidOpdsException(kind = CatalogErrorKind.SEARCH_LINK)
         if (search.string("href") != GUTENBERG_SEARCH_TEMPLATE || search.string("type") != "application/opds+json" ||
-            (search["templated"] as? JsonPrimitive)?.booleanOrNull != true || (search["templated"] as JsonPrimitive).isString) invalid()
+            (search["templated"] as? JsonPrimitive)?.booleanOrNull != true || (search["templated"] as JsonPrimitive).isString) throw InvalidOpdsException(kind = CatalogErrorKind.SEARCH_LINK)
         // Navigation/groups are bounded but intentionally neither fetched nor rendered.
         return GUTENBERG_SEARCH_TEMPLATE
     }
