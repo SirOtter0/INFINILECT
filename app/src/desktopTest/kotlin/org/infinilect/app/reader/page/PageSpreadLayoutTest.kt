@@ -86,6 +86,8 @@ class PageSpreadLayoutTest {
             scene.sendPointerEvent(PointerEventType.Press, at); scene.sendPointerEvent(PointerEventType.Release, at); draw()
         }
         fun click(label: String) {
+            // PR30 dismisses chrome on artwork navigation; gesture traces/assertions stay unchanged.
+            if (!reader.state.value.controlsVisible) tap(.5f)
             val n = nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true }
             scene.sendPointerEvent(PointerEventType.Press, n.boundsInRoot.center)
             scene.sendPointerEvent(PointerEventType.Release, n.boundsInRoot.center)

@@ -264,14 +264,22 @@ internal class PageReaderController(
     }
     fun mode(mode: PageReadingMode) = settings(state.value.settings.copy(mode = mode))
     fun layout(layout: PageLayout) = settings(state.value.settings.copy(layout = layout))
+    fun fit(fit: PageFit) = settings(state.value.settings.copy(fit = fit))
+    /** Slider/keyboard intent uses the existing validated spatial turn, not early progress. */
+    fun seek(index: Int) {
+        if (closed || index !in document.pages.indices) return
+        if (pagedMode(state.value.settings.mode)) requestTurn(spread(index).anchor) else navigate(index)
+    }
+    fun hideControls() { if (!closed) mutableState.value = state.value.copy(controlsVisible = false) }
     private fun settings(settings: PageReaderSettings) {
         if (closed || settings == state.value.settings) return
+        val regroup = settings.mode != state.value.settings.mode || settings.layout != state.value.settings.layout
         preferences?.submit(settingsLease, settings)
         flush()
-        spreads = pageSpreads(document.pages, settings)
+        if (regroup) spreads = pageSpreads(document.pages, settings)
         mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
         mutableState.value = state.value.copy(position = normalize(semanticPosition))
-        loadWindow(state.value.position.index, force = true)
+        loadWindow(state.value.position.index, force = regroup)
     }
     /** A resized viewport restores the same semantic position and retires old layout callbacks. */
     fun presentationChanged() {
