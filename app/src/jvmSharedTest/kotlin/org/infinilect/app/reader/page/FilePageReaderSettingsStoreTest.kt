@@ -38,9 +38,32 @@ class FilePageReaderSettingsStoreTest {
         assertEquals(1, ByteBuffer.wrap(Files.readAllBytes(record)).getInt(8))
         assertEquals(single, FilePageReaderSettingsStore(directory).load())
     }
+    @Test fun fitRoundTripsEveryModeAndLayoutThroughFreshOwner() = runBlocking {
+        for (fit in PageFit.entries) for (mode in PageReadingMode.entries) for (layout in PageLayout.entries) {
+            val value=PageReaderPreferences(PageReaderSettings(mode,layout,fit),pagePreferenceTime())
+            assertTrue(FilePageReaderSettingsStore(directory).save(value))
+            assertEquals(value,FilePageReaderSettingsStore(directory).load())
+            assertEquals(56L,Files.size(record))
+            assertEquals(if(fit==PageFit.SCREEN)if(layout==PageLayout.SINGLE)1 else 2 else 3,ByteBuffer.wrap(Files.readAllBytes(record)).getInt(8))
+        }
+    }
+    @Test fun oldSingleAndDoubleRecordsRetainFitScreenWithoutRewriting() = runBlocking {
+        for(layout in PageLayout.entries) {
+            val value=PageReaderPreferences(PageReaderSettings(PageReadingMode.PAGED_RTL,layout),pagePreferenceTime())
+            assertTrue(FilePageReaderSettingsStore(directory).save(value));val bytes=Files.readAllBytes(record)
+            assertEquals(PageFit.SCREEN,FilePageReaderSettingsStore(directory).load().settings.fit)
+            assertContentEquals(bytes,Files.readAllBytes(record))
+        }
+    }
+    @Test fun malformedVersionThreeChoicesRemainRejected() = runBlocking {
+        for(choice in listOf(-1,0,4,7,24,Int.MAX_VALUE)) {
+            FilePageReaderSettingsStore(directory).save(PageReaderPreferences(PageReaderSettings(fit=PageFit.WIDTH),pagePreferenceTime()))
+            mutateInt(12,choice);assertEquals(PageReaderPreferences(),FilePageReaderSettingsStore(directory).load())
+        }
+    }
     @Test fun genuinelyFutureSchemaStillFailsClosed() = runBlocking {
         assertTrue(FilePageReaderSettingsStore(directory).save(PageReaderPreferences(settings.copy(layout = PageLayout.DOUBLE), 1)))
-        mutateInt(8, 3)
+        mutateInt(8, 4)
         assertEquals(PageReaderPreferences(), FilePageReaderSettingsStore(directory).load())
     }
     @Test fun readingDirectionSurvivesEntirePreferenceOwnerRecreation() = runBlocking {

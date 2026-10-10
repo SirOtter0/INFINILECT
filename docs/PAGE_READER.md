@@ -810,3 +810,154 @@ commit records this verification only; production/tests remain the verified tree
 is PENDING. Keep PR #23 DRAFT and unmerged.** Check consecutive Next/Previous
 swipes during motion at 1× and zoomed, in LTR/RTL and Single/Double; also check
 opposite-direction cancellation, pinch, coherent zoom/pan and close/reopen progress.
+
+## PR #30 — immersive comic presentation
+
+### Audit and preserved capabilities
+
+Main already provides Single/Double, logical LTR/RTL order, cover-alone and wide-page
+rules, centered 2dp-gutter pairs, continuous Vertical/Webtoon, pinch/pan and deliberate
+zoomed edge turns. The spatial pager has one authoritative transition with validated
+bitmap stamps, stale-ticket rejection, latest-target coalescing and 180ms settlement.
+PR #24 keeps the exact session page/fraction separately from its spread projection.
+CBZ validation, decoder subsampling and publication-specific durable Page locators
+already exist; none was replaced by this UI change.
+
+The previous application wrapper permanently reserved a Library-action row and
+forced white system bars for page readers. Paged fit-screen was the only fitted
+presentation; there was no scrubber or reader-wide keyboard/wheel handling.
+
+### Surface and controls
+
+Artwork now owns the full safe reading viewport, on a near-black background, with
+no persistent application or membership toolbar. Center taps retain the existing
+30/40/30 zones. Controls overlay the unchanged viewport: Back/title/Hide, actual
+logical page or spread range, a page slider, semantic Previous/Next and Settings.
+Artwork navigation, zoom/pan and continuous scrolling dismiss chrome; explicit overlay buttons
+keep it available for repeated actions. Library membership and storage/history
+notices remain accessible in Settings; reader errors can still appear when hidden.
+In windows below 300dp high, the page indicator moves into the header and the slider
+is available through Settings → Go to page, keeping the central canvas unobstructed.
+Settings and fitting remain scrollable/constrained on small windows. Back dismisses
+controls first; Back/close from the toolbar exits using the existing session flow.
+
+The comic palette is deliberately dark in both application themes. It uses the
+shared application accent and contrast colors, not copied assets or branding.
+The existing platform reader-appearance callback supplies a dark opaque backdrop
+behind transparent Android bars and expires when the reader leaves. Android's
+existing safeDrawing owner handles insets once, including cutouts/gesture navigation.
+No Android permission, edge-to-edge policy or trust/signing configuration changed.
+Native system-bar/three-button-navigation acceptance still requires a device.
+
+### Modes and fitting
+
+| Mode | Single / Double | Fitting | Interaction |
+| --- | --- | --- | --- |
+| Paged LTR | Both; logical A appears left of B | Screen, width, height | Leftward next; rightward previous |
+| Paged RTL | Both; logical A appears right of B | Screen, width, height | Rightward next; leftward previous |
+| Vertical | Individual pages; Double retained but ignored | Existing width-fit; new preference retained but ignored | Existing continuous scroll, 8dp gaps |
+| Webtoon | Individual pages; Double retained but ignored | Existing width-fit; new preference retained but ignored | Existing continuous scroll, no gaps |
+
+Fit screen remains the default: one common scale fits the complete spread without
+cropping. Fit width uses `(viewportWidth - gutter) / sum(sourceWidths)`; Fit height
+uses `viewportHeight / max(sourceHeights)`. Screen uses the smaller of those scales.
+All preserve aspect ratios and the same small gutter. The whole rectangle is centered,
+including standalone pages. Width/height can overflow the opposite axis; actual
+fitted geometry supplies pan bounds even at zoom 1×, without fake pan range or stretching.
+Resize recomputes geometry, retires old presentation tickets and resets transient
+zoom/pan while keeping the logical page. No decoding or new bitmap is needed for fit
+changes: already-owned frames/stamps are reused.
+
+Pinch keeps the existing 1–4× presentation zoom, pan-first arbitration and multi-pointer
+exclusion. A deliberate excess horizontal drag after exhausting pan can still turn,
+including fitted artwork overflowing at 1×. Vertical pan does not turn. Side taps
+remain blocked above 1×; successful turns reset transient zoom/pan, failed/cancelled
+turns preserve it. The accepted thresholds/edge velocity/interruption model are unchanged.
+Double-tap zoom is deferred because it would conflict with immediate center/side tap
+semantics in the current custom pager. Original/full-resolution presentation is not
+added: the bounded decoder is authoritative and zoom never promises new source pixels.
+
+### Desktop and accessibility
+
+F10 toggles chrome; Escape dismisses it, then exits. Arrow keys follow physical
+LTR/RTL direction when the artwork owns focus; PageUp/PageDown are semantic previous/
+next. Home/End seek the first/last logical spread. `=`/`-` adjust zoom and `0` resets it.
+Focused controls retain their own keyboard input. Mouse wheel navigates at ordinary
+fit-screen/1×; while zoomed or fitted content overflows, it pans only and cannot fling
+into another spread. The slider supplies an accessible Go to page action; its target
+is intent, never early durable progress. Controls retain ≥48dp primary touch targets,
+page descriptions, selected settings and the existing semantic navigation actions.
+
+### Position, persistence, resources and security
+
+Single → Double shows the containing spread; switching back before another successful
+turn restores the exact session page. Fits/direction/resize do not replace that exact
+page with a spread index. Slider/keyboard seeks reuse validated spatial presentation;
+failed/cancelled/stale targets cannot advance progress. Reopening/process recreation
+uses the established stable page key + clamped index/fraction locator. No progress,
+publication identity, Library, History or acquisition schema changed.
+
+The same private 56-byte atomic checksummed preference record now accepts canonical
+version 3 choices 8–23 for Width/Height. Existing Single/version 1 and Double/version 2
+records load as Screen without rewriting them; Screen still writes legacy-compatible
+v1/v2. Future/malformed records fail safely. This is an additive reader-preference
+encoding, not a progress migration or second preference system. Older app versions
+will fall back to default settings if they encounter a v3 record.
+
+All existing ownership/security limits remain: 3 raster/bitmap slots for Single/
+continuous, 4 for Double; 2 spread layers, at most 4 artwork children, one global decode
+and one global conversion. The explicit transient handover bounds above remain 9
+raster and 9 bitmap identities (7 each for Single-only), not a process heap ceiling.
+Pair decoding retains existing 2× subsampling. Fits/slider/keyboard add only scalar
+presentation intent; no new image buffer, prefetch queue, disk cache or worker exists.
+
+CBZ remains bounded ZIP32/PNG/JPEG: 32MiB archive, 64MiB expansion, ratio ≤100:1,
+≤512 records/pages, ≤8MiB entry and ≤2MiB encoded page; source raster admission remains
+≤2048 per side and ≤1,048,576 pixels. Traversal, aliases/collisions, CRC/local-central
+agreement, unsupported metadata/image formats and failed cleanup remain guarded by
+unchanged archive/preparation code. Large images outside this subset remain controlled
+errors; fit/zoom do not relax admission or fetch extra pixels.
+
+### Manual Android acceptance (pending)
+
+- Upgrade with existing Library/History and saved noninitial CBZ progress; open without
+  permanent chrome. Center toggles controls; Back dismisses then exits.
+- Check Single/Double, LTR/RTL, cover/odd final/wide pages and the compact pair in both
+  orientations. Side taps/drag, deliberate zoomed edge turns and rapid interruptions.
+- Slider to a distant page/pair; keep position through fits, direction, Single↔Double,
+  rotation, close/reopen and application restart. No target error should save progress.
+- Fit width on tall artwork and height on wide artwork: pan the overflow at 1×; pinch,
+  ordinary pan and multiple pointers must not accidentally turn. Reset zoom remains useful.
+- Check Vertical/Webtoon, large interface fonts, TalkBack/control focus, dark system bars,
+  gesture/three-button navigation and correct application appearance after exit.
+- Native Desktop: resize, arrows/RTL, PageUp/Down, Home/End, wheel pan/navigation,
+  zoom shortcuts, Tab/slider/settings and Escape without lost position.
+
+Physical Android and native Desktop graphical acceptance are pending. Previews are
+headless shared-Compose renders of original synthetic artwork, not device screenshots.
+
+### Automated verification
+
+On managed Linux with JDK 21, the focused page/controller/spread/resource/CBZ suites
+passed 236 Desktop and 181 Android-host tests. The final chrome-on-pan regression
+failed before its fix; after the fix, all 42 Desktop interaction/layout tests passed.
+The final complete app runs passed **1,408 Desktop** and **1,210 Android-host** tests,
+with zero failures, errors or skips. All 15 CBZ preparer/security cases pass on both
+hosts; existing EPUB, PDF, TEXT, continuity and progress cases remain included.
+Android `:androidApp:assembleDebug` and Desktop `:desktopApp:compileKotlin` passed.
+
+There are 27 new methods: 14 common geometry/controller/progress/ownership, 3 settings
+compatibility, and 10 controlled-clock headless Compose interaction/layout/accessibility
+cases. Existing click helpers reveal intentionally auto-hidden chrome before button
+actions; pager traces and assertions are retained. The future-schema rejection fixture
+uses version 4 because version 3 is now supported, with explicit invalid-v3 coverage.
+The 1,000-fit-change test retains identical bounded frames with no additional source
+opens/decodes; 100 seek requests coalesce to the newest target without early progress.
+These establish ownership/work invariants, not physical frame-rate or heap measurements.
+
+The complete diff and `git diff --check` passed. The tracked/nonignored-file scan found
+no signing secrets, generated artifacts or temporary workflows. Core/dependencies,
+permissions, signing and release configuration are unchanged; unrelated core suites
+were not rerun. Source/build/resource hashes stayed unchanged through final verification.
+Physical Android performance/system-bar/accessibility and native Desktop graphical
+acceptance remain pending.

@@ -167,7 +167,20 @@ fun App(
                         if (historyFailed) Text("Reading history could not be saved on this device.")
                     }) else null,
                 )
-                is OpenPublicationState.Ready, is OpenPublicationState.PageReady, is OpenPublicationState.PdfReady -> Column(Modifier.fillMaxSize()) {
+                is OpenPublicationState.PageReady -> key(current.reader) {
+                    org.infinilect.app.reader.page.PageReader(current.reader, saveFailed, application::back, backLabel,
+                        backHandler = backHandler, appearanceChanged = readerAppearance,
+                        publicationActions = { LibraryAction(LibraryActionState(membership.inLibrary, membership.busy, membership.unavailable), application.collections::toggleLibrary) },
+                        notices = {
+                            if (membership.unavailable) {
+                                Text("Library storage is unavailable on this device.")
+                                Button(onClick = application.collections::refreshLibrary) { Text("Retry Library") }
+                            }
+                            collectionError?.let { Text(it, color = MaterialTheme.colors.error) }
+                            if (historyFailed) Text("Reading history could not be saved on this device.")
+                        })
+                }
+                is OpenPublicationState.Ready, is OpenPublicationState.PdfReady -> Column(Modifier.fillMaxSize()) {
                     ReaderAppearanceEffect(ReaderAppearance(false, androidx.compose.ui.graphics.Color.White), readerAppearance)
                     Row(Modifier.fillMaxWidth().padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         LibraryAction(LibraryActionState(membership.inLibrary,membership.busy,membership.unavailable),
@@ -183,7 +196,6 @@ fun App(
                         when (current) {
                             is OpenPublicationState.Ready -> TextReader(current.document,current.reading,saveFailed,application::back,backLabel)
                             is OpenPublicationState.PdfReady -> key(current.reader) { org.infinilect.app.reader.pdf.PdfReader(current.reader,saveFailed,application::back,backLabel) { savedPdfPage=it } }
-                            is OpenPublicationState.PageReady -> key(current.reader) { org.infinilect.app.reader.page.PageReader(current.reader,saveFailed,application::back,backLabel) }
                         }
                     }
                 }

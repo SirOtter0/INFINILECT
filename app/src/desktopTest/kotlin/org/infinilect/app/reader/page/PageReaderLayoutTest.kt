@@ -47,7 +47,11 @@ class PageReaderLayoutTest {
             draw()
         }
         fun tapZone(fraction: Float) = tap(Offset(width * fraction, height / 2f))
-        fun click(label: String) { val node = text(label); reachable(node); tap(node.boundsInRoot.center) }
+        fun click(label: String) {
+            // Artwork navigation now dismisses chrome; reveal it before an explicit control action.
+            if (!reader.state.value.controlsVisible) tapZone(.5f)
+            val node = text(label); reachable(node); tap(node.boundsInRoot.center)
+        }
         fun awaitArtwork(index: Int) {
             repeat(200) { draw(); if (reader.state.value.transition == null && reader.state.value.position.index == index && artwork(index) != null) return; Thread.sleep(5) }
             fail("Current page must be presented: $index")
