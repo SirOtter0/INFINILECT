@@ -20,6 +20,7 @@ import org.infinilect.app.network.platformHttpEngine
 import org.infinilect.app.network.PROJECT_USER_AGENT
 import org.infinilect.app.search.SearchException
 import org.infinilect.core.*
+import org.infinilect.app.discovery.*
 
 internal data class GutenbergHttpEvidence(val url: String, val status: Int) {
     val consumedBytes = AtomicLong()
@@ -29,7 +30,7 @@ internal data class GutenbergHttpEvidence(val url: String, val status: Int) {
 internal class GutenbergSource(
     private val engine: HttpClientEngine = platformHttpEngine(),
     private val observe: (GutenbergHttpEvidence) -> Unit = {},
-) : PublicationSource, AutoCloseable {
+) : PublicationSource, DiscoverySource, AutoCloseable {
     override val id = GUTENBERG_ID
     private val requestLock = Mutex()
     private val closed = AtomicBoolean()
@@ -49,6 +50,57 @@ internal class GutenbergSource(
         try { return request.await() } finally { request.cancel() }
     }
     override suspend fun search(query: String, pageToken: String?): SearchPage = operation { catalog.search(query, pageToken) }
+    override suspend fun discover(request: DiscoveryRequest, token: String?): DiscoveryPage = operation {
+        require(request.genre == null && request.query.isNotBlank())
+        val entries = mutableListOf<DiscoveryEntry>()
+        val result = catalog.search(request.query, token, entries::add)
+        synchronized(thumbnailLock) {
+            check(!closed.get())
+            entries.forEach { entry -> entry.thumbnail?.let { url ->
+                thumbnails.remove(entry.publication.id)
+                if (thumbnails.size >= 100) thumbnails.remove(thumbnails.keys.first())
+                thumbnails[entry.publication.id] = url
+            } }
+        }
+        DiscoveryPage(entries, result.nextPageToken)
+    }
+    private val thumbnailLock = Any()
+    private val thumbnails = linkedMapOf<PublicationId, String>()
+    /** Only JPEG links actually advertised in a validated OPDS response, never guessed by ID.
+     * No detail/enrichment request, redirects, cookie/auth flow, publication payload or disk cache. */
+    internal suspend fun coverThumbnail(id: PublicationId): org.infinilect.app.covers.CoverArtwork? {
+        owns(id)
+        val url = synchronized(thumbnailLock) { thumbnails.remove(id)?.also { thumbnails[id] = it } } ?: return null
+        return operation {
+            val encoded = client.prepareGet(url) {
+                header(HttpHeaders.UserAgent, PROJECT_USER_AGENT); header(HttpHeaders.Accept, "image/jpeg")
+                header(HttpHeaders.AcceptEncoding, "identity")
+                timeout { requestTimeoutMillis = 3_000; socketTimeoutMillis = 3_000 }
+            }.execute { response ->
+                val evidence = GutenbergHttpEvidence(url, response.status.value).also(observe)
+                require(response.status.value == 200)
+                require(response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase() == "image/jpeg")
+                require(response.headers[HttpHeaders.ContentEncoding]?.let { it != "identity" } != true)
+                val declared = response.headers[HttpHeaders.ContentLength]?.let { requireNotNull(it.toLongOrNull()).also { size -> require(size in 1..524288) } }
+                val channel = response.bodyAsChannel()
+                try {
+                    val output = ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = channel.readAvailable(buffer, 0, minOf(buffer.size, 524288 - output.size() + 1))
+                        if (count == -1) break
+                        require(count > 0 && output.size() + count <= 524288)
+                        evidence.consumedBytes.addAndGet(count.toLong()); output.write(buffer, 0, count)
+                    }
+                    require(declared == null || declared == output.size().toLong())
+                    output.toByteArray()
+                } finally { channel.cancel(null) }
+            }
+            val dimensions = org.infinilect.app.media.rasterDimensions(encoded, "image/jpeg", currentCoroutineContext().job)
+            require(dimensions.first <= 512 && dimensions.second <= 768)
+            org.infinilect.app.covers.CoverArtwork(null, org.infinilect.app.covers.decodeCoverThumbnail(encoded, "image/jpeg"))
+        }
+    }
     private fun owns(id: PublicationId) { require(id.sourceId == this.id); GutenbergUrls.identifier(id.localId) }
     override suspend fun getPublication(publicationId: PublicationId): Publication? {
         owns(publicationId); return operation { catalog.getPublication(publicationId) }
@@ -101,6 +153,7 @@ internal class GutenbergSource(
     }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        synchronized(thumbnailLock) { thumbnails.clear() }
         lifetime.cancel(); client.close(); engine.close()
     }
 }

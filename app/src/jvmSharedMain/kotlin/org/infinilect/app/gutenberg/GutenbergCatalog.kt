@@ -4,11 +4,12 @@ package org.infinilect.app.gutenberg
 
 import kotlinx.coroutines.*
 import org.infinilect.core.*
+import org.infinilect.app.discovery.*
 
 /** Experimental OPDS2 only. Caller serializes requests; no network before explicit action. */
 internal class GutenbergCatalog(private val fetch: suspend (String, Boolean) -> ByteArray?) {
     private var discovered = false
-    suspend fun search(query: String, token: String?): SearchPage {
+    suspend fun search(query: String, token: String?, collect: (DiscoveryEntry) -> Unit = {}): SearchPage {
         val normalized = query.trim()
         val first = GutenbergUrls.search(normalized)
         // Validate untrusted tokens before discovery performs any I/O.
@@ -20,7 +21,7 @@ internal class GutenbergCatalog(private val fetch: suspend (String, Boolean) -> 
         }
         val bytes = fetch(url, false) ?: throw InvalidOpdsException()
         val page = if (token == null) 1 else GutenbergUrls.page(url, normalized)
-        return parse { GutenbergOpds2Parser.search(bytes, normalized, page, it) }
+        return parse { GutenbergOpds2Parser.search(bytes, normalized, page, collect, it) }
     }
     suspend fun getPublication(id: PublicationId): Publication? {
         val bytes = fetch(GutenbergUrls.publication(id.localId), true) ?: return null

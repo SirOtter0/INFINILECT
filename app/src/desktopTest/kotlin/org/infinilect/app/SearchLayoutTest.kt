@@ -139,7 +139,9 @@ class SearchLayoutTest {
                 val import=f.nodes().first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Import local file")==true }
                 f.reachable(import);assertTrue(import.boundsInRoot.height>=48)
                 assertNotNull(import.config.getOrNull(SemanticsActions.OnClick)?.action)
-                val list=f.nodes().first {it.config.getOrNull(SemanticsActions.ScrollToIndex)!=null}
+                // Search now has horizontal genre rows as well as its vertical result grid.
+                val list=f.nodes().first {it.config.getOrNull(SemanticsActions.ScrollToIndex)!=null &&
+                    it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)!=null}
                 f.reachable(list)
                 assertTrue(list.boundsInRoot.height>0)
             } finally { f.scene.setContent {};f.draw();owner.close();runBlocking {owner.awaitProgressClosed()} }

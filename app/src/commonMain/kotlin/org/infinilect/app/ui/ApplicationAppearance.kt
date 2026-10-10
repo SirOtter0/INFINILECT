@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.*
 internal enum class ApplicationThemeMode { SYSTEM, LIGHT, DARK;
     fun isDark(systemDark: Boolean) = when (this) { SYSTEM -> systemDark; LIGHT -> false; DARK -> true }
 }
-internal data class ApplicationAppearanceState(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val edited: Boolean = false, val profile: LocalProfile = LocalProfile(), val profileEdited: Boolean = false, val loaded: Boolean = false)
+internal data class ApplicationAppearanceState(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val edited: Boolean = false, val profile: LocalProfile = LocalProfile(), val profileEdited: Boolean = false, val loaded: Boolean = false, val discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences(), val discoveryEdited: Boolean = false)
 internal interface ApplicationAppearanceStore {
     suspend fun load(): ApplicationThemeMode
     suspend fun save(mode: ApplicationThemeMode): Boolean
@@ -37,7 +37,7 @@ internal class ApplicationAppearancePreferences(
             catch (e: CancellationException) { if (e !is TimeoutCancellationException) throw e else ApplicationPreferences() }
             catch (_: Exception) { ApplicationPreferences() }
             mutableState.update { it.copy(mode = if (it.edited) it.mode else loaded.mode,
-                profile = if (it.profileEdited) it.profile else loaded.profile, loaded = true) }
+                profile = if (it.profileEdited) it.profile else loaded.profile, discovery = if (it.discoveryEdited) it.discovery else loaded.discovery, loaded = true) }
             if (pending.value != null) pending.value = preferences()
             for (ignored in signal) {
                 while (true) {
@@ -55,11 +55,15 @@ internal class ApplicationAppearancePreferences(
         if (closed) return
         mutableState.value = state.value.copy(mode = mode, edited = true); enqueue()
     }
-    private fun preferences() = ApplicationPreferences(state.value.mode, state.value.profile)
+    private fun preferences() = ApplicationPreferences(state.value.mode, state.value.profile, state.value.discovery)
     private fun enqueue() { pending.value = preferences(); signal.trySend(Unit) }
     fun changeProfile(profile: LocalProfile) {
         if (closed) return
         mutableState.value = state.value.copy(profile = profile, profileEdited = true); enqueue()
+    }
+    fun changeDiscovery(value: org.infinilect.app.discovery.DiscoveryPreferences) {
+        if (closed) return
+        mutableState.value = state.value.copy(discovery = value, discoveryEdited = true); enqueue()
     }
     fun retry() { if (!closed) enqueue() }
     fun close() { if (!closed) { closed = true; signal.close() } }

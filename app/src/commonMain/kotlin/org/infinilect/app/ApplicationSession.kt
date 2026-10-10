@@ -8,6 +8,7 @@ import kotlin.time.Clock
 import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.core.*
+import org.infinilect.app.discovery.*
 
 internal enum class Destination { HOME, SEARCH, LIBRARY, HISTORY, SETTINGS }
 
@@ -22,6 +23,11 @@ internal class ApplicationSession(
 ) : ApplicationSessionLifetime {
     private val job=SupervisorJob(scope.coroutineContext[Job])
     private val scope=CoroutineScope(scope.coroutineContext+job)
+    private val discoveryOptions = sources.options
+    private val discoveryCatalog = DiscoveryCatalog(discoveryOptions.map { it.source }, this.scope, clock)
+    val discovery = DiscoveryController(discoveryOptions, discoveryCatalog, this.scope)
+    val homeDiscovery = HomeDiscovery(discoveryOptions.filter { it.source is DiscoverySource }, discoveryCatalog, this.scope, clock)
+    val catalogOptions get() = discoveryOptions
     private val mutableSelected=MutableStateFlow(0)
     val selected=mutableSelected.asStateFlow()
     private val mutableDestination=MutableStateFlow(Destination.HOME)
@@ -79,6 +85,8 @@ internal class ApplicationSession(
     fun navigate(destination: Destination) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
         if (destination != mutableDestination.value) collections.clearSelection()
+        if (destination != Destination.SEARCH) discovery.pause()
+        if (destination != Destination.HOME) homeDiscovery.pause()
         mutableDestination.value=destination
         if (destination == Destination.HOME) refreshHomeProgress() else { homeGeneration++; homeLookup?.cancel() }
         when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); Destination.HOME -> { collections.refreshLibrary(); collections.refreshHistory() }; else -> Unit }
@@ -86,6 +94,7 @@ internal class ApplicationSession(
     fun openSaved(snapshot: PublicationSnapshot, pdfRecreationIndex: Int? = null) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
         collections.clearSelection()
+        discovery.pause(); homeDiscovery.pause()
         homeGeneration++; homeLookup?.cancel()
         observer?.cancel()
         val option=sources.options.firstOrNull { it.source.id==snapshot.id.sourceId }
@@ -109,6 +118,10 @@ internal class ApplicationSession(
     fun openSearch(publication: Publication) {
         if(closed || importing.value.busy || destination.value!=Destination.SEARCH) return
         searchSession.value.open(publication); mutableOpening.value=searchSession.value.opening.state.value
+    }
+    fun openDiscovered(publication: Publication) {
+        // Resolve through its own source and fresh metadata, never the current search source.
+        openSaved(PublicationSnapshot.from(publication))
     }
     fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && (it.textReadingEnabled || it.epubReadingEnabled || it.pageReadingEnabled || it.pdfReadingEnabled) }
     fun sourceName(id: SourceId)=sources.options.firstOrNull { it.source.id==id }?.name ?: id.value
@@ -166,6 +179,6 @@ internal class ApplicationSession(
     override fun flushProgress() { (savedReader ?: searchSession.value).flushProgress() }
     override fun close() {
         if(closed) return
-        closed=true; homeGeneration++; homeLookup?.cancel(); cancelImport(); observer?.cancel(); savedReader?.close(); searchSession.value.close(); collections.close(); job.cancel()
+        closed=true; discovery.close(); homeDiscovery.close(); discoveryCatalog.close(); homeGeneration++; homeLookup?.cancel(); cancelImport(); observer?.cancel(); savedReader?.close(); searchSession.value.close(); collections.close(); job.cancel()
     }
 }

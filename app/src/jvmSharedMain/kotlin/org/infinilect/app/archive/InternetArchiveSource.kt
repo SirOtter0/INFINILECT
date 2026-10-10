@@ -23,6 +23,7 @@ import kotlinx.coroutines.sync.withLock
 import org.infinilect.app.search.SearchException
 import org.infinilect.app.network.PROJECT_USER_AGENT
 import org.infinilect.core.*
+import org.infinilect.app.discovery.*
 
 
 /** Application-consumed bytes, excluding transport buffering; never includes book contents. */
@@ -36,7 +37,7 @@ internal class InternetArchiveSource(
     private val userAgent: String = PROJECT_USER_AGENT,
     private val observe: (ArchiveHttpEvidence) -> Unit = {},
     streamDispatcher: CoroutineDispatcher = Dispatchers.IO,
-) : PublicationSource, AutoCloseable {
+) : PublicationSource, DiscoverySource, AutoCloseable {
     override val id = ARCHIVE_ID
     private val lock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + streamDispatcher)
@@ -58,6 +59,32 @@ internal class InternetArchiveSource(
             withContext(Dispatchers.Default) {
                 val context = currentCoroutineContext()
                 ArchiveMetadata.search(bytes, normalized, page) { context.ensureActive() }
+            }
+        }
+    }
+
+    override val canBrowseGenres = true
+    override suspend fun discover(request: DiscoveryRequest, token: String?): DiscoveryPage {
+        // Source-owned exact subject filter. User text remains query data, never URL authority.
+        val query = buildString {
+            if (request.query.isNotEmpty()) {
+                // Unified search is literal text. Quotes/operators cannot escape the
+                // provider's CC0 subset or the chosen subject. Legacy source.search stays unchanged.
+                if (request.query == "*") append("*") else {
+                    append('"'); append(request.query.replace("\\", "\\\\").replace("\"", "\\\"")); append('"')
+                }
+            }
+            request.genre?.let { if (isNotEmpty()) append(" AND "); append("subject:\"${it.archiveSubject}\"") }
+        }
+        val normalized = query.also { require(it.length in 1..768 && it.none { char -> char.isISOControl() }) }
+        val page = token?.let { ArchiveUrls.page(it, normalized) } ?: 1
+        return userFacing {
+            val bytes = metadataBytes(ArchiveUrls.search(normalized, page))
+            withContext(Dispatchers.Default) {
+                val entries = mutableListOf<DiscoveryEntry>()
+                val context = currentCoroutineContext()
+                val result = ArchiveMetadata.search(bytes, normalized, page, entries::add, { context.ensureActive() })
+                DiscoveryPage(entries, result.nextPageToken)
             }
         }
     }

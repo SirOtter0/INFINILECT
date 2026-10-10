@@ -87,3 +87,13 @@ same PublicationSource/ResourceLoader boundary and normal saved-ID re-resolution
 without network, imported files or changing production-source policies. It is not
 a public catalog or plugin system. Archive EPUB acquisition remains unverified and
 disabled; Gutenberg remains catalog-only. [Exact route and evidence](EPUB_READER.md).
+
+## Unified discovery — PR #29
+
+The current Search/Home presentation reuses these same clients through bounded
+application catalog adapters. Optional metadata, exact Archive subject browsing,
+local personalization and advertised Gutenberg JPEG thumbnails add no publication
+acquisition authority. Gutenberg remains experimental/catalog-only. The earlier
+explicit-search-only/no-images UI description is superseded by optional Home
+discovery and the strictly bounded thumbnail contract documented in
+[DISCOVERY.md](DISCOVERY.md), including the actual capability matrix and privacy limits.

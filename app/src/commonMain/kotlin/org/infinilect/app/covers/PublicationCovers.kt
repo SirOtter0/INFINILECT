@@ -23,13 +23,13 @@ internal object CoverPolicy {
         return sample
     }
 }
-internal data class CoverArtwork(val format: PublicationFormat, val raster: Raster? = null)
+internal data class CoverArtwork(val format: PublicationFormat?, val raster: Raster? = null)
 internal data class CoverState(val format: PublicationFormat? = null, val image: ImageBitmap? = null)
 internal expect suspend fun decodeCoverThumbnail(bytes: ByteArray, mediaType: String): Raster
 
 /** One app-owned LRU, including negative results. Visible items borrow, never copy, bitmaps.
  * Exactly one load/decode/conversion runs; pending entries and pinned artwork share the 24-slot bound.
- * If all slots are pinned, further items use their typographic fallback. No disk cache or remote fetch.
+ * If all slots are pinned, further items use their typographic fallback. No disk cache; only the owning loader may resolve an advertised catalog thumbnail.
  */
 internal class PublicationCovers(
     private val load: suspend (PublicationId) -> CoverArtwork?,

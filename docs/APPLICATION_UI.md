@@ -356,3 +356,12 @@ window acceptance. Those checks remain pending.
 4. Check Start reading for a new publication and Continue reading for a saved one after restart; details alone must not reset progress. Cancel/confirm Library removal without deleting originals or saved positions.
 5. Check compact Home greeting, long two-line carousel titles, cover fit, progress and horizontal scrolling; import icon accessibility/keyboard/tooltip. Profile exposes only the implemented English language and preserves residence/name.
 6. Resume EPUB/CBZ/PDF/TEXT and return; verify reader settings, semantic position and Android system bars remain correct.
+
+## Search and Home discovery (PR #29)
+
+Unified Search uses the existing design system with responsive cover results,
+source attribution, optional metadata details, filters and per-source retry/More.
+Home retains its offline local sections and adds explicitly enabled source-backed
+rows. Settings stores optional local genre interests, personalization opt-out and
+reset in the existing bounded appearance/profile record. Readers, Library/History
+identity and progress remain unchanged. [Contracts, capabilities and acceptance](DISCOVERY.md).
