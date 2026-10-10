@@ -27,7 +27,7 @@ class ApplicationInterfaceTest {
             val id = PublicationId(id, "book-$i")
             Publication(id, "Original publication $i", PublicationType.BOOK, listOf("Fixture author $i"),
                 listOf(PublicationResource(id,"text",PublicationFormat.TEXT,"text/plain")), listOf("en"), rights = "Original test material")
-        }
+        }.toMutableList()
         var metadataCalls = 0; var acquisitions = 0; var fail = false
         var gate: CompletableDeferred<Unit>? = null
         override suspend fun search(query: String, pageToken: String?) = SearchPage(books)
@@ -45,7 +45,7 @@ class ApplicationInterfaceTest {
             }
         }
     }
-    private inner class Fixture(val scope: TestScope, width: Int = 360, val height: Int = 640, fontScale: Float = 1f, count: Int = 3, artwork: Boolean = false, firstRun: Boolean = false) : AutoCloseable {
+    private inner class Fixture(val scope: TestScope, width: Int = 360, val height: Int = 640, fontScale: Float = 1f, count: Int = 3, artwork: Boolean = false, firstRun: Boolean = false, synopsis: String? = null) : AutoCloseable {
         val dispatcher = StandardTestDispatcher(scope.testScheduler)
         val source = Source(maxOf(30, count)); val data = FakeCollections()
         val collections = ApplicationCollections(data.library,data.history,dispatcher)
@@ -96,8 +96,10 @@ class ApplicationInterfaceTest {
             for(i in 0..5) canvas.drawRect(0f,120f+i*22,192f-i*24,132f+i*22,paint)
             image
         })
+        var descriptionLoads = 0
+        val descriptions = PublicationDescriptions({ descriptionLoads++; synopsis }, dispatcher)
         val owner = ApplicationSources(listOf(SourceOption("Original fixtures",source,textReadingEnabled=true)),
-            progress=progress, collections=collections, localImports=importer, appearance=settings, covers=if(artwork) covers else null, sessionDispatcher=dispatcher) {}
+            progress=progress, collections=collections, localImports=importer, appearance=settings, covers=if(artwork) covers else null, descriptions=descriptions, sessionDispatcher=dispatcher) {}
         val app = owner.applicationSession()
         var back: (() -> Unit)? = null
         var appAppearance: ReaderAppearance? = null
@@ -285,7 +287,7 @@ class ApplicationInterfaceTest {
         Fixture(this).use { f ->
             f.nav(Destination.LIBRARY);f.click("Original publication 0")
             assertTrue(f.visible("Publication details"));assertIs<OpenPublicationState.Idle>(f.app.opening.value)
-            assertEquals(0,f.source.acquisitions);f.click("Open")
+            assertEquals(0,f.source.acquisitions);f.click("Start reading")
             assertIs<OpenPublicationState.Ready>(f.app.opening.value);assertEquals(1,f.source.acquisitions)
         }
     }
@@ -509,7 +511,7 @@ class ApplicationInterfaceTest {
                 }
             }
             assertTrue(f.visible("2 selected"));preview("library-selection.png")
-            f.click("Clear selection");f.click("Original publication 0");assertTrue(f.visible("Open"));preview("publication-details.png")
+            f.click("Clear selection");f.click("Original publication 0");assertTrue(f.visible("Start reading"));preview("publication-details.png")
         }
     }
 
@@ -553,7 +555,7 @@ class ApplicationInterfaceTest {
             f.click("Set up profile");assertTrue(f.visible("Your local profile"));f.preview("profile-onboarding.png")
             f.click("Set up later");assertTrue(f.preferenceValue.profile.setupHandled);assertNull(f.preferenceValue.profile.countryCode)
             assertFalse(f.visible("Set up profile"));assertFalse(f.visible("Your local profile"))
-            f.nav(Destination.LIBRARY);f.click("Original publication 0");f.click("Open")
+            f.nav(Destination.LIBRARY);f.click("Original publication 0");f.click("Start reading")
             assertIs<OpenPublicationState.Ready>(f.app.opening.value)
             f.app.back();f.pump();assertEquals(Destination.LIBRARY,f.app.destination.value)
             f.nav(Destination.HOME);assertFalse(f.visible("Set up profile"))
@@ -565,8 +567,8 @@ class ApplicationInterfaceTest {
             f.click("Set up profile");f.edit("Display name (optional)","Ana")
             assertTrue(f.nodes().any{it.config.contains(SemanticsProperties.Disabled)&&it.children.any{n->f.has(n,"Save profile")}})
             f.click("Country of residence");f.edit("Find country","ES");f.preview("profile-country-selector.png");f.click("Choose country ES")
-            f.click("English");f.click("Save profile")
-            assertEquals(LocalProfile("Ana","ES","en",true),f.preferenceValue.profile)
+            assertTrue(f.visible("English"));assertFalse(f.visible("App default"));f.click("Save profile")
+            assertEquals(LocalProfile("Ana","ES",null,true),f.preferenceValue.profile)
             assertTrue(f.visible("Hello, Ana!"));assertEquals(records,f.saved);assertSame(readerSession,f.app.searchSession.value)
             f.nav(Destination.SETTINGS);assertTrue(f.visible("Ana"));f.preview("settings-profile.png")
             f.click("Edit profile");f.preview("profile-editor.png");f.edit("Display name (optional)","");f.click("Save profile")
@@ -641,6 +643,97 @@ class ApplicationInterfaceTest {
                 assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.PaneTitle)==destination.label()})
                 assertFalse(f.nodes().any{it.config.contains(SemanticsProperties.Heading)&&f.has(it,destination.label())})
             }
+        }
+    }
+
+    @Test fun synopsisHasBoundedExcerptExpansionParagraphsAndNoProgressWrites()=runTest {
+        val text=("Original synopsis paragraph about a quiet observatory. ".repeat(16)+"\n\nSecond meaningful paragraph. ").repeat(4)
+        Fixture(this,390,700,artwork=true,synopsis=text).use { f ->
+            f.nav(Destination.LIBRARY);val before=f.saved.toList();f.click("Original publication 0")
+            assertTrue(f.visible("Synopsis"));assertTrue(f.visible(descriptionExcerpt(text)))
+            assertFalse(f.visible(text));f.click("Read more");assertTrue(f.visible(text));assertTrue(f.visible("Show less"))
+            assertTrue(f.nodes().any{it.config.getOrNull(SemanticsProperties.StateDescription)=="Expanded"})
+            f.click("Show less");assertTrue(f.visible(descriptionExcerpt(text)))
+            assertEquals(1,f.descriptionLoads);assertEquals(before,f.saved);assertEquals(0,f.source.acquisitions)
+            f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.pump()
+            f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));advanceTimeBy(200);f.pump();assertFalse(f.visible("Publication details"));f.click("Original publication 0");assertEquals(1,f.descriptionLoads)
+        }
+    }
+    @Test fun absentSynopsisIsOmittedAndStartContinueDependOnlyOnSavedProgress()=runTest {
+        Fixture(this,390,700,artwork=true).use {f->
+            f.nav(Destination.LIBRARY);f.click("Original publication 0");assertFalse(f.visible("Synopsis"));assertFalse(f.visible("Read more"))
+            assertTrue(f.visible("Start reading"));f.click("Close");f.click("Original publication 2")
+            assertTrue(f.visible("Continue reading"));assertFalse(f.visible("Start reading"))
+            val record=f.saved.last();f.click("Continue reading")
+            val ready=assertIs<OpenPublicationState.Ready>(f.app.opening.value)
+            assertEquals(assertNotNull(ready.document).restore(record),assertNotNull(ready.reading).codePointOffset.value)
+        }
+    }
+    @Test fun smallAndWideDetailsRemainScrollableWithReachableLegalNoticeAndFixedClose()=runTest {
+        for((width,height,dark) in listOf(Triple(320,400,false),Triple(390,800,true),Triple(1280,800,false))) {
+            val synopsis="An original synthetic synopsis. ".repeat(180)
+            Fixture(this,width,height,fontScale=1.4f,artwork=true,synopsis=synopsis).use {f->
+                if(dark) {f.settings.change(ApplicationThemeMode.DARK);f.pump()}
+                f.nav(Destination.LIBRARY);f.click("Original publication 0");f.click("Read more")
+                val close=f.nodes().first{f.has(it,"Close")};assertTrue(close.boundsInRoot.top>=0&&close.boundsInRoot.bottom<=height)
+                val scroll=f.nodes().last{it.config.getOrNull(SemanticsActions.ScrollBy)?.action!=null}
+                assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f,100_000f));f.pump();advanceTimeBy(500);f.pump()
+                val notice=f.nodes().first{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text.startsWith("Availability does not establish")}==true}
+                assertTrue(notice.boundsInRoot.top<height&&notice.boundsInRoot.bottom>0)
+                f.preview(if(width>600)"details-synopsis-desktop.png" else if(dark)"details-synopsis-android-dark.png" else "details-synopsis-android-small.png")
+                f.click("Close");assertEquals(Destination.LIBRARY,f.app.destination.value)
+            }
+        }
+    }
+    @Test fun importActionHasTouchTargetKeyboardActivationAndLanguageEditPreservesStoredChoice()=runTest {
+        Fixture(this,1280,800).use {f->
+            val button=f.nodes().single{it.config.getOrNull(SemanticsActions.OnClick)?.action!=null&&f.has(it,"Import local file")}
+            assertTrue(button.boundsInRoot.width>=48&&button.boundsInRoot.height>=48)
+            assertTrue(assertNotNull(button.config.getOrNull(SemanticsActions.RequestFocus)?.action).invoke());f.pump()
+            f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyUp));f.pump()
+            assertEquals(1,f.picked)
+            f.settings.changeProfile(LocalProfile("Alex","ES","en",true));f.pump();f.nav(Destination.SETTINGS);f.click("Edit profile")
+            assertFalse(f.visible("App default"));assertTrue(f.visible("English"));f.edit("Display name (optional)","New name");f.click("Save profile")
+            assertEquals("en",f.preferenceValue.profile.interfaceLanguage)
+        }
+    }
+    @Test fun polishedHomeAndSynopsisPreviewsUseRealSharedUiWithOriginalFixtures()=runTest {
+        for((width,height,dark) in listOf(Triple(390,900,false),Triple(1280,850,true))) {
+            Fixture(this,width,height,artwork=true,synopsis="An original local synopsis about a small observatory and its patient keeper.\n\n"+"A second paragraph explores the changing seasons. ".repeat(18)).use{f->
+                f.settings.changeProfile(LocalProfile("Ana","ES",null,true));if(dark)f.settings.change(ApplicationThemeMode.DARK);f.pump()
+                f.preview(if(dark)"home-polish-desktop.png" else "home-polish-android.png")
+                f.nav(Destination.LIBRARY);f.click("Original publication 0")
+                assertTrue(f.visible("Synopsis"));f.preview(if(dark)"details-synopsis-desktop-top.png" else "details-synopsis-android.png")
+            }
+        }
+    }
+
+    @Test fun detailsAfterRestartFindExistingProgressWithoutSavingOrAcquiringContent()=runTest {
+        Fixture(this,390,700).use {f->
+            val id=f.source.books[0].id
+            val old=ReadingProgress(ReadingProgressId(id,"text",PublicationFormat.TEXT),ReadingLocator.Text(8,51),8.0/51,77)
+            f.saved+=old // Disk-only record: no live recentProgress entry.
+            assertTrue(f.progress.recentProgress.value.isEmpty());f.nav(Destination.LIBRARY);f.click("Original publication 0")
+            assertTrue(f.visible("Continue reading"));assertFalse(f.visible("Start reading"));assertTrue(f.visible("15% read"))
+            assertEquals(listOf(old),f.saved);assertEquals(0,f.source.acquisitions)
+            f.click("Continue reading");val ready=assertIs<OpenPublicationState.Ready>(f.app.opening.value)
+            assertEquals(8,assertNotNull(ready.reading).codePointOffset.value)
+        }
+    }
+
+    @Test fun longTitlesAuthorsAndMissingAuthorsWrapWithoutHidingDetailsActions()=runTest {
+        Fixture(this,320,480,fontScale=1.5f).use{f->
+            val title="Original long title about reading under changing skies ".repeat(8)
+            val book=f.source.books[0].copy(title=title,authors=listOf("An original very long author name ".repeat(10)))
+            f.source.books[0]=book;f.data.saved[book.id]=LibraryEntry(PublicationSnapshot.from(book),1)
+            f.nav(Destination.LIBRARY);f.click(title)
+            assertTrue(f.visible(title));assertTrue(f.visible(book.authors.single()));assertTrue(f.visible("Start reading"))
+            val titleNode=f.nodes().first{f.has(it,title)};assertTrue(titleNode.boundsInRoot.left>=0&&titleNode.boundsInRoot.right<=320)
+            val scroll=f.nodes().last{it.config.getOrNull(SemanticsActions.ScrollBy)?.action!=null}
+            assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f,100_000f));f.pump();advanceTimeBy(500);f.pump();assertTrue(f.visible("Close"));f.click("Close")
+            val noAuthor=f.source.books[1].copy(authors=emptyList());f.source.books[1]=noAuthor;f.data.saved[noAuthor.id]=LibraryEntry(PublicationSnapshot.from(noAuthor),1)
+            f.app.collections.refreshLibrary();f.pump();f.click(noAuthor.title)
+            assertFalse(f.visible("Fixture author 1"));assertFalse(f.visible("Unknown author"));assertTrue(f.visible("Start reading"))
         }
     }
 

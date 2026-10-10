@@ -188,7 +188,7 @@ internal fun HomeCover(publication: Publication, covers: PublicationCovers?, pro
         }) {
         Box {
             CoverArtwork(publication, cover, Modifier.fillMaxSize())
-            Text(publication.title, color=Color.White, style=MaterialTheme.typography.subtitle2, maxLines=3, overflow=TextOverflow.Ellipsis,
+            Text(publication.title, color=Color.White, style=MaterialTheme.typography.subtitle2, maxLines=2, overflow=TextOverflow.Ellipsis,
                 modifier=Modifier.align(Alignment.BottomStart).fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=COVER_TITLE_MIN_SCRIM),Color.Black.copy(alpha=.94f))))
                     .padding(12.dp,12.dp,12.dp,16.dp))

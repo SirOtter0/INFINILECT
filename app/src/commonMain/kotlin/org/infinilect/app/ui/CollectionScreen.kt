@@ -100,12 +100,12 @@ internal fun CollectionScreen(destination: Destination, application: Application
         }
     }
     detail?.let { publication ->
-        val progress = publicationProgress(progressRecords, publication.id)
+        val progress = detailsProgress(application, publication.id, publicationProgress(progressRecords, publication.id))
         val action = membership.forPublication(publication.id)
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
-            progress = progress, close = { detail = null }, cover = { DetailsCover(publication.displayPublication(), application.covers) }) {
-            Button({ detail = null; application.openSaved(publication) }, Modifier.heightIn(min = 48.dp)) { Text(if (progress != null) "Continue reading" else "Open") }
+            progress = progress, close = { detail = null }, descriptions = application.descriptions, cover = { DetailsCover(publication.displayPublication(), application.covers) }) {
+            Button({ detail = null; application.openSaved(publication) }, Modifier.heightIn(min = 48.dp)) { Text(readingAction(progress)) }
             OutlinedButton({
                 if (action.inLibrary == true) { detail = null; remove = CollectionRemoval(publication, history = false) }
                 else controller.toggleCatalogLibrary(publication.displayPublication())

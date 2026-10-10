@@ -145,6 +145,20 @@ internal class FileLocalPublicationSource(
         org.infinilect.app.covers.CoverArtwork(format, raster)
     }
 
+    /** Refresh optional metadata for any import version without rewriting its identity/record. */
+    internal suspend fun description(publicationId: PublicationId): String? = operation {
+        if (publicationId.sourceId != id || !DIGEST_NAME.matches(publicationId.localId)) return@operation null
+        val key = publicationId.localId
+        val entry = initialize().resolve("$key.import")
+        val record = readRecord(entry, key) ?: return@operation null
+        if (record.publication.resources.single().format != PublicationFormat.EPUB) return@operation null
+        val payload = entry.resolve("payload")
+        require(hashPayload(payload, record.size) == key)
+        try { localEpubDescription(payload) }
+        catch (error: CancellationException) { throw error }
+        catch (_: Exception) { null } // Optional unsafe/unsupported metadata never blocks reading.
+    }
+
     override suspend fun getPublication(publicationId: PublicationId): Publication? = operation {
         require(publicationId.sourceId == id && DIGEST_NAME.matches(publicationId.localId))
         readRecord(initialize().resolve("${publicationId.localId}.import"), publicationId.localId)?.publication

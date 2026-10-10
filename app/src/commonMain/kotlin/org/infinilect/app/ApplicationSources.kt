@@ -25,6 +25,7 @@ class ApplicationSources internal constructor(
     internal val pageSettings: org.infinilect.app.reader.page.PageSettingsPersistence? = null,
     internal val localImports: org.infinilect.app.imports.LocalPublicationImporter? = null,
     internal val covers: org.infinilect.app.covers.PublicationCovers? = null,
+    internal val descriptions: org.infinilect.app.ui.PublicationDescriptions? = null,
     internal val appearance: org.infinilect.app.ui.ApplicationAppearancePreferences? = null,
     internal val pdfPreparer: org.infinilect.app.reader.pdf.PdfPreparer? = null,
     private val sessionDispatcher: CoroutineDispatcher? = null,
@@ -64,7 +65,7 @@ class ApplicationSources internal constructor(
     /** Join the independent preference writer before a Desktop process intentionally exits. */
     suspend fun awaitPreferencesClosed() { epubSettings?.awaitClosed(); pageSettings?.awaitClosed(); appearance?.awaitClosed() }
 
-    suspend fun awaitProgressClosed() { awaitPreferencesClosed(); covers?.awaitClosed(); progress?.awaitClosed(); collections?.awaitClosed(); localImports?.awaitClosed(); textPreparer.awaitClosed(); epubPreparer?.awaitClosed(); pagePreparer?.awaitClosed(); pdfPreparer?.awaitClosed() }
+    suspend fun awaitProgressClosed() { awaitPreferencesClosed(); covers?.awaitClosed(); descriptions?.awaitClosed(); progress?.awaitClosed(); collections?.awaitClosed(); localImports?.awaitClosed(); textPreparer.awaitClosed(); epubPreparer?.awaitClosed(); pagePreparer?.awaitClosed(); pdfPreparer?.awaitClosed() }
 
     fun close() {
         if (closed) return
@@ -73,6 +74,7 @@ class ApplicationSources internal constructor(
         session = null
         sessionScope?.cancel(); sessionScope = null
         covers?.close()
+        descriptions?.close()
         localImports?.close()
         progress?.close()
         appearance?.close()

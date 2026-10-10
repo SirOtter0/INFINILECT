@@ -53,9 +53,10 @@ internal fun ImportIcon() {
     val color=MaterialTheme.colors.onSurface
     Canvas(Modifier.size(24.dp).clearAndSetSemantics {}) {
         val stroke=1.7.dp.toPx()
-        drawLine(color,Offset(size.width/2,2.dp.toPx()),Offset(size.width/2,size.height*.68f),stroke)
-        drawLine(color,Offset(size.width*.25f,size.height*.43f),Offset(size.width/2,size.height*.68f),stroke)
-        drawLine(color,Offset(size.width*.75f,size.height*.43f),Offset(size.width/2,size.height*.68f),stroke)
-        drawLine(color,Offset(size.width*.15f,size.height*.88f),Offset(size.width*.85f,size.height*.88f),stroke)
+        // A local document with an inward arrow, rather than a download/tray glyph.
+        drawRect(color,Offset(size.width*.40f,size.height*.10f),Size(size.width*.46f,size.height*.80f),style=Stroke(stroke))
+        drawLine(color,Offset(size.width*.08f,size.height*.50f),Offset(size.width*.63f,size.height*.50f),stroke)
+        drawLine(color,Offset(size.width*.46f,size.height*.33f),Offset(size.width*.63f,size.height*.50f),stroke)
+        drawLine(color,Offset(size.width*.46f,size.height*.67f),Offset(size.width*.63f,size.height*.50f),stroke)
     }
 }

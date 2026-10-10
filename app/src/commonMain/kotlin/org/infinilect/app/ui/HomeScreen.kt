@@ -32,10 +32,10 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     var format by remember { mutableStateOf<PublicationFormat?>(null) }
     val membership by application.collections.membership.collectAsState()
     val error by application.collections.error.collectAsState()
-    LazyColumn(Modifier.fillMaxSize().semantics { paneTitle="Home" }, state=position, contentPadding=PaddingValues(16.dp), verticalArrangement=Arrangement.spacedBy(24.dp)) {
+    LazyColumn(Modifier.fillMaxSize().semantics { paneTitle="Home" }, state=position, contentPadding=PaddingValues(horizontal=16.dp, vertical=8.dp), verticalArrangement=Arrangement.spacedBy(16.dp)) {
         item(key="greeting") {
-            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                Text(welcomeGreeting(preferences.profile),style=MaterialTheme.typography.h4,modifier=Modifier.semantics { heading() })
+            Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Text(welcomeGreeting(preferences.profile),style=MaterialTheme.typography.h5,modifier=Modifier.semantics { heading() })
                 Text("What would you like to read today?",style=MaterialTheme.typography.body1,color=MaterialTheme.colors.onBackground.copy(alpha=.75f))
             }
         }
@@ -92,12 +92,12 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
         }
     }
     detail?.let { publication ->
-        val record=publicationProgress(progress,publication.id)
+        val record=detailsProgress(application,publication.id,publicationProgress(progress,publication.id))
         val action=membership.forPublication(publication.id)
         PublicationDetails(publication.displayPublication(),application.sourceName(publication.id.sourceId),
             formats=record?.let {listOf(it.id.format)}?:format?.let {listOf(it)}?:emptyList(),progress=record,close={detail=null},
-            cover={DetailsCover(publication.displayPublication(),application.covers)}) {
-            Button({detail=null;application.openSaved(publication)},Modifier.heightIn(min=48.dp)) { Text(if(record==null)"Open" else "Continue reading") }
+            descriptions=application.descriptions, cover={DetailsCover(publication.displayPublication(),application.covers)}) {
+            Button({detail=null;application.openSaved(publication)},Modifier.heightIn(min=48.dp)) { Text(readingAction(record)) }
             OutlinedButton({ if(action.inLibrary==true) confirmRemoval=true else application.collections.toggleCatalogLibrary(publication.displayPublication()) },
                 Modifier.heightIn(min=48.dp),enabled=action.enabled) { Text(action.label) }
             error?.let {Text(it,color=MaterialTheme.colors.error)}
@@ -111,7 +111,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
 
 @Composable
 private fun HomeSection(title: String, action: String, open: () -> Unit, content: @Composable () -> Unit) {
-    Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
             Text(title,style=MaterialTheme.typography.h6,modifier=Modifier.weight(1f).semantics {heading()})
             TextButton(open,Modifier.heightIn(min=48.dp)) {Text(action)}

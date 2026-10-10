@@ -5,6 +5,7 @@ package org.infinilect.app
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -124,8 +125,10 @@ fun App(
                             if (application.collections.selection.value.isNotEmpty()) { application.collections.clearSelection(); true } else false
                         },
                         importAction = if (localFilePicker != null && applicationSources.localImports != null) ({
-                            androidx.compose.material.IconButton(enabled = !importing.busy, onClick = { application.importLocal(localFilePicker) },
-                                modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Import local file" }) { ImportIcon() }
+                            ImportActionTooltip {
+                                androidx.compose.material.IconButton(enabled = !importing.busy, onClick = { application.importLocal(localFilePicker) },
+                                    modifier = Modifier.size(48.dp).semantics { contentDescription = "Import local file" }) { ImportIcon() }
+                            }
                         }) else null,
                     ) {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -144,7 +147,7 @@ fun App(
                                             editProfile = { profileEditor = true }, settingsFailed = appearanceFailed)
                                         Destination.SEARCH -> key(session) {
                                             SearchScreen(session, searchState, resultsPosition, applicationSources.options, selected, application::selectSource,
-                                                application.collections, application::openSearch, progressRecords = progressRecords.values.toList())
+                                                application.collections, application::openSearch, progressRecords = progressRecords.values.toList(), descriptions = applicationSources.descriptions, applicationSession = application)
                                         }
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, progressRecords.values.toList())
@@ -219,7 +222,7 @@ fun App(
 internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPosition: LazyListState,
     sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
     collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open,
-    modifier: Modifier = Modifier, progressRecords: List<org.infinilect.core.ReadingProgress> = emptyList()) {
+    modifier: Modifier = Modifier, progressRecords: List<org.infinilect.core.ReadingProgress> = emptyList(), descriptions: PublicationDescriptions? = null, applicationSession: ApplicationSession? = null) {
     var detail by remember(session) { mutableStateOf<org.infinilect.core.Publication?>(null) }
     val query by session.query.collectAsState()
     val membership by collections.membership.collectAsState()
@@ -316,10 +319,12 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         }
     }
     detail?.let { publication ->
+        val known = publicationProgress(progressRecords, publication.id)
+        val record = if (applicationSession != null) detailsProgress(applicationSession, publication.id, known) else known
         PublicationDetails(publication, sources[selected].name, publication.resources.map { it.format },
-            publicationProgress(progressRecords, publication.id), close = { detail = null }) {
+            record, close = { detail = null }, descriptions = descriptions) {
             if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
-                Button(enabled = !loading, onClick = { detail = null; onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open") }
+                Button(enabled = !loading, onClick = { detail = null; onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(readingAction(record)) }
             }
             CatalogLibraryAction(membership.forPublication(publication.id), onToggle = { collections.toggleCatalogLibrary(publication) })
         }

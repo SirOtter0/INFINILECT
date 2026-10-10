@@ -20,12 +20,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import org.infinilect.core.*
+import kotlinx.coroutines.CancellationException
 
 internal fun PublicationSnapshot.displayPublication() = Publication(id, title, type, authors, languages = languages, sourceUrl = sourceUrl, rights = rights)
 
 internal fun publicationProgress(records: Collection<ReadingProgress>, id: PublicationId): ReadingProgress? =
     records.filter { it.id.publicationId == id }.maxByOrNull { it.updatedAtEpochMillis }
 internal fun publicationFormat(formats: List<PublicationFormat>) = formats.distinct().joinToString(" · ") { it.name }.ifEmpty { "Format checked when opening" }
+
+/** Live records win. A bounded, cancellable read-only lookup fills the restart-only gap. */
+@Composable
+internal fun detailsProgress(application: org.infinilect.app.ApplicationSession, id: PublicationId, known: ReadingProgress?): ReadingProgress? {
+    val value by key(id) { produceState(known, application, known) {
+        value = known ?: application.savedPublicationProgress(id)
+    } }
+    return value
+}
 
 /** Metadata placeholder only: the current publication contract exposes no cover resource.
  * No new network request or decoded image cache is introduced for catalog presentation. */
@@ -69,33 +79,56 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
-    progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null, actions: @Composable () -> Unit) {
+    progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
+    descriptions: PublicationDescriptions? = null, actions: @Composable () -> Unit) {
     val focus = remember { FocusRequester() }
+    val synopsis by produceState<String?>(null, publication.id, descriptions) {
+        try { value = descriptions?.get(publication.id) }
+        catch (error: CancellationException) { throw error }
+        catch (_: Exception) { /* Optional metadata must not prevent opening a publication. */ }
+    }
+    var expanded by remember(publication.id) { mutableStateOf(false) }
+    val scroll = remember(publication.id) { androidx.compose.foundation.ScrollState(0) }
     Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Surface(Modifier.widthIn(max = 520.dp).fillMaxWidth(.94f).heightIn(max = maxHeight - 24.dp)
-                .onPreviewKeyEvent { if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { close(); true } else false },
-                shape = MaterialTheme.shapes.large, elevation = 0.dp) {
-                Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+            val compact = maxWidth < 600.dp
+            val frame = if (compact) Modifier.fillMaxSize() else Modifier.widthIn(max = 600.dp).fillMaxWidth(.94f).heightIn(max = maxHeight - 24.dp)
+            Surface(frame.onPreviewKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { close(); true } else false
+            }.semantics { paneTitle = "Publication details" },
+                shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large, elevation = 0.dp) {
+                Column {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Publication details", style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f).semantics { heading() })
                         TextButton(close, Modifier.focusRequester(focus).heightIn(min = 48.dp)) { Text("Close") }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        cover?.invoke()
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(publication.title, style = MaterialTheme.typography.h5)
-                            if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(scroll).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
+                            cover?.invoke()
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(publication.title, style = MaterialTheme.typography.h5)
+                                if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
+                            }
                         }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
+                        synopsis?.let { text ->
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Synopsis", style = MaterialTheme.typography.subtitle1, modifier = Modifier.semantics { heading() })
+                                Text(if (expanded) text else descriptionExcerpt(text), style = MaterialTheme.typography.body1)
+                                if (text.length > DescriptionPolicy.EXCERPT) TextButton({ expanded = !expanded },
+                                    Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }) {
+                                    Text(if (expanded) "Show less" else "Read more")
+                                }
+                            }
+                        }
+                        DetailLine("Source", source)
+                        DetailLine("Format", publicationFormat(formats))
+                        if (publication.languages.isNotEmpty()) DetailLine("Languages", publication.languages.joinToString(", "))
+                        if (progress != null) DetailLine("Reading progress", "${(progress.progression * 100).toInt()}% read")
+                        publication.rights?.let { DetailLine("Source rights statement", it) }
+                        publication.sourceUrl?.let { DetailLine("Source reference", it) }
+                        Text("Availability does not establish rights in every country. Saved metadata does not authorize a download; opening still checks the source.", style = MaterialTheme.typography.caption)
                     }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
-                    DetailLine("Source", source)
-                    DetailLine("Format", publicationFormat(formats))
-                    if (publication.languages.isNotEmpty()) DetailLine("Languages", publication.languages.joinToString(", "))
-                    if (progress != null) DetailLine("Reading progress", "${(progress.progression * 100).toInt()}% read")
-                    publication.rights?.let { DetailLine("Source rights statement", it) }
-                    publication.sourceUrl?.let { DetailLine("Source reference", it) }
-                    Text("Availability does not establish rights in every country. Saved metadata does not authorize a download; opening still checks the source.", style = MaterialTheme.typography.caption)
                 }
             }
         }

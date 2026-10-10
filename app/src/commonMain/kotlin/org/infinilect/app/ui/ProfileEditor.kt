@@ -23,7 +23,6 @@ import androidx.compose.ui.window.DialogProperties
 internal fun ProfileEditor(profile: LocalProfile, save: (LocalProfile) -> Unit, close: () -> Unit) {
     var name by remember { mutableStateOf(profile.displayName.orEmpty()) }
     var country by remember { mutableStateOf(profile.countryCode) }
-    var language by remember { mutableStateOf(profile.interfaceLanguage) }
     var countriesVisible by remember { mutableStateOf(false) }
     val countries = remember { residenceCountries() }
     val focus = remember { FocusRequester() }
@@ -43,13 +42,10 @@ internal fun ProfileEditor(profile: LocalProfile, save: (LocalProfile) -> Unit, 
                     }
                     Text("Residence is requested for future country-dependent discovery. Your choice is a declaration, not proof of legal eligibility. Local reading remains available without it.", style = MaterialTheme.typography.caption)
                     Text("Interface language", style = MaterialTheme.typography.subtitle2)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton({ language = null }, Modifier.heightIn(min = 48.dp).semantics { selected = language == null }) { Text("App default") }
-                        TextButton({ language = "en" }, Modifier.heightIn(min = 48.dp).semantics { selected = language == "en" }) { Text("English") }
-                    }
-                    Text("English is currently the available interface language.", style = MaterialTheme.typography.caption)
+                    Text("English", style = MaterialTheme.typography.body1)
+                    Text("English is the only available interface language. More languages are planned.", style = MaterialTheme.typography.caption)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button({ save(LocalProfile(name.trim().ifEmpty { null }, country, language, setupHandled = true)); close() },
+                        Button({ save(LocalProfile(name.trim().ifEmpty { null }, country, profile.interfaceLanguage, setupHandled = true)); close() },
                             Modifier.heightIn(min = 48.dp), enabled = country != null) { Text("Save profile") }
                         TextButton(close, Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                     }

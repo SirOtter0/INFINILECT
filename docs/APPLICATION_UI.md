@@ -12,7 +12,7 @@ reader positions. `ApplicationSession` remains the navigation/session owner.
 | Search/source browsing | Large branding, source buttons, plain result rows | Restrained heading, existing source choices and query semantics, shared publication cards and bounded scrollable feedback/results |
 | Library | Plain rows and separators | Cover-only portrait grid, details on tap, title gradient, known progress edge and contextual multi-selection |
 | History | Plain newest-first rows, TXT-only empty wording | Compact thumbnail rows grouped by actual last-opened dates; cover opens details, row resumes, trailing removal keeps Library and progress |
-| Publication metadata | Inline catalog metadata only; no separate details screen | Focus-managed, scrollable metadata dialog; shows only available author/language/format/source/rights information |
+| Publication metadata | Inline catalog metadata only; no separate details screen | Responsive details page/dialog with fixed close, safe optional EPUB synopsis, contextual reading action and source/rights information |
 | Local import | Plain busy/error text | Consistent validation/loading/error card, Cancel, original picker and importer unchanged |
 | Publication opening | Spinner or plain failure column | Shared loading/error surfaces with Back and the existing retry contract |
 | Home/profile | No Home, profile or first-run setup | Local greeting, real resume/recent Library sections, optional nonblocking local setup and Settings → Profile |
@@ -44,9 +44,7 @@ dialog first, cancels an active import, returns from a reader to its origin, or
 returns a secondary destination to Home. Root Back retains system exit behavior.
 
 Search query/results/source remain session-owned. Library/History grid positions
-are separately remembered/saveable across navigation and reader return. Details
-read metadata already held by the UI; opening still resolves current source-owned
-metadata/resources through the existing validation path.
+are separately remembered/saveable across navigation and reader return. Details use held metadata plus a bounded, read-only refresh of optional local EPUB descriptions and one saved-progress summary. Opening still resolves current source-owned metadata/resources through the existing validation path.
 
 ## Honest metadata and progress
 
@@ -55,6 +53,63 @@ presentation provider borrows existing private local imports; identity and progr
 schemas stay unchanged. It does not fetch artwork from catalog/source URLs.
 Metadata dialogs omit missing authors/languages/rights. Known formats come from
 validated import metadata or legitimate progress records, never BOOK/DOCUMENT type.
+
+### Optional publication synopsis
+
+`PublicationDescriptions` is an application-owned, read-only presentation cache.
+Details requests optional metadata only for an existing digest-addressed private
+local EPUB import, including imports made before this change. The original private
+payload is the durable source of the description: no import-record, Library,
+History, profile, identity or reading-progress migration is needed. No new files,
+publication copies or source/network requests are made. Clearing Android cache
+only requires metadata to be read again; it does not remove private publication
+or profile records. Reading details never writes a locator.
+
+The loader checks payload integrity using the existing streamed SHA-256 and
+archive ownership guards. It reads only `mimetype`, `META-INF/container.xml` and
+the referenced OPF, not chapters/images. Existing EPUB2/3 ZIP traversal/collision,
+size/ratio/entry, path, CRC, encryption/signature and strict XML/entity/DTD guards
+remain. Only namespace-correct `dc:description` values are accepted, in metadata
+order; empty values are skipped and identical values deduplicated. Paragraphs
+are retained. Escaped/static markup is projected to **plain text**, with a fixed
+safe entity allowlist and valid numeric scalars decoded once. Active-element
+bodies are discarded; no HTML execution, links, WebView, SVG, remote resources or
+summary generation is introduced.
+
+Limits: **8 description values / 16,384 UTF-16 units in aggregate**, existing
+**1 MiB XML**, **20,000 XML nodes / depth 32 / 8,192 text units per XML element**.
+Optional malformed/unsupported/oversized metadata is omitted without blocking
+reading or changing an existing record. The LRU keeps **8 results**, including
+absence, for at most **131,072 retained text units (~256 KiB UTF-16 payload)**,
+plus one bounded container/OPF parse. There is one load at a time with a **10-second
+budget**; closing details cancels its request, load/storage exceptions are not cached,
+and final owner close cancels work and clears entries. Absent/unsupported immutable metadata may be cached. Disk cache budget is **0**.
+Immutable content identities make cached metadata stable; a different payload has
+its own ID. No good cached value is overwritten by empty metadata.
+
+PDF's current native reader API exposes no descriptive metadata; CBZ's strict
+image-only contract does not admit ComicInfo.xml; TEXT has no structured metadata.
+Those formats, remote catalogs and EPUBs without descriptions omit Synopsis.
+Broader metadata support is deferred rather than loosening reader/import security.
+Supplementary OPF inspection of the five user-supplied books found a description
+only in Analects; the other four legitimately have no `dc:description`. Books are
+not redistributed or committed.
+
+Details uses a full-width page below **600 dp**, otherwise a centered **600 dp**
+maximum dialog. The Close control stays fixed; all content/actions/rights notices
+scroll within safe viewport insets. Long titles/authors wrap. A **600-unit excerpt**
+and Read more/Show less preserve paragraph breaks and Unicode. No synopsis means
+no empty heading. Start reading/Continue reading follows an actual saved record,
+including a bounded one-publication lookup after restart; both use the unchanged
+reader open/resume path. Back/Escape dismisses without acquiring bytes or saving
+progress. Cover artwork has no invented action.
+
+Home now uses 8 dp vertical edge padding, 4 dp greeting/subtitle spacing, 16 dp
+section spacing and two-line titles on fixed 144×216 dp carousel covers. Existing
+fit artwork, gradient contrast, subtle progress and shared thumbnail leases remain.
+The toolbar uses a labeled 48 dp document/import icon, standard focus/keyboard
+activation and a Desktop hover tooltip. Branding still requires an official logo;
+the repository's launcher vector explicitly identifies itself as provisional.
 
 ### Covers and contextual actions
 
@@ -74,7 +129,7 @@ The existing 50-entry recent-history query remains unchanged.
 ### Details, selection and removal
 
 Normal Library covers have no format badge, ellipsis or management button. Tap/Enter
-opens the focus-managed details dialog, with artwork, known metadata, Open/Continue
+opens the focus-managed details dialog, with artwork, known metadata, Start reading/Continue reading
 reading and the repository-backed Add/Remove Library action. Opening still resolves
 current source ownership and restores the existing locator. Adding the same full
 publication identity uses the existing repository key, not a duplicate record.
@@ -202,7 +257,7 @@ wordmark remains; neither an invented logo nor the mascot substitutes for brandi
 The local profile contains an optional trimmed name (≤80 UTF-16 units; no control
 characters), optional known ISO 3166-1 alpha-2 residence code and optional `en`
 interface preference. Null language follows the existing English interface, which
-has no localization framework yet. Country names use the device locale; the selector
+has no localization framework yet. The editor shows English as the only available language, without nonfunctional choices; editing name/country preserves the stored null/`en` preference. Country names use the device locale; the selector
 searches real country names/codes without geolocation. Country is required to save
 a completed profile, but **Set up later** persists a deferred setup and never blocks
 local reading. The nonblocking Home setup prompt appears only until completion or
@@ -244,30 +299,26 @@ loading/edit races, coalescing, close/drain, persistence failure/retry, fixed-si
 records, corrupt records/symlinks, exact progress identity and palette contrast.
 Existing reader, parser/security, acquisition and persistence tests remain required.
 
-Final verification: **1,271 Desktop app tests / 1,105 Android-host app tests**,
-zero failures/errors/skips. Android `assembleDebug` and Desktop `compileKotlin`
-passed with JDK 21 and the existing Gradle configuration. Focused Home/profile,
-progress/lifecycle and UI verification passed **163 Desktop tests**; an additional
-**5-test layout recheck** passed. This follow-up adds **24 tests** (15 shared/host,
-9 Desktop). The initial full Desktop attempt needed one Search-origin/icon test
-setup update and encountered an unchanged CBZ first-presentation timeout; its
-isolated rerun and the complete final suite passed without changing/disabling
-that reader test. This does not establish a physical-device cause for the timeout.
-Focused coverage includes Home startup, five-destination navigation, greeting,
-real progress resume/Back, empty import state, details/removal isolation, profile
-setup/defer/edit/cancel, ISO validation, legacy migration, Unicode bounds, preference
-load/edit races and retry, read-only restart summaries, stale lookup cancellation,
-accessible panes, light/dark previews and narrow/wide layouts. Existing 1,000-entry
-Library, selection/history, cover/cache/security and all four reader tests remain
-required. Tests that intentionally open from Search now explicitly navigate there;
-the expected normal root is Home, without weakening reader lifecycle assertions.
+Final refinement verification: **1,294 Desktop app tests / 1,120 Android-host
+app tests**, zero failures/errors/skips. Android `assembleDebug` and Desktop
+`compileKotlin` passed with JDK 21 and the existing Gradle configuration. Focused
+metadata/profile/import/UI verification: **77 Desktop tests**, all green. This
+refinement adds **23 tests**: 15 common/JVM-shared and 8 Desktop, in four files.
+They cover repeated/absent/escaped/Unicode/long/malformed descriptions, CRC and
+XML/archive rejection, cache limits/cancellation/retry/close, immutable old-import
+records across restart, contextual saved-position resume, synopsis expansion,
+small/wide details and legal-notice scrolling, keyboard import, language-preference
+preservation, long/missing metadata and original previews. Existing Library/History,
+profile migration/persistence, system appearance, EPUB/CBZ/PDF/TEXT, import, reader
+continuity, progress and acquisition/security assertions remain intact.
 
-The production/test/Gradle fingerprint matches the final verified source. Core and
-reader engines are unchanged by this follow-up, so unrelated core suites were not
-rerun. Test execution uses the existing Skiko library and a writable external cache
-in the managed headless environment; no temporary workflow/configuration is committed.
+The production/test/build fingerprint matches the verified source; `git diff
+--check` and signing-secret/generated-artifact scans pass. Core, reader engines,
+Gradle/dependencies, schemas, permissions, signing and release configuration are
+unchanged. Tests use the installed Skiko library and an external writable cache;
+no temporary configuration/workflow, books or generated artifacts are committed.
 
-Native Android/desktop graphical acceptance is pending. English remains the
+USER-REPORTED PHYSICAL ANDROID, before this refinement: the user confirmed Home/Library/History/Settings navigation, local profile/greeting, real EPUB covers, Library/History persistence after closing and clearing Android cache, publication details and compact History. These are reported observations, not acceptance of the new synopsis/details changes. Physical Android re-acceptance and native Desktop graphical acceptance remain pending. English remains the
 existing UI language; no new localization infrastructure is introduced. Organizational read/unread flags, PDF/remote covers, undeclared EPUB/SVG cover heuristics, general cross-restart Library/History progress enumeration and discovery redesign
 remain outside this PR. Home has the bounded restart lookup described above.
 
@@ -276,7 +327,7 @@ remain outside this PR. Home has the bounded restart lookup described above.
 1. Start on Home. Visit all five icon destinations; use Back and return from each reader to its originating screen.
 2. Import TEXT/EPUB/CBZ/PDF; cancel the picker/import and try a rejected file.
 3. Open details, inspect known metadata/rights, dismiss with Back, then open a book.
-4. Tap a Library cover for details, then Open/Continue. Cancel and confirm its Library removal; files, History and saved position remain.
+4. Tap a Library cover for details, then Start reading/Continue reading. Cancel and confirm its Library removal; files, History and saved position remain.
 5. Long press a cover, toggle more covers, Select all and Clear. Exit with Back/Escape without losing scroll; cancel then confirm a batch and inspect retry feedback if storage fails.
 6. In History, tap a cover for details and the title/remaining row to resume. Check Today/Yesterday/older dates and actual page/progress summaries. Cancel/confirm the trailing trash action and Clear History; Library, files and saved position remain.
 7. Choose System/Light/Dark, restart, and check bars with gesture/three-button navigation.
@@ -296,3 +347,12 @@ are generated outside the repository; no reference screenshots, books, thumbnail
 APK, signing material or preview artifacts are committed. They demonstrate shared
 Compose layouts, not physical Android system bars, TalkBack/IME or native Desktop
 window acceptance. Those checks remain pending.
+
+### Final Android polish checklist
+
+1. Upgrade/restart with the existing profile, Library, History and deep reading positions intact; repeat the reported Android cache-clear check (not Clear storage).
+2. Open an old imported EPUB with description (Analects if available) and one without: the latter has no Synopsis heading. No new import or identity is needed.
+3. Expand/collapse a long synthetic synopsis; on a small screen/larger font scroll to source rights and the legal notice. Close/Back remains reachable. Test light/dark and Desktop resize/Escape/Tab/Enter.
+4. Check Start reading for a new publication and Continue reading for a saved one after restart; details alone must not reset progress. Cancel/confirm Library removal without deleting originals or saved positions.
+5. Check compact Home greeting, long two-line carousel titles, cover fit, progress and horizontal scrolling; import icon accessibility/keyboard/tooltip. Profile exposes only the implemented English language and preserves residence/name.
+6. Resume EPUB/CBZ/PDF/TEXT and return; verify reader settings, semantic position and Android system bars remain correct.
