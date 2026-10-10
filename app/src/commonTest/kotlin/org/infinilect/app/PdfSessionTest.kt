@@ -66,7 +66,7 @@ class PdfSessionTest {
             progress=writer,collections=ApplicationCollections(fake.library,fake.history,StandardTestDispatcher(testScheduler)),pdfPreparer=preparer){}
         val session=ApplicationSession(owner,this)
         try {
-            session.openSearch(local.pub);runCurrent();session.back();gate.complete(Unit);advanceUntilIdle()
+            session.navigate(Destination.SEARCH);session.openSearch(local.pub);runCurrent();session.back();gate.complete(Unit);advanceUntilIdle()
             assertIs<OpenPublicationState.Idle>(session.opening.value);assertTrue(fake.opened.isEmpty())
             assertTrue(store.saves.isEmpty());assertNull(writer.get(document.progressId))
             assertEquals(1,document.closes);document.rasters.forEach {assertFailsWith<PdfException>{it.argb}}
@@ -129,7 +129,7 @@ class PdfSessionTest {
             progress=writer,pdfPreparer=preparer,sessionDispatcher=StandardTestDispatcher(testScheduler)){}
         val gate=CompletableDeferred<Unit>()
         try {
-            val application=owner.applicationSession();application.openSearch(local.pub);runCurrent()
+            val application=owner.applicationSession();application.navigate(Destination.SEARCH);application.openSearch(local.pub);runCurrent()
             val ready=assertIs<OpenPublicationState.PdfReady>(application.opening.value);val reader=ready.reader
             reader.next();runCurrent();assertEquals(1,reader.state.value.presentedIndex)
             repeat(20) {

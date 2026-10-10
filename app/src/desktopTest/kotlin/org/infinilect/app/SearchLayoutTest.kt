@@ -133,8 +133,12 @@ class SearchLayoutTest {
             }
             val owner=ApplicationSources(f.options,localImports=importer){}
             try {
+                owner.applicationSession().navigate(Destination.SEARCH)
                 f.scene.setContent { App(owner,localFilePicker=object:LocalFilePicker {override suspend fun pick():LocalFileSelection?=null}) }
-                f.draw();f.reachable(f.text("Import local file"))
+                f.draw()
+                val import=f.nodes().first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Import local file")==true }
+                f.reachable(import);assertTrue(import.boundsInRoot.height>=48)
+                assertNotNull(import.config.getOrNull(SemanticsActions.OnClick)?.action)
                 val list=f.nodes().first {it.config.getOrNull(SemanticsActions.ScrollToIndex)!=null}
                 f.reachable(list)
                 assertTrue(list.boundsInRoot.height>0)

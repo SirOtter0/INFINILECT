@@ -5,6 +5,7 @@ package org.infinilect.app
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,12 +17,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.Button
 import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.Divider
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Surface
@@ -39,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.*
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.app.reader.TextReader
 import org.infinilect.app.search.SearchState
@@ -47,17 +49,34 @@ import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.collections.LibraryActionState
 import org.infinilect.core.PublicationSource
 import androidx.compose.runtime.saveable.rememberSaveable
+import org.infinilect.app.ui.*
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.isSystemInDarkTheme
 
 internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false, val pdfReadingEnabled: Boolean = false)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun App(
     applicationSources: ApplicationSources,
     backHandler: @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit = { _, _ -> },
     localFilePicker: org.infinilect.app.imports.LocalFilePicker? = null,
     readerAppearance: (ReaderAppearance?) -> Unit = {},
+    applicationAppearance: (ReaderAppearance) -> Unit = {},
 ) {
     val application=remember(applicationSources) { applicationSources.applicationSession() }
+    val appearanceState by (applicationSources.appearance?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(ApplicationAppearanceState()) }).collectAsState()
+    var profileEditor by remember { mutableStateOf(false) }
+    val homePosition = rememberLazyListState()
+    val homeProgress by application.homeProgress.collectAsState()
+    val mode = appearanceState.mode
+    val appearanceFailed by (applicationSources.appearance?.saveFailed ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
+    val systemDark = isSystemInDarkTheme()
+    val appDark = mode.isDark(systemDark)
+    SideEffect { applicationAppearance(ReaderAppearance(appDark, applicationColors(appDark).background)) }
+    val libraryPosition = rememberLazyGridState()
+    val historyPosition = rememberLazyGridState()
+    val progressRecords by (applicationSources.progress?.recentProgress ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyMap<org.infinilect.core.ReadingProgressId, org.infinilect.core.ReadingProgress>()) }).collectAsState()
     // Save only owned identity for Android recreation; never an external acquisition URI.
     var savedPdfId by rememberSaveable { mutableStateOf<String?>(null) }
     var savedPdfPage by rememberSaveable { mutableStateOf(0) }
@@ -95,30 +114,51 @@ fun App(
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
     val saveFailed by (applicationSources.progress?.saveFailed
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
-    val backLabel=when(destination) { Destination.LIBRARY -> "Back to Library"; Destination.HISTORY -> "Back to History"; else -> "Back to results" }
+    val backLabel=when(destination) { Destination.HOME -> "Back to Home"; Destination.LIBRARY -> "Back to Library"; Destination.HISTORY -> "Back to History"; else -> "Back to results" }
     ApplicationBackHandler(application.opening,application.destination,application::back,backHandler,application.importing)
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             when(val current=opening) {
-                OpenPublicationState.Idle -> Column(Modifier.fillMaxSize()) {
-                    if(localFilePicker != null && applicationSources.localImports != null) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Button(enabled=!importing.busy,onClick={ application.importLocal(localFilePicker) }) { Text("Import local file") }
-                            if(importing.busy) { Text("Importing…",modifier=Modifier.weight(1f)); Button(onClick=application::back) { Text("Cancel") } }
-                        }
-                        importing.message?.let { Text(it,modifier=Modifier.padding(horizontal=24.dp),color=MaterialTheme.colors.error) }
-                    }
-                    Row(Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Destination.entries.forEach { target ->
-                            Button(enabled=!importing.busy && destination!=target,onClick={ application.navigate(target) },modifier=Modifier.weight(1f)) {
-                                Text(when(target) { Destination.SEARCH -> "Search"; Destination.LIBRARY -> "Library"; Destination.HISTORY -> "History" })
+                OpenPublicationState.Idle -> ApplicationTheme(mode) {
+                    ApplicationShell(destination, importing.busy, application::navigate,
+                        onEscape = {
+                            if (application.collections.selection.value.isNotEmpty()) { application.collections.clearSelection(); true } else false
+                        },
+                        importAction = if (localFilePicker != null && applicationSources.localImports != null) ({
+                            ImportActionTooltip {
+                                androidx.compose.material.IconButton(enabled = !importing.busy, onClick = { application.importLocal(localFilePicker) },
+                                    modifier = Modifier.size(48.dp).semantics { contentDescription = "Import local file" }) { ImportIcon() }
+                            }
+                        }) else null,
+                    ) {
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val feedbackMaxHeight = maxHeight / 2
+                            Column(Modifier.fillMaxSize()) {
+                                Column(Modifier.fillMaxWidth().heightIn(max = feedbackMaxHeight).verticalScroll(rememberScrollState())) {
+                                    if (importing.busy) FeedbackCard("Importing…", "Copying and validating your publication in private storage.", busy = true,
+                                        action = "Cancel", onAction = application::back, modifier = Modifier.padding(horizontal = 24.dp))
+                                    importing.message?.let { FeedbackCard("Import could not finish", it, error = true, modifier = Modifier.padding(horizontal = 24.dp)) }
+                                }
+                                androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                                    when (destination) {
+                                        Destination.HOME -> HomeScreen(application, appearanceState, progressRecords.values.toList() + homeProgress,
+                                            applicationSources.appearance, homePosition,
+                                            importAction = if (localFilePicker != null && applicationSources.localImports != null && !importing.busy) ({ application.importLocal(localFilePicker) }) else null,
+                                            editProfile = { profileEditor = true }, settingsFailed = appearanceFailed)
+                                        Destination.SEARCH -> key(session) {
+                                            SearchScreen(session, searchState, resultsPosition, applicationSources.options, selected, application::selectSource,
+                                                application.collections, application::openSearch, progressRecords = progressRecords.values.toList(), descriptions = applicationSources.descriptions, applicationSession = application)
+                                        }
+                                        Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
+                                            if (destination == Destination.LIBRARY) libraryPosition else historyPosition, progressRecords.values.toList())
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null)
+                                    }
+                                }
                             }
                         }
                     }
-                    if(destination==Destination.SEARCH) key(session) {
-                        SearchScreen(session,searchState,resultsPosition,applicationSources.options,selected,application::selectSource,
-                            application.collections,application::openSearch,modifier=Modifier.weight(1f).fillMaxWidth())
-                    } else CollectionScreen(destination,application)
+                    if (profileEditor && applicationSources.appearance != null) ProfileEditor(appearanceState.profile,
+                        save = applicationSources.appearance::changeProfile, close = { profileEditor = false })
                 }
                 is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(
                     current.reader, saveFailed, application::back, backLabel, backHandler,
@@ -136,6 +176,7 @@ fun App(
                     }) else null,
                 )
                 is OpenPublicationState.Ready, is OpenPublicationState.PageReady, is OpenPublicationState.PdfReady -> Column(Modifier.fillMaxSize()) {
+                    ReaderAppearanceEffect(ReaderAppearance(false, androidx.compose.ui.graphics.Color.White), readerAppearance)
                     Row(Modifier.fillMaxWidth().padding(horizontal=24.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         LibraryAction(LibraryActionState(membership.inLibrary,membership.busy,membership.unavailable),
                             application.collections::toggleLibrary)
@@ -154,75 +195,26 @@ fun App(
                         }
                     }
                 }
-                is OpenPublicationState.Loading -> Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Text(current.publication.title,style=MaterialTheme.typography.h6)
-                    CircularProgressIndicator(); Text("Opening publication…")
-                    Button(onClick=application::back) { Text(backLabel) }
-                }
-                is OpenPublicationState.Error -> Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Text(current.publication.title,style=MaterialTheme.typography.h6)
-                    Text(current.userMessage,color=MaterialTheme.colors.error)
-                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Button(onClick=application::back) { Text(backLabel) }
-                        Button(enabled=application.canRetry(current.publication),onClick={ application.retry(current.publication) }) { Text("Try again") }
+                is OpenPublicationState.Loading -> ApplicationTheme(mode) {
+                    Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        ScreenHeading(current.publication.title, "Preparing your reading session.")
+                        FeedbackCard("Opening publication…", "Your saved reading position will be restored when the publication is ready.", busy = true,
+                            action = backLabel, onAction = application::back)
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun CollectionScreen(destination: Destination, application: ApplicationSession) {
-    val controller=application.collections
-    val library by controller.library.collectAsState()
-    val history by controller.history.collectAsState()
-    val confirmation by controller.confirmClear.collectAsState()
-    val busy by controller.busy.collectAsState()
-    val error by controller.error.collectAsState()
-    val membership by controller.membership.collectAsState()
-    val isLibrary=destination==Destination.LIBRARY
-    val entries=if(isLibrary) library.entries.map { it.publication } else history.entries.map { it.publication }
-    val loading=if(isLibrary) library.loading else history.loading
-    val failed=if(isLibrary) library.failed else history.failed
-    Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        Text(if(isLibrary) "Library" else "History",style=MaterialTheme.typography.h4)
-        Text(if(isLibrary) "Publications you've saved. Open an entry to read it from its source." else "Recently read · newest first.")
-        if(loading) CircularProgressIndicator()
-        if(failed) {
-            Text("Local storage is unavailable. Please try again.",color=MaterialTheme.colors.error)
-            Button(onClick={ if(isLibrary) controller.refreshLibrary() else controller.refreshHistory() }) { Text("Try again") }
-        }
-        error?.let { Text(it,color=MaterialTheme.colors.error) }
-        if(entries.isEmpty() && !loading && !failed) Text(if(isLibrary) "Your Library is empty. Add publications directly from Search, or from the reader." else "No reading history yet. Open a text publication to start reading.")
-        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            items(entries,key={ it.id.resultKey() }) { publication ->
-                Column(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                    Text(publication.title,style=MaterialTheme.typography.h6)
-                    if(publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "),style=MaterialTheme.typography.body2)
-                    Text("Source: ${application.sourceName(publication.id.sourceId)}",style=MaterialTheme.typography.caption)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Button(onClick={ application.openSaved(publication) }) { Text("Open") }
-                        val action=membership.forPublication(publication.id)
-                        Button(enabled=if(isLibrary) action.enabled else !busy,
-                            onClick={ if(isLibrary) controller.removeLibrary(publication.id) else controller.removeHistory(publication.id) }) {
-                            Text(if(isLibrary && action.busy) "Removing…" else "Remove")
+                is OpenPublicationState.Error -> ApplicationTheme(mode) {
+                    Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        ScreenHeading(current.publication.title, "This publication could not be opened.")
+                        FeedbackCard("Unable to open", current.userMessage, error = true)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = application::back) { Text(backLabel) }
+                            androidx.compose.material.OutlinedButton(enabled = application.canRetry(current.publication), onClick = { application.retry(current.publication) }) { Text("Try again") }
                         }
                     }
-                    Divider()
                 }
             }
         }
-        if(!isLibrary) Button(enabled=!busy && entries.isNotEmpty(),onClick=controller::requestClearHistory) { Text("Clear history") }
-        Button(onClick=application::back) { Text("Back to Search") }
     }
-    if(confirmation) androidx.compose.material.AlertDialog(
-        onDismissRequest=controller::dismissClearHistory,
-        title={ Text("Clear reading history?") },
-        text={ Text("Library entries and reading positions will be kept.") },
-        confirmButton={ Button(onClick=controller::confirmClearHistory) { Text("Clear history") } },
-        dismissButton={ Button(onClick=controller::dismissClearHistory) { Text("Cancel") } },
-    )
 }
 
 @Composable
@@ -230,7 +222,8 @@ internal fun CollectionScreen(destination: Destination, application: Application
 internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPosition: LazyListState,
     sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
     collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open,
-    modifier: Modifier = Modifier) {
+    modifier: Modifier = Modifier, progressRecords: List<org.infinilect.core.ReadingProgress> = emptyList(), descriptions: PublicationDescriptions? = null, applicationSession: ApplicationSession? = null) {
+    var detail by remember(session) { mutableStateOf<org.infinilect.core.Publication?>(null) }
     val query by session.query.collectAsState()
     val membership by collections.membership.collectAsState()
     val libraryError by collections.error.collectAsState()
@@ -248,11 +241,10 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
             // Long headers/source rows may scroll, but can never consume the result viewport.
             Column(Modifier.fillMaxWidth().heightIn(max = headerMaxHeight)
                 .verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("INFINILECT", style = MaterialTheme.typography.h4)
-                Text("Open knowledge. Infinite reading.")
+                ScreenHeading("Search", "Explore the existing catalogs or your imported files.")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     sources.forEachIndexed { index, source ->
-                        Button(enabled = index != selected, onClick = { onSource(index) }) { Text(source.name) }
+                        androidx.compose.material.OutlinedButton(enabled = index != selected, onClick = { onSource(index) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(source.name) }
                     }
                 }
                 Text("Source: ${sources[selected].name}")
@@ -285,14 +277,11 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                 item(key = "search-status") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (loading) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                CircularProgressIndicator()
-                                Text("Searching…")
-                            }
+                            FeedbackCard("Searching…", "Your current results remain available while the source responds.", busy = true)
                         }
                         when (val current = state) {
-                            SearchState.Idle -> Text("Enter a search to discover publications.")
-                            is SearchState.Error -> Text(current.message, color = MaterialTheme.colors.error)
+                            SearchState.Idle -> FeedbackCard("Find your next read", "Enter a search to discover publications.")
+                            is SearchState.Error -> FeedbackCard("Search could not finish", current.message, error = true, action = "Try again", onAction = session::submitSearch)
                             else -> Unit
                         }
                         if(membership.unavailable) {
@@ -301,26 +290,20 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                         }
                         libraryError?.let { Text(it,color=MaterialTheme.colors.error) }
                         if (displayed != null) {
-                            if (displayed.page.publications.isEmpty()) Text("No publications found for “${displayed.query}”.")
+                            if (displayed.page.publications.isEmpty()) FeedbackCard("No results", "No publications found for “${displayed.query}”.")
                             else Text("Results for “${displayed.query}”")
                         }
                     }
                 }
                 if (displayed != null) {
                     items(displayed.page.publications, key = { it.id.resultKey() }) { publication ->
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(publication.title, style = MaterialTheme.typography.h6)
-                            if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
-                            if (publication.languages.isNotEmpty()) Text("Language: ${publication.languages.joinToString(", ")}")
-                            publication.rights?.let { Text(it, style = MaterialTheme.typography.caption) }
-                            FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
-                                    Button(enabled = !loading, onClick = { onOpen(publication) }) { Text(if (session.pdfReadingEnabled) "Open" else if (session.pageReadingEnabled) "Open pages" else if (session.epubReadingEnabled && !session.textReadingEnabled) "Open EPUB" else "Open text") }
+                        PublicationCard(publication, sources[selected].name, publicationProgress(progressRecords, publication.id), details = { detail = publication }) {
+                            if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
+                                Button(enabled = !loading, onClick = { onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(if (session.pdfReadingEnabled) "Open" else if (session.pageReadingEnabled) "Open pages" else if (session.epubReadingEnabled && !session.textReadingEnabled) "Open EPUB" else "Open text")
                                 }
-                                LibraryAction(membership.forPublication(publication.id),
-                                    onToggle={ collections.toggleCatalogLibrary(publication) })
                             }
-                            Divider()
+                            CatalogLibraryAction(membership.forPublication(publication.id), onToggle = { collections.toggleCatalogLibrary(publication) })
                         }
                     }
                 }
@@ -335,11 +318,29 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
             }
         }
     }
+    detail?.let { publication ->
+        val known = publicationProgress(progressRecords, publication.id)
+        val record = if (applicationSession != null) detailsProgress(applicationSession, publication.id, known) else known
+        PublicationDetails(publication, sources[selected].name, publication.resources.map { it.format },
+            record, close = { detail = null }, descriptions = descriptions) {
+            if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
+                Button(enabled = !loading, onClick = { detail = null; onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(readingAction(record)) }
+            }
+            CatalogLibraryAction(membership.forPublication(publication.id), onToggle = { collections.toggleCatalogLibrary(publication) })
+        }
+    }
 }
 
 @Composable
 private fun LibraryAction(state: LibraryActionState, onToggle: () -> Unit) {
     Button(enabled=state.enabled,onClick=onToggle) {
+        Text(state.label)
+    }
+}
+
+@Composable
+private fun CatalogLibraryAction(state: LibraryActionState, onToggle: () -> Unit) {
+    androidx.compose.material.OutlinedButton(enabled = state.enabled, onClick = onToggle, modifier = Modifier.heightIn(min = 48.dp)) {
         Text(state.label)
     }
 }

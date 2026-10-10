@@ -55,7 +55,7 @@ class ApplicationContinuityTest {
     @Test fun remountReusesOneLiveSessionAndNeverReloadsOlderDurableProgress() = runTest { fixture { owner, source, prep, store, _ ->
         val id = ReadingProgressId(source.books[0].id, "text", PublicationFormat.TEXT)
         store.values[id] = ReadingProgress(id, ReadingLocator.Text(10, 100), .1, 1)
-        val session = owner.applicationSession(); session.openSearch(source.books[0]); runCurrent()
+        val session = owner.applicationSession(); session.navigate(Destination.SEARCH); session.openSearch(source.books[0]); runCurrent()
         val ready = assertIs<OpenPublicationState.Ready>(session.opening.value); val reading = assertNotNull(ready.reading)
         assertEquals(10, reading.codePointOffset.value); reading.report(60)
         store.saveGate = CompletableDeferred()
@@ -71,14 +71,14 @@ class ApplicationContinuityTest {
     } }
     @Test fun presentationReplacementWhileOpeningDoesNotCancelOrAcquireTwice() = runTest { fixture { owner, source, prep, _, _ ->
         source.gate = CompletableDeferred()
-        val first = owner.applicationSession(); first.openSearch(source.books[0]); runCurrent()
+        val first = owner.applicationSession(); first.navigate(Destination.SEARCH); first.openSearch(source.books[0]); runCurrent()
         assertIs<OpenPublicationState.Loading>(first.opening.value)
         repeat(20) { assertSame(first, owner.applicationSession()); owner.flushProgress() }
         source.gate!!.complete(Unit); runCurrent()
         assertIs<OpenPublicationState.Ready>(first.opening.value); assertEquals(1, source.lookups); assertEquals(1, prep.prepared)
     } }
     @Test fun differentPublicationHasIndependentPositionAndBackReopenRestoresTheOriginal() = runTest { fixture { owner, source, prep, store, _ ->
-        val session = owner.applicationSession(); session.openSearch(source.books[0]); runCurrent()
+        val session = owner.applicationSession(); session.navigate(Destination.SEARCH); session.openSearch(source.books[0]); runCurrent()
         val first = assertNotNull(assertIs<OpenPublicationState.Ready>(session.opening.value).reading); first.report(60)
         session.back(); runCurrent(); session.openSearch(source.books[1]); runCurrent()
         val second = assertNotNull(assertIs<OpenPublicationState.Ready>(session.opening.value).reading)
@@ -89,7 +89,7 @@ class ApplicationContinuityTest {
         assertEquals(3, prep.prepared); assertEquals(2, store.values.size)
     } }
     @Test fun textStillHasOneSemanticOwnerWhenDurableStorageIsAbsent() = runTest { fixture(false) { owner, source, _, _, _ ->
-        val session = owner.applicationSession(); session.openSearch(source.books[0]); runCurrent()
+        val session = owner.applicationSession(); session.navigate(Destination.SEARCH); session.openSearch(source.books[0]); runCurrent()
         val reading = assertNotNull(assertIs<OpenPublicationState.Ready>(session.opening.value).reading)
         reading.report(60); owner.flushProgress()
         assertSame(session, owner.applicationSession()); assertEquals(60, reading.codePointOffset.value)
@@ -97,7 +97,7 @@ class ApplicationContinuityTest {
         assertEquals(0, assertNotNull(assertIs<OpenPublicationState.Ready>(session.opening.value).reading).codePointOffset.value)
     } }
     @Test fun finalOwnerCloseFlushesLatestProgressAndRetiresLateCallbacksExactlyOnce() = runTest { fixture { owner, source, prep, store, _ ->
-        val session = owner.applicationSession(); session.openSearch(source.books[0]); runCurrent()
+        val session = owner.applicationSession(); session.navigate(Destination.SEARCH); session.openSearch(source.books[0]); runCurrent()
         val ready = assertIs<OpenPublicationState.Ready>(session.opening.value); val reading = assertNotNull(ready.reading)
         reading.report(60); owner.close(); owner.close(); runCurrent(); reading.report(0)
         assertIs<OpenPublicationState.Idle>(session.searchSession.value.opening.state.value)

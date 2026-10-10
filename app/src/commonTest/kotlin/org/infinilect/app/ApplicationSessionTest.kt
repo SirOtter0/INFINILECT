@@ -35,7 +35,7 @@ class ApplicationSessionTest {
         val collections=ApplicationCollections(fake.library,fake.history,StandardTestDispatcher(testScheduler))
         return ApplicationSources(listOf(SourceOption("Archive",source,true)),progress=progress,collections=collections) {}
     }
-    private fun TestScope.session(owner: ApplicationSources)=ApplicationSession(owner,this,StandardTestDispatcher(testScheduler)){10L}
+    private fun TestScope.session(owner: ApplicationSources)=ApplicationSession(owner,this,StandardTestDispatcher(testScheduler)){10L}.also { it.navigate(Destination.SEARCH) }
     private suspend fun finish(session: ApplicationSession,owner: ApplicationSources) { session.close();owner.close();owner.awaitProgressClosed() }
 
     @Test fun successfulSearchOpenRecordsFreshMetadataAndBackPreservesSearch()=runTest {
@@ -121,10 +121,10 @@ class ApplicationSessionTest {
         assertIs<OpenPublicationState.Error>(session.opening.value);assertEquals(0,source.metadata);assertFalse(session.canRetry(source.publication.copy(id=PublicationId(SourceId("unknown"),"1"),resources=emptyList())))
         session.back();advanceUntilIdle();assertEquals(Destination.LIBRARY,session.destination.value);finish(session,owner)
     }
-    @Test fun collectionBackReturnsSearchWithoutChangingSelectedSourceOrQuery()=runTest {
+    @Test fun collectionBackReturnsHomeWithoutChangingSelectedSourceOrQuery()=runTest {
         val source=Source();val fake=FakeCollections();val owner=owner(source,fake);val session=session(owner)
         session.searchSession.value.editQuery("keep");session.navigate(Destination.LIBRARY);assertTrue(session.handlesBack());session.back()
-        assertEquals(Destination.SEARCH,session.destination.value);assertEquals("keep",session.searchSession.value.query.value);assertFalse(session.handlesBack());finish(session,owner)
+        assertEquals(Destination.HOME,session.destination.value);assertEquals("keep",session.searchSession.value.query.value);assertFalse(session.handlesBack());finish(session,owner)
     }
     @Test fun unavailableLocalStorageDoesNotPreventReader()=runTest {
         val source=Source();val fake=FakeCollections();fake.fail=true;val owner=owner(source,fake);val session=session(owner)
@@ -159,4 +159,45 @@ class ApplicationSessionTest {
         session.openSaved(snapshot);session.openSaved(snapshot);runCurrent();assertEquals(1,source.acquisitions)
         gate.complete(Unit);advanceUntilIdle();assertEquals(1,fake.opened.size);assertEquals(1,source.metadata);finish(session,owner)
     }
+    @Test fun startupHomeUsesSavedProgressWithoutAcquiringAndReaderBackKeepsHome()=runTest {
+        val source=Source();val fake=FakeCollections();val snapshot=PublicationSnapshot.from(source.publication)
+        fake.saved[snapshot.id]=LibraryEntry(snapshot,1);fake.opened[snapshot.id]=HistoryEntry(snapshot,2)
+        val position=ReadingProgress(ReadingProgressId(snapshot.id,"text",PublicationFormat.TEXT),ReadingLocator.Text(6,10),.6,1)
+        var writes=0;var lookups=0
+        val progress=ProgressPersistence(object:ReadingProgressStore,org.infinilect.app.progress.PublicationProgressLookup {
+            override suspend fun get(id:ReadingProgressId)=position.takeIf{it.id==id}
+            override suspend fun save(progress:ReadingProgress):Boolean{writes++;return true}
+            override suspend fun remove(id:ReadingProgressId)=true
+            override suspend fun recentPublications(ids:List<PublicationId>):List<ReadingProgress>{lookups++;assertEquals(listOf(snapshot.id),ids);return listOf(position)}
+        },StandardTestDispatcher(testScheduler))
+        val owner=owner(source,fake,progress)
+        val session=ApplicationSession(owner,this,StandardTestDispatcher(testScheduler)){10L}
+        advanceUntilIdle();assertEquals(Destination.HOME,session.destination.value);assertFalse(session.handlesBack())
+        assertEquals(listOf(position),session.homeProgress.value);assertTrue(lookups>=1);assertEquals(0,writes)
+        assertEquals(0,source.metadata);assertEquals(0,source.acquisitions)
+        session.openSaved(snapshot);advanceUntilIdle();assertEquals(6,assertNotNull(assertIs<OpenPublicationState.Ready>(session.opening.value).reading).codePointOffset.value)
+        session.back();advanceUntilIdle();assertEquals(Destination.HOME,session.destination.value)
+        assertEquals(0,writes);finish(session,owner)
+    }
+    @Test fun leavingHomeRetiresLateSummaryAndNoLookupRunsWhileReaderOwnsPublication()=runTest {
+        val source=Source();val fake=FakeCollections();val snapshot=PublicationSnapshot.from(source.publication)
+        fake.opened[snapshot.id]=HistoryEntry(snapshot,1)
+        val position=ReadingProgress(ReadingProgressId(snapshot.id,"text",PublicationFormat.TEXT),ReadingLocator.Text(6,10),.6,1)
+        val gate=CompletableDeferred<Unit>();var calls=0
+        val progress=ProgressPersistence(object:ReadingProgressStore,org.infinilect.app.progress.PublicationProgressLookup {
+            override suspend fun get(id:ReadingProgressId)=position
+            override suspend fun save(progress:ReadingProgress)=true
+            override suspend fun remove(id:ReadingProgressId)=true
+            override suspend fun recentPublications(ids:List<PublicationId>):List<ReadingProgress>{calls++;withContext(NonCancellable){gate.await()};return listOf(position)}
+        },StandardTestDispatcher(testScheduler))
+        val owner=owner(source,fake,progress);val session=ApplicationSession(owner,this,StandardTestDispatcher(testScheduler)){10L}
+        runCurrent();assertTrue(calls>=1);session.navigate(Destination.LIBRARY);gate.complete(Unit);advanceUntilIdle()
+        assertTrue(session.homeProgress.value.isEmpty());val before=calls
+        session.openSaved(snapshot);advanceUntilIdle();session.collections.refreshHistory();advanceUntilIdle()
+        assertEquals(before,calls);assertIs<OpenPublicationState.Ready>(session.opening.value)
+        session.back();advanceUntilIdle();assertEquals(Destination.LIBRARY,session.destination.value)
+        session.navigate(Destination.HOME);advanceUntilIdle();assertEquals(listOf(position),session.homeProgress.value)
+        finish(session,owner)
+    }
+
 }

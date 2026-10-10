@@ -24,5 +24,5 @@ internal fun ApplicationBackHandler(
     val currentOpening by opening.collectAsState()
     val currentDestination by destination.collectAsState()
     val importBusy = importing?.collectAsState()?.value?.busy == true
-    handler(importBusy || currentOpening.handlesBack() || currentDestination != Destination.SEARCH, onBack)
+    handler(importBusy || currentOpening.handlesBack() || currentDestination != Destination.HOME, onBack)
 }

@@ -24,6 +24,8 @@ internal class ProgressPersistence(
     private val signal = Channel<Unit>(Channel.CONFLATED)
     private val pending = MutableStateFlow<Map<ReadingProgressId, ReadingProgress>>(emptyMap())
     private val recent = MutableStateFlow<Map<ReadingProgressId, ReadingProgress>>(emptyMap())
+    /** Read-only, bounded session summaries for UI; never authority for opening bytes. */
+    val recentProgress = recent.asStateFlow()
     private val mutableSaveFailed = MutableStateFlow(false)
     val saveFailed: StateFlow<Boolean> = mutableSaveFailed.asStateFlow()
     private var closed = false
@@ -50,6 +52,16 @@ internal class ProgressPersistence(
         catch (_: TimeoutCancellationException) { null }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { null }
+    }
+
+    suspend fun publicationSummaries(ids: List<PublicationId>): List<ReadingProgress> {
+        val requested = ids.take(8).toSet()
+        val disk = try { withTimeout(5_000) { (store as? PublicationProgressLookup)?.recentPublications(requested.toList()).orEmpty() } }
+        catch (_: TimeoutCancellationException) { emptyList() }
+        catch (error: CancellationException) { throw error }
+        catch (_: Exception) { emptyList() }
+        return (disk + recent.value.values).filter { it.id.publicationId in requested }
+            .groupBy { it.id.publicationId }.mapNotNull { (_, values) -> values.maxByOrNull { it.updatedAtEpochMillis } }.take(8)
     }
 
     fun submit(progress: ReadingProgress) {

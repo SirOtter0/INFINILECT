@@ -9,7 +9,7 @@ import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.core.*
 
-internal enum class Destination { SEARCH, LIBRARY, HISTORY }
+internal enum class Destination { HOME, SEARCH, LIBRARY, HISTORY, SETTINGS }
 
 /** Small session navigation. Saved metadata resolves only IDs via an existing owning source.
  * A collection open uses a separate reader session so search/query/results remain intact.
@@ -24,9 +24,14 @@ internal class ApplicationSession(
     private val scope=CoroutineScope(scope.coroutineContext+job)
     private val mutableSelected=MutableStateFlow(0)
     val selected=mutableSelected.asStateFlow()
-    private val mutableDestination=MutableStateFlow(Destination.SEARCH)
+    private val mutableDestination=MutableStateFlow(Destination.HOME)
     val destination=mutableDestination.asStateFlow()
-    val collections=CollectionsController(sources.collections,this.scope,clock)
+    val covers get() = sources.covers
+    val descriptions get() = sources.descriptions
+    /** Details may query one existing progress summary after a restart; never save/normalize it. */
+    suspend fun savedPublicationProgress(id: PublicationId) = sources.progress?.publicationSummaries(listOf(id))
+        ?.filter { it.id.publicationId == id }?.maxByOrNull { it.updatedAtEpochMillis }
+    val collections=CollectionsController(sources.collections,this.scope,clock) { sources.covers?.invalidate(it) }
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
         sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer) { publication ->
         collections.enteredReader(publication)
@@ -38,12 +43,30 @@ internal class ApplicationSession(
     private val mutableOpening=MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
     val opening=mutableOpening.asStateFlow()
     private var observer: Job?=null
+    private val mutableHomeProgress = MutableStateFlow<List<ReadingProgress>>(emptyList())
+    val homeProgress = mutableHomeProgress.asStateFlow()
+    private var homeLookup: Job? = null
+    private var homeGeneration = 0L
+    private fun refreshHomeProgress() {
+        if (closed || opening.value !is OpenPublicationState.Idle) return
+        homeLookup?.cancel()
+        val generation = ++homeGeneration
+        val ids = collections.history.value.entries.take(8).map { it.publication.id }
+        homeLookup = scope.launch {
+            val summaries = sources.progress?.publicationSummaries(ids).orEmpty()
+            currentCoroutineContext().ensureActive()
+            if (!closed && generation == homeGeneration) mutableHomeProgress.value = summaries
+        }
+    }
     private var closed=false
     private val mutableImport = MutableStateFlow(org.infinilect.app.imports.LocalImportState())
     val importing = mutableImport.asStateFlow()
     private var importRequest: Job? = null
     private var importGeneration = 0L
-    init { observe(searchSession.value) }
+    init {
+        observe(searchSession.value); collections.refreshHistory()
+        this.scope.launch { collections.history.collect { if (destination.value == Destination.HOME && !it.loading) refreshHomeProgress() } }
+    }
     private fun observe(session: ReadingSession) {
         observer?.cancel(); mutableOpening.value=session.opening.state.value
         observer=scope.launch { session.opening.state.collect { mutableOpening.value=it } }
@@ -55,11 +78,15 @@ internal class ApplicationSession(
     }
     fun navigate(destination: Destination) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
+        if (destination != mutableDestination.value) collections.clearSelection()
         mutableDestination.value=destination
-        when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); else -> Unit }
+        if (destination == Destination.HOME) refreshHomeProgress() else { homeGeneration++; homeLookup?.cancel() }
+        when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); Destination.HOME -> { collections.refreshLibrary(); collections.refreshHistory() }; else -> Unit }
     }
     fun openSaved(snapshot: PublicationSnapshot, pdfRecreationIndex: Int? = null) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
+        collections.clearSelection()
+        homeGeneration++; homeLookup?.cancel()
         observer?.cancel()
         val option=sources.options.firstOrNull { it.source.id==snapshot.id.sourceId }
         // Resources are deliberately absent. Even valid stored rights never authorize bytes.
@@ -93,15 +120,16 @@ internal class ApplicationSession(
     fun back() {
         if(closed) return
         if(importing.value.busy) { cancelImport(); return }
+        if (opening.value is OpenPublicationState.Idle && collections.selection.value.isNotEmpty()) { collections.clearSelection(); return }
         if(opening.value !is OpenPublicationState.Idle) {
             (savedReader ?: searchSession.value).back(); savedReader?.close(); savedReader=null
             collections.leftReader(); observe(searchSession.value)
-            when(destination.value) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); else -> Unit }
-        } else if(destination.value!=Destination.SEARCH) {
-            collections.dismissClearHistory(); navigate(Destination.SEARCH)
+            when(destination.value) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); Destination.HOME -> { collections.refreshLibrary(); collections.refreshHistory() }; else -> Unit }
+        } else if(destination.value!=Destination.HOME) {
+            collections.dismissClearHistory(); navigate(Destination.HOME)
         }
     }
-    fun handlesBack()=importing.value.busy || opening.value !is OpenPublicationState.Idle || destination.value!=Destination.SEARCH
+    fun handlesBack()=importing.value.busy || opening.value !is OpenPublicationState.Idle || destination.value!=Destination.HOME
     fun importLocal(picker: org.infinilect.app.imports.LocalFilePicker) {
         val importer = sources.localImports ?: return
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
@@ -138,6 +166,6 @@ internal class ApplicationSession(
     override fun flushProgress() { (savedReader ?: searchSession.value).flushProgress() }
     override fun close() {
         if(closed) return
-        closed=true; cancelImport(); observer?.cancel(); savedReader?.close(); searchSession.value.close(); collections.close(); job.cancel()
+        closed=true; homeGeneration++; homeLookup?.cancel(); cancelImport(); observer?.cancel(); savedReader?.close(); searchSession.value.close(); collections.close(); job.cancel()
     }
 }

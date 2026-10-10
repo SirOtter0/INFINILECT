@@ -34,6 +34,7 @@ fun createApplicationSources(context: Context): ApplicationSources {
         epubDirectory = org.infinilect.app.epub.androidEpubDirectory(appContext.cacheDir.toPath()),
         epubSettingsDirectory = settingsDirectory, developmentComicEnabled = debuggable,
         pageSettingsDirectory = pageSettingsDirectory,
+        appearanceDirectory = try { appContext.filesDir.toPath().resolve(org.infinilect.app.ui.APPLICATION_APPEARANCE_DIRECTORY) } catch (_: Exception) { null },
         cbzPreparationDirectory = cbzDirectory,
         importDirectory = try { org.infinilect.app.imports.androidImportDirectory(appContext.filesDir) } catch (_: Exception) { null })
 }
@@ -53,6 +54,7 @@ internal fun createApplicationSources(
     epubDirectory = org.infinilect.app.epub.androidEpubDirectory(privateCacheDir.toPath()),
     epubSettingsDirectory = privateFilesDir?.let(::androidEpubSettingsDirectory),
     pageSettingsDirectory = privateFilesDir?.let(::androidPageSettingsDirectory),
+    appearanceDirectory = privateFilesDir?.toPath()?.resolve(org.infinilect.app.ui.APPLICATION_APPEARANCE_DIRECTORY),
 )
 
 internal fun androidProgressDirectory(privateFilesDir: File): Path =

@@ -30,6 +30,7 @@ internal fun createSources(
     pageSettingsDirectory: Path? = progressDirectory?.parent?.resolve(PAGE_SETTINGS_DIRECTORY_NAME),
     cbzPreparationDirectory: Path? = null,
     pdfDirectory: Path? = textDirectory?.parent?.resolve(org.infinilect.app.reader.pdf.PDF_PREPARATION_DIRECTORY),
+    appearanceDirectory: Path? = progressDirectory?.parent?.resolve(org.infinilect.app.ui.APPLICATION_APPEARANCE_DIRECTORY),
     importDirectory: Path? = progressDirectory?.parent?.resolve(org.infinilect.app.imports.IMPORT_DIRECTORY_NAME),
 ): ApplicationSources {
     val gutenberg = try { GutenbergSource() } catch (error: Throwable) { collections?.close(); cache.close(); throw error }
@@ -49,7 +50,7 @@ internal fun createSources(
         SourceOption("Internet Archive", archive, textReadingEnabled = true),
         SourceOption("Project Gutenberg (experimental)", gutenberg, textReadingEnabled = false),
         SourceOption("Imported files", local, textReadingEnabled = true, epubReadingEnabled = true, pageReadingEnabled = true, pdfReadingEnabled = true),
-    ) + (if (developmentEpubEnabled) listOf(SourceOption("EPUB development demo", org.infinilect.app.epub.DevelopmentEpubSource(), epubReadingEnabled = true)) else emptyList()) + (if (developmentComicEnabled) listOf(SourceOption("Comic development demo", org.infinilect.app.page.DevelopmentComicSource(), pageReadingEnabled = true), SourceOption("CBZ development demo", org.infinilect.app.page.DevelopmentCbzSource(), pageReadingEnabled = true)) else emptyList()), createLoader = { if(it === local) DirectResourceLoader(it) else cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer, epubSettings = epubSettings, pagePreparer = pagePreparer, pageSettings = pageSettings, localImports = local, pdfPreparer = pdfPreparer) {
+    ) + (if (developmentEpubEnabled) listOf(SourceOption("EPUB development demo", org.infinilect.app.epub.DevelopmentEpubSource(), epubReadingEnabled = true)) else emptyList()) + (if (developmentComicEnabled) listOf(SourceOption("Comic development demo", org.infinilect.app.page.DevelopmentComicSource(), pageReadingEnabled = true), SourceOption("CBZ development demo", org.infinilect.app.page.DevelopmentCbzSource(), pageReadingEnabled = true)) else emptyList()), createLoader = { if(it === local) DirectResourceLoader(it) else cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer, epubSettings = epubSettings, pagePreparer = pagePreparer, pageSettings = pageSettings, localImports = local, covers = org.infinilect.app.covers.PublicationCovers(local::cover), descriptions = org.infinilect.app.ui.PublicationDescriptions(local::description), appearance = org.infinilect.app.ui.ApplicationAppearancePreferences(org.infinilect.app.ui.FileApplicationAppearanceStore(appearanceDirectory)), pdfPreparer = pdfPreparer) {
         try { cache.close() } finally { try { gutenberg.close() } finally { archive.close() } }
     }
 }

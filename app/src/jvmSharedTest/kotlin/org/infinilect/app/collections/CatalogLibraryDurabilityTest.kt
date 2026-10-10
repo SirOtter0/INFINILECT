@@ -65,7 +65,7 @@ class CatalogLibraryDurabilityTest {
         val cache=DiskResourceCache(root.resolve("resource-cache-v1"),ioDispatcher=dispatcher)
         val owner=ApplicationSources(listOf(SourceOption("Internet Archive",source,true)),
             createLoader={cache.loader(it.id,DirectResourceLoader(it))},progress=progress,collections=collections) {cache.close()}
-        return Fixture(source,store,progressStore,owner,ApplicationSession(owner,this,dispatcher){10L})
+        return Fixture(source,store,progressStore,owner,ApplicationSession(owner,this,dispatcher){10L}.also { it.navigate(Destination.SEARCH) })
     }
     private fun TestScope.search(f: Fixture): SearchState.Results {
         val session=f.session.searchSession.value;session.editQuery("retained query");session.submitSearch();advanceUntilIdle()
@@ -141,7 +141,7 @@ class CatalogLibraryDurabilityTest {
             f.session.openSaved(PublicationSnapshot.from(f.source.catalog));advanceUntilIdle()
             assertIs<OpenPublicationState.Ready>(f.session.opening.value);f.session.back();advanceUntilIdle()
             assertEquals(destination,f.session.destination.value);f.session.back();advanceUntilIdle()
-            assertEquals(Destination.SEARCH,f.session.destination.value)
+            assertEquals(Destination.HOME,f.session.destination.value)
             assertSame(retained,f.session.searchSession.value.search.state.value)
         }
         assertEquals(2,f.source.metadata);assertEquals(2,f.source.loads);assertEquals(1,value(f.store.history.listRecent()).size)

@@ -59,7 +59,7 @@ class GutenbergPreviewIntegrationTest {
             try {
                 val search=app.searchSession.value;search.editQuery("books");search.submitSearch()
                 val results=assertIs<SearchState.Results>(search.search.state.first{it is SearchState.Results || it is SearchState.Error})
-                app.openSearch(results.result.page.publications.single());app.back()
+                app.navigate(Destination.SEARCH);app.openSearch(results.result.page.publications.single());app.back()
                 assertIs<OpenPublicationState.Idle>(app.opening.value);assertEquals("books",search.query.value);assertSame(results,search.search.state.value);assertEquals(2,n)
             } finally {owner.close();owner.awaitProgressClosed();root.toFile().deleteRecursively()}
         }

@@ -85,14 +85,24 @@ No se incluyen instaladores nativos. Para compilar/instalar el APK debug estánd
 adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-Android usa la misma selección de fuente, búsqueda y TextReader. Back del sistema
-desde Loading/Reader/Error conserva resultados; en Search sigue al sistema Android.
-Recrear la Activity o perder el proceso inicia una sesión nueva: no se guardan
-consulta/resultados/documento/scroll en píxeles. El progreso lógico se guarda aparte
-y se restaura tras abrir y adquirir de nuevo correctamente. No hay tracking ni acceso extra a datos del
-dispositivo. INTERNET es la única capacidad de plataforma solicitada; AndroidX
-también declara un permiso interno de firma, exclusivo de la app, para proteger
-receivers no exportados. El icono es geometría original provisional.
+El inicio normal abre **Home**, con accesos reales para continuar leyendo y ver
+lo añadido a Library, y un perfil opcional guardado solo en el dispositivo. Cinco
+destinos con iconos y etiquetas llevan a Home, Library, History, Search y Settings.
+Configurar el perfil puede posponerse sin bloquear la lectura local. La interfaz
+actual sigue en inglés. [UI, persistencia y comprobaciones manuales](docs/APPLICATION_UI.md).
+
+Back desde Loading/Reader/Error vuelve al destino de origen; los destinos
+secundarios vuelven a Home y Back en la raíz sigue al sistema Android. La sesión
+de aplicación existente se conserva al recrear la Activity por configuración;
+puede reiniciarse la geometría temporal, conservando la posición lógica del lector.
+La pérdida del proceso crea un runtime nuevo: el progreso durable se restaura al
+reabrir mediante la fuente válida (se conserva también la ruta validada de
+recreación de PDF local). Los desplazamientos en píxeles no son progreso durable.
+No hay tracking ni acceso extra a datos del dispositivo. INTERNET sigue siendo la
+única capacidad de plataforma solicitada; AndroidX declara un permiso interno de
+firma exclusivo de la app para proteger receivers no exportados. El icono del
+launcher sigue siendo geometría provisional, no el logo final; la barra de la
+aplicación conserva el nombre INFINILECT.
 
 Para el catálogo Gutenberg, busca `Frankenstein` o `shakespeare`; puedes guardar
 metadata en Library, pero no abrir EPUB/TEXT desde esta fuente.

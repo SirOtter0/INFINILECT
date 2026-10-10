@@ -32,7 +32,7 @@ class PageApplicationSessionTest {
         val source=Source();val fake=FakeCollections();val dispatcher=StandardTestDispatcher(testScheduler)
         val owner=ApplicationSources(listOf(SourceOption("Comic",source,pageReadingEnabled=true)),
             collections=ApplicationCollections(fake.library,fake.history,dispatcher),pagePreparer=defaultPagePreparer()){}
-        val session=ApplicationSession(owner,this,dispatcher){10};owner.attach(session)
+        val session=ApplicationSession(owner,this,dispatcher){10};owner.attach(session);session.navigate(Destination.SEARCH)
         try{action(session,owner,source,fake)}finally{owner.close();owner.awaitProgressClosed()}
     }
     @Test fun searchReaderBackPreservesResultsAndRecordsOnlyFreshMetadata()=runTest {use{session,_,source,fake->
@@ -40,7 +40,7 @@ class PageApplicationSessionTest {
         session.openSearch(source.publication);advanceUntilIdle();val ready=assertIs<OpenPublicationState.PageReady>(session.opening.value)
         assertEquals(1,source.resolutions);assertEquals("Fresh original comic",fake.opened[source.publication.id]?.publication?.title)
         assertTrue(session.handlesBack());session.back();advanceUntilIdle();assertIs<OpenPublicationState.Idle>(session.opening.value)
-        assertTrue(ready.reader.state.value.frames.isEmpty());assertEquals("original",search.query.value);assertSame(results,search.search.state.value);assertFalse(session.handlesBack())
+        assertTrue(ready.reader.state.value.frames.isEmpty());assertEquals("original",search.query.value);assertSame(results,search.search.state.value);assertTrue(session.handlesBack());session.back();assertEquals(Destination.HOME,session.destination.value);assertFalse(session.handlesBack())
     }}
     @Test fun libraryAndHistoryOpenReResolveAndBackReturnsToPreviousDestination()=runTest {use{session,_,source,fake->
         val saved=PublicationSnapshot.from(source.publication).copy(title="Old snapshot",sourceUrl="https://untrusted.invalid")
@@ -66,13 +66,13 @@ class PageApplicationSessionTest {
         val gate=CompletableDeferred<Unit>();first.action={withContext(NonCancellable){gate.await()}}
         val owner=ApplicationSources(listOf(SourceOption("First",first,pageReadingEnabled=true),SourceOption("Second",second,pageReadingEnabled=true)),
             collections=ApplicationCollections(fake.library,fake.history,dispatcher),pagePreparer=defaultPagePreparer()){}
-        val session=ApplicationSession(owner,this,dispatcher){10};owner.attach(session)
+        val session=ApplicationSession(owner,this,dispatcher){10};owner.attach(session);session.navigate(Destination.SEARCH)
         try {
             session.openSearch(first.publication);runCurrent();session.back();session.selectSource(1)
             val search=session.searchSession.value;search.editQuery("second");search.submitSearch();runCurrent();session.openSearch(second.publication);runCurrent()
             gate.complete(Unit);advanceUntilIdle();assertEquals(second.publication.id,assertIs<OpenPublicationState.PageReady>(session.opening.value).publication.id)
             assertFalse(first.publication.id in fake.opened);assertTrue(second.publication.id in fake.opened)
-            session.back();advanceUntilIdle();assertEquals("second",search.query.value);assertFalse(session.handlesBack())
+            session.back();advanceUntilIdle();assertEquals("second",search.query.value);assertTrue(session.handlesBack());session.back();assertEquals(Destination.HOME,session.destination.value);assertFalse(session.handlesBack())
         }finally{gate.complete(Unit);owner.close();owner.awaitProgressClosed()}
     }
 }
