@@ -16,7 +16,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun ApplicationSettingsScreen(mode: ApplicationThemeMode, change: (ApplicationThemeMode) -> Unit, failed: Boolean, profile: LocalProfile = LocalProfile(), editProfile: () -> Unit = {}, profileReady: Boolean = true) {
+internal fun ApplicationSettingsScreen(mode: ApplicationThemeMode, change: (ApplicationThemeMode) -> Unit, failed: Boolean, profile: LocalProfile = LocalProfile(), editProfile: () -> Unit = {}, profileReady: Boolean = true, discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences(), changeDiscovery: ((org.infinilect.app.discovery.DiscoveryPreferences) -> Unit)? = null) {
     Column(Modifier.fillMaxSize().semantics { paneTitle="Settings" }.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Profile", style = MaterialTheme.typography.h6, modifier = Modifier.semantics { heading() })
@@ -42,6 +42,7 @@ internal fun ApplicationSettingsScreen(mode: ApplicationThemeMode, change: (Appl
         }
         if (failed) FeedbackCard("Settings could not be saved", "Your appearance and profile apply for now. Retry to keep it after restarting.", error = true,
             action = "Retry saving settings", onAction = { change(mode) })
+        if (changeDiscovery != null && profileReady) org.infinilect.app.discovery.DiscoveryPreferenceControls(discovery, changeDiscovery)
         FeedbackCard("Reading preferences", "Font size, margins and reading modes are available inside the reader. Changing application appearance does not reset your position or reader preferences.")
         Text("INFINILECT · Free, open-source reading", style = MaterialTheme.typography.caption)
     }

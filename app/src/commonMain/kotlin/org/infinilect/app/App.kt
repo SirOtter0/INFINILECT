@@ -44,7 +44,6 @@ import androidx.compose.ui.semantics.*
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.app.reader.TextReader
 import org.infinilect.app.search.SearchState
-import org.infinilect.app.search.SearchResultsViewport
 import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.collections.LibraryActionState
 import org.infinilect.core.PublicationSource
@@ -53,7 +52,7 @@ import org.infinilect.app.ui.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.isSystemInDarkTheme
 
-internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false, val pdfReadingEnabled: Boolean = false)
+internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false, val pdfReadingEnabled: Boolean = false, val developmentOnly: Boolean = false)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -68,6 +67,8 @@ fun App(
     val appearanceState by (applicationSources.appearance?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(ApplicationAppearanceState()) }).collectAsState()
     var profileEditor by remember { mutableStateOf(false) }
     val homePosition = rememberLazyListState()
+    val discoveryPosition = rememberLazyGridState()
+    val discoveryViewport = remember(application) { org.infinilect.app.discovery.DiscoverySearchViewport() }
     val homeProgress by application.homeProgress.collectAsState()
     val mode = appearanceState.mode
     val appearanceFailed by (applicationSources.appearance?.saveFailed ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
@@ -89,12 +90,6 @@ fun App(
         // Presentation replacement flushes legitimate work, but does not close the session.
         onDispose { application.flushProgress() }
     }
-    val session by application.searchSession.collectAsState()
-    val searchState by key(session) { session.search.state.collectAsState() }
-    // App owns the viewport across Reader/Back; a successful page gets a fresh top position.
-    val searchViewport = remember(session) { SearchResultsViewport { LazyListState() } }
-    val resultsPosition = searchViewport.forState(searchState)
-    val selected by application.selected.collectAsState()
     val destination by application.destination.collectAsState()
     val opening by application.opening.collectAsState()
     val importing by application.importing.collectAsState()
@@ -145,13 +140,10 @@ fun App(
                                             applicationSources.appearance, homePosition,
                                             importAction = if (localFilePicker != null && applicationSources.localImports != null && !importing.busy) ({ application.importLocal(localFilePicker) }) else null,
                                             editProfile = { profileEditor = true }, settingsFailed = appearanceFailed)
-                                        Destination.SEARCH -> key(session) {
-                                            SearchScreen(session, searchState, resultsPosition, applicationSources.options, selected, application::selectSource,
-                                                application.collections, application::openSearch, progressRecords = progressRecords.values.toList(), descriptions = applicationSources.descriptions, applicationSession = application)
-                                        }
+                                        Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, progressRecords.values.toList())
-                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null)
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) })
                                     }
                                 }
                             }

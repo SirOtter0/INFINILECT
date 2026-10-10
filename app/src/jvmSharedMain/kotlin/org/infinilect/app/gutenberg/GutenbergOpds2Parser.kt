@@ -5,11 +5,11 @@ package org.infinilect.app.gutenberg
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import kotlinx.serialization.json.*
-import org.infinilect.app.search.SearchException
 import org.infinilect.core.*
+import org.infinilect.app.discovery.*
 
-internal class InvalidOpdsException(cause: Throwable? = null) :
-    SearchException("Project Gutenberg's experimental catalog returned unsupported data.", cause)
+internal class InvalidOpdsException(cause: Throwable? = null, kind: CatalogErrorKind = CatalogErrorKind.INVALID_OPDS) :
+    CatalogSourceException(kind, cause)
 
 /** Actual development OPDS2 JSON subset. No XML, generic templates, or acquisition fallback. */
 internal object GutenbergOpds2Parser {
@@ -53,7 +53,8 @@ internal object GutenbergOpds2Parser {
         }
         if (objects.isNotEmpty()) invalid()
         cancelled()
-        val root = try { json.parseToJsonElement(text) as? JsonObject } catch (_: Exception) { null } ?: invalid()
+        val root = try { json.parseToJsonElement(text) as? JsonObject }
+        catch (error: kotlinx.serialization.SerializationException) { throw InvalidOpdsException(error, CatalogErrorKind.INVALID_JSON) } ?: invalid()
         var nodes = 0
         fun bound(element: JsonElement) {
             if (++nodes > 20_000) invalid()
@@ -93,20 +94,20 @@ internal object GutenbergOpds2Parser {
         val links = links(root)
         val self = links.singleOrNull { "self" in relations(it) } ?: invalid()
         if (self.string("href") != GUTENBERG_ROOT || self.string("type") != "application/opds+json") invalid()
-        val search = links.singleOrNull { "search" in relations(it) } ?: invalid()
+        val search = links.singleOrNull { "search" in relations(it) } ?: throw InvalidOpdsException(kind = CatalogErrorKind.SEARCH_LINK)
         if (search.string("href") != GUTENBERG_SEARCH_TEMPLATE || search.string("type") != "application/opds+json" ||
-            (search["templated"] as? JsonPrimitive)?.booleanOrNull != true || (search["templated"] as JsonPrimitive).isString) invalid()
+            (search["templated"] as? JsonPrimitive)?.booleanOrNull != true || (search["templated"] as JsonPrimitive).isString) throw InvalidOpdsException(kind = CatalogErrorKind.SEARCH_LINK)
         // Navigation/groups are bounded but intentionally neither fetched nor rendered.
         return GUTENBERG_SEARCH_TEMPLATE
     }
-    fun search(bytes: ByteArray, query: String, currentPage: Int, cancelled: () -> Unit = {}): SearchPage {
+    fun search(bytes: ByteArray, query: String, currentPage: Int, collect: (DiscoveryEntry) -> Unit = {}, cancelled: () -> Unit = {}): SearchPage {
         val root = document(bytes, cancelled)
         val metadata = objectValue(root["metadata"] ?: invalid())
         val count = metadata.number("numberOfItems")
         if (metadata.number("itemsPerPage") != 25L || metadata.number("currentPage") != currentPage.toLong()) invalid()
         val raw = root.array("publications", required = true)
         if (raw.size > 25 || raw.size.toLong() > count) invalid()
-        val publications = raw.map { cancelled(); publication(objectValue(it)) }
+        val publications = raw.map { cancelled(); publication(objectValue(it), collect) }
         if (publications.map { it.id }.distinct().size != publications.size) invalid()
         val links = links(root)
         val self = links.singleOrNull { "self" in relations(it) } ?: invalid()
@@ -124,7 +125,7 @@ internal object GutenbergOpds2Parser {
         require(expected.sourceId == GUTENBERG_ID); GutenbergUrls.identifier(expected.localId)
         return publication(document(bytes, cancelled)).also { if (it.id != expected) invalid() }
     }
-    private fun publication(root: JsonObject): Publication {
+    private fun publication(root: JsonObject, collect: (DiscoveryEntry) -> Unit = {}): Publication {
         val metadata = objectValue(root["metadata"] ?: invalid())
         if (metadata.string("@type") != "http://schema.org/Book") invalid()
         val local = metadata.string("identifier", true)?.let(GutenbergUrls::localId) ?: invalid()
@@ -158,7 +159,25 @@ internal object GutenbergOpds2Parser {
             }
         }
         return Publication(id, title, PublicationType.BOOK, names, emptyList(), strings("language", 64),
-            GutenbergUrls.canonical(local), metadata.string("rights")?.takeIf { it.isNotBlank() })
+            GutenbergUrls.canonical(local), metadata.string("rights")?.takeIf { it.isNotBlank() }).also { value ->
+                val rawSubjects = metadata["subject"]
+                val subjects = when (rawSubjects) { null -> emptyList(); is JsonArray -> rawSubjects; else -> listOf(rawSubjects) }
+                if (subjects.size > 64) invalid()
+                val labels = subjects.map { subject -> when (subject) {
+                    is JsonObject -> subject.string("name", true, 256)!!
+                    is JsonPrimitive -> if (subject.isString && subject.content.length <= 256) subject.content else invalid()
+                    else -> invalid()
+                } }.filter { it.isNotBlank() }
+                val candidates = (root["images"] as? JsonArray).orEmpty().take(8).mapNotNull { image ->
+                    val link = image as? JsonObject ?: return@mapNotNull null
+                    val href = (link["href"] as? JsonPrimitive)?.takeIf { it.isString && it.content.length <= 2048 }?.content ?: return@mapNotNull null
+                    if ((link["type"] as? JsonPrimitive)?.content == "image/jpeg" && href in setOf(
+                        "https://www.gutenberg.org/cache/epub/$local/pg$local.cover.medium.jpg",
+                        "https://www.gutenberg.org/cache/epub/$local/pg$local.cover.small.jpg")) href else null
+                }
+                collect(DiscoveryEntry(value, labels.take(16), metadata.string("description")?.let(::catalogPlainText),
+                    candidates.firstOrNull { it.endsWith(".medium.jpg") } ?: candidates.firstOrNull()))
+            }
         // Rights embedded in a prose description are deliberately not promoted to a license field.
     }
 }

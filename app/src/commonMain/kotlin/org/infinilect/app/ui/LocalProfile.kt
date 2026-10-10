@@ -18,5 +18,5 @@ internal data class LocalProfile(val displayName: String? = null, val countryCod
     }
     val hasDeclaredResidence get() = countryCode != null
 }
-internal data class ApplicationPreferences(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val profile: LocalProfile = LocalProfile())
+internal data class ApplicationPreferences(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val profile: LocalProfile = LocalProfile(), val discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences())
 internal fun welcomeGreeting(profile: LocalProfile) = profile.displayName?.let { "Hello, $it!" } ?: "Hello!"

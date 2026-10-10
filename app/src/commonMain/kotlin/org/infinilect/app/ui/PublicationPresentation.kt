@@ -80,7 +80,7 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
     progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
-    descriptions: PublicationDescriptions? = null, actions: @Composable () -> Unit) {
+    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), actions: @Composable () -> Unit) {
     val focus = remember { FocusRequester() }
     val synopsis by produceState<String?>(null, publication.id, descriptions) {
         try { value = descriptions?.get(publication.id) }
@@ -111,7 +111,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                             }
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
-                        synopsis?.let { text ->
+                        (suppliedSynopsis ?: synopsis)?.let { text ->
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Synopsis", style = MaterialTheme.typography.subtitle1, modifier = Modifier.semantics { heading() })
                                 Text(if (expanded) text else descriptionExcerpt(text), style = MaterialTheme.typography.body1)
@@ -121,6 +121,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                                 }
                             }
                         }
+                        if (subjects.isNotEmpty()) DetailLine("Categories", subjects.joinToString("; "))
                         DetailLine("Source", source)
                         DetailLine("Format", publicationFormat(formats))
                         if (publication.languages.isNotEmpty()) DetailLine("Languages", publication.languages.joinToString(", "))

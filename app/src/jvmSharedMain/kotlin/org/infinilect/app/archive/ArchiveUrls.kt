@@ -42,6 +42,7 @@ internal object ArchiveUrls {
         parameters.append("q", "($query) AND mediatype:texts AND licenseurl:\"http://creativecommons.org/publicdomain/zero/1.0/\" AND NOT access-restricted-item:true")
         parameters.append("fl[]", "identifier")
         parameters.append("fl[]", "title")
+        for (field in listOf("creator", "language", "subject", "description", "rights")) parameters.append("fl[]", field)
         parameters.append("rows", PAGE_SIZE.toString())
         parameters.append("page", page.toString())
         parameters.append("output", "json")

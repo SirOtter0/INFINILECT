@@ -36,7 +36,8 @@ class ReaderContinuityLayoutTest {
             // Search submission is a content action; the new Search navigation tab is a separate control.
             val node = assertNotNull(nodes().firstOrNull { !it.config.contains(SemanticsProperties.Disabled) &&
                 it.config.getOrNull(SemanticsProperties.Role) != Role.Tab &&
-                it.config.getOrNull(SemanticsActions.OnClick)?.action != null && walk(it).any { child -> text(child, label) } },
+                it.config.getOrNull(SemanticsActions.OnClick)?.action != null && walk(it).any { child ->
+                    text(child, label) || child.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true } },
                 "Enabled control $label must be present")
             assertTrue(node.config[SemanticsActions.OnClick].action!!.invoke()); pump()
         }
@@ -138,8 +139,10 @@ class ReaderContinuityLayoutTest {
         val resource = PublicationResource(pub, "text", PublicationFormat.TEXT, "text/plain")
         val publication = Publication(pub, "Original", PublicationType.DOCUMENT, resources = listOf(resource))
         var preparations = 0
-        val source = object : PublicationSource {
+        val source = object : PublicationSource, org.infinilect.app.discovery.DiscoverySource {
             override val id = pub.sourceId
+            override suspend fun discover(request: org.infinilect.app.discovery.DiscoveryRequest, token: String?) =
+                org.infinilect.app.discovery.DiscoveryPage(listOf(org.infinilect.app.discovery.DiscoveryEntry(publication)))
             override suspend fun search(query: String, pageToken: String?) = SearchPage(listOf(publication))
             override suspend fun getPublication(publicationId: PublicationId) = publication
             override suspend fun loadResource(resource: PublicationResource): ResourceContent = error("Owned test preparer")
@@ -156,7 +159,7 @@ class ReaderContinuityLayoutTest {
             sources.applicationSession().navigate(Destination.SEARCH)
             f.content { App(sources) }
             f.nodes().first { it.config.getOrNull(SemanticsActions.SetText)?.action != null }.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("original"))
-            f.pump(); f.click("Search"); f.click("Open text")
+            f.pump(); f.click("Search"); f.click("Original"); f.click("Start reading")
             assertTrue(f.nodes().any { f.text(it, "Back to results") }); assertEquals(1, preparations)
             f.remount()
             assertTrue(f.nodes().any { f.text(it, "Back to results") }, "The session must outlive its presentation")

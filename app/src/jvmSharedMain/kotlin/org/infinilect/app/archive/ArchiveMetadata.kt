@@ -6,6 +6,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import kotlinx.serialization.json.*
 import org.infinilect.core.*
+import org.infinilect.app.discovery.*
 
 internal const val MAX_METADATA_BYTES = 2 * 1024 * 1024
 internal const val MAX_RESOURCE_BYTES = 64L * 1024 * 1024
@@ -65,6 +66,16 @@ internal object ArchiveMetadata {
         }.filter { it.isNotBlank() }
     }
 
+    /** Optional catalog presentation fields are bounded independently; malformed/huge
+     * subject lists must not discard otherwise valid identities. Authority parsing stays strict. */
+    private fun JsonObject.displayStrings(key: String, count: Int, length: Int): List<String> {
+        val raw = this[key] ?: return emptyList()
+        val values = if (raw is JsonArray) raw.asSequence() else sequenceOf(raw)
+        return values.take(512).mapNotNull { value ->
+            (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.take(length)?.takeIf { it.isNotBlank() }
+        }.take(count).toList()
+    }
+
     private fun JsonObject.string(key: String) = strings(key).singleOrNull()
     private fun JsonObject.flag(key: String): Boolean {
         val value = this[key] ?: return false
@@ -98,7 +109,7 @@ internal object ArchiveMetadata {
         return result
     }
 
-    fun search(bytes: ByteArray, query: String, page: Int, checkCancellation: () -> Unit = {}): SearchPage {
+    fun search(bytes: ByteArray, query: String, page: Int, collect: (DiscoveryEntry) -> Unit = {}, checkCancellation: () -> Unit = {}): SearchPage {
         val response = document(bytes, checkCancellation)["response"] as? JsonObject ?: throw InvalidArchiveData()
         val found = (response["numFound"] as? JsonPrimitive)?.longOrNull ?: throw InvalidArchiveData()
         val docs = response["docs"] as? JsonArray ?: throw InvalidArchiveData()
@@ -108,9 +119,14 @@ internal object ArchiveMetadata {
             val identifier = doc.string("identifier") ?: throw InvalidArchiveData()
             try { ArchiveUrls.identifier(identifier) } catch (_: IllegalArgumentException) { throw InvalidArchiveData() }
             Publication(PublicationId(ARCHIVE_ID, identifier), doc.string("title") ?: identifier,
-                PublicationType.DOCUMENT, sourceUrl = ArchiveUrls.canonical(identifier))
+                PublicationType.DOCUMENT, authors = doc.displayStrings("creator",8,256), languages = doc.displayStrings("language",8,64),
+                sourceUrl = ArchiveUrls.canonical(identifier), rights = doc.string("rights"))
+                .also { collect(DiscoveryEntry(it, doc.displayStrings("subject",16,256),
+                    doc.displayStrings("description",4,4096).joinToString("\n\n").let(::catalogPlainText))) }
         }
-        val next = if (docs.isNotEmpty() && page < 1000 && page.toLong() * ArchiveUrls.PAGE_SIZE < found)
+        // An empty response page can coexist with an indexed later page. Offer bounded,
+        // explicit pagination rather than claiming the complete subject/query is empty.
+        val next = if (page < 1000 && page.toLong() * ArchiveUrls.PAGE_SIZE < found)
             ArchiveUrls.token(query, page + 1) else null
         return SearchPage(publications, next)
     }
