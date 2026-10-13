@@ -28,8 +28,8 @@ import org.infinilect.app.ui.DestinationIcon
 import kotlinx.coroutines.*
 import kotlin.math.roundToInt
 
-internal enum class ComicPanel(val label: String) { READING("Reading mode"), ORIENTATION("Orientation"), PRESENTATION("Page fitting"), GENERAL("Settings") }
-private enum class Glyph { BACK, PREVIOUS, NEXT, CLOSE, READING, ORIENTATION, FIT, ZOOM_IN, ZOOM_OUT, RESET }
+internal enum class ComicPanel(val label: String) { READING("Reading mode"), PRESENTATION("Page fitting"), GENERAL("Settings") }
+private enum class Glyph { BACK, PREVIOUS, NEXT, CLOSE, READING, FIT, ZOOM_IN, ZOOM_OUT, RESET }
 
 @Composable
 private fun ComicGlyph(glyph: Glyph, reverse: Boolean = false) {
@@ -50,9 +50,6 @@ private fun ComicGlyph(glyph: Glyph, reverse: Boolean = false) {
             Glyph.READING -> {
                 drawRect(color,at(3f,4f),Size(7*scale,16*scale),style=Stroke(stroke))
                 drawRect(color,at(14f,4f),Size(7*scale,16*scale),style=Stroke(stroke))
-            }
-            Glyph.ORIENTATION -> {
-                drawRect(color,at(8f,3f),Size(9*scale,17*scale),style=Stroke(stroke));line(3f,8f,3f,17f);line(3f,17f,6f,14f);line(3f,17f,1f,14f)
             }
             Glyph.FIT -> { for ((x,y) in listOf(3f to 3f,21f to 3f,3f to 21f,21f to 21f)) {line(x,y,if(x==3f)9f else 15f,y);line(x,y,x,if(y==3f)9f else 15f)} }
             Glyph.ZOOM_IN, Glyph.ZOOM_OUT -> {
@@ -81,7 +78,7 @@ internal fun ComicAction(label: String, enabled: Boolean = true, onClick: () -> 
 @Composable
 private fun PanelAction(panel: ComicPanel, open: (ComicPanel) -> Unit) = ComicAction(panel.label,onClick={open(panel)}) {
     if(panel==ComicPanel.GENERAL) DestinationIcon(Destination.SETTINGS,MaterialTheme.colors.onSurface)
-    else ComicGlyph(when(panel){ComicPanel.READING->Glyph.READING;ComicPanel.ORIENTATION->Glyph.ORIENTATION;else->Glyph.FIT})
+    else ComicGlyph(if(panel==ComicPanel.READING)Glyph.READING else Glyph.FIT)
 }
 
 /** Material's single anchored state owns half/expanded/hidden, drag and scrim dismissal. */
@@ -102,7 +99,6 @@ internal fun ComicSheetHost(reader: PageReaderController, state: PageReaderState
         else {withFrameNanos{};onDismissed()} }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val height=maxHeight*.9f
-        val landscape=maxWidth>maxHeight
         ModalBottomSheetLayout(sheetState=sheet, sheetShape=RoundedCornerShape(topStart=24.dp,topEnd=24.dp),
             sheetBackgroundColor=MaterialTheme.colors.surface, sheetContentColor=MaterialTheme.colors.onSurface,
             modifier=Modifier.fillMaxSize().onPreviewKeyEvent { e ->
@@ -139,10 +135,6 @@ internal fun ComicSheetHost(reader: PageReaderController, state: PageReaderState
                                     PageLayout.entries.forEach { layout->Option(if(layout==PageLayout.SINGLE)"Single page"else"Double page",state.settings.layout==layout){reader.layout(layout);dismiss()} }
                                 }
                             }
-                            ComicPanel.ORIENTATION -> {
-                                Text(if(landscape)"Landscape"else"Portrait",style=MaterialTheme.typography.subtitle1)
-                                Text("Follows device or window orientation. Rotate or resize without losing your logical page.",Modifier.padding(vertical=12.dp))
-                            }
                             ComicPanel.PRESENTATION -> if(pagedMode(state.settings.mode)) {
                                 PageFit.entries.forEach {fit->Option(fitLabel(fit),state.settings.fit==fit){reader.fit(fit);dismiss()} }
                                 Divider(Modifier.padding(vertical=8.dp))
@@ -153,7 +145,6 @@ internal fun ComicSheetHost(reader: PageReaderController, state: PageReaderState
                                 }
                             } else Text("Continuous modes use their existing width-fit presentation.")
                             ComicPanel.GENERAL -> {
-                                Text(if(pagedMode(state.settings.mode))"Double tap the center to zoom. Side taps navigate immediately."else"Scroll to read. Tap the center to show controls.",Modifier.padding(bottom=12.dp))
                                 publicationActions?.invoke();notices?.invoke()
                             }
                         }

@@ -157,6 +157,29 @@ class ComicRefinementTest {
             runCurrent();assertTrue(r.retainedPages<=3);assertTrue(r.state.value.frames.size<=3)
         }
     }}
+    @Test fun lateralZoomRequiresExplicitHoldButBriefNavigationDoesNotWait() {
+        for(action in listOf(PageTapAction.NEXT,PageTapAction.PREVIOUS)) {
+            assertFalse(comicZoomTapIntent(action,1f,10));assertFalse(comicZoomTapIntent(action,1f,119))
+            assertTrue(comicZoomTapIntent(action,1f,120));assertTrue(comicZoomTapIntent(action,2.5f,10))
+        }
+        assertTrue(comicZoomTapIntent(PageTapAction.CONTROLS,1f,10))
+    }
+    @Test fun artworkHitTestingIncludesEdgesAndExcludesLetterboxingWithRealPan() {
+        val content=Size(390f,585f);val viewport=Size(390f,780f)
+        assertTrue(comicArtworkContains(Offset(0f,97.5f),content,viewport,1f,Offset.Zero))
+        assertTrue(comicArtworkContains(Offset(390f,682.5f),content,viewport,1f,Offset.Zero))
+        assertFalse(comicArtworkContains(Offset(20f,90f),content,viewport,1f,Offset.Zero))
+        assertTrue(comicArtworkContains(Offset(20f,30f),content,viewport,2.5f,Offset(100f,-100f)))
+    }
+    @Test fun matchingSecondTapDoesNotNeedAnotherHoldAndExpiredCandidatesDoNotMatch() {
+        val taps=ComicDoubleTap();assertFalse(taps.tap(Offset(20f,20f),0,130,40,300,30f))
+        assertTrue(taps.matches(Offset(21f,20f),230,40,300,30f))
+        assertTrue(taps.tap(Offset(21f,20f),230,240,40,300,30f))
+        assertFalse(taps.matches(Offset(21f,20f),300,40,300,30f))
+        taps.tap(Offset.Zero,400,530,40,300,30f)
+        assertFalse(taps.matches(Offset.Zero,831,40,300,30f));taps.clear()
+        assertFalse(taps.matches(Offset.Zero,600,40,300,30f))
+    }
     @Test fun doubleTapUsesUpToDownTimingAndRequiresNearbySinglePointers() {
         val taps=ComicDoubleTap();assertFalse(taps.tap(Offset(100f,100f),0,20,40,300,30f))
         assertTrue(taps.tap(Offset(110f,105f),100,110,40,300,30f))

@@ -831,8 +831,8 @@ presentation; there was no scrubber or reader-wide keyboard/wheel handling.
 
 Artwork owns the full safe reading viewport, on a near-black background, with no
 persistent application/membership toolbar. Center taps show/hide icon controls: Back,
-title, Previous/Next, logical counter and slider, Reading mode, Orientation, Page
-fitting and Settings (gear). There are no visible Previous/Next/Hide labels. Buttons
+title, Previous/Next, logical counter and slider, Reading mode, Page fitting and
+Settings (gear). There are no visible Previous/Next/Hide labels. Buttons
 have accessible names, 48dp targets and shared touch/mouse tooltips. Extremely short
 windows place the counter in the header and expose secondary entry points in Settings.
 At large font scales in those windows, the counter takes visual priority over the title;
@@ -853,8 +853,9 @@ drag/accessible expansion, collapse, scrim dismissal and Back/Escape are support
 Its content scrolls and is bounded on small windows/large fonts. Hidden sheets retain
 only their measured shell, not offscreen focusable controls. Focus moves into the open
 sheet and returns to the artwork on dismissal. Mode/layout and fit/zoom options are
-separate entry points; General retains membership/notices. Orientation shows the actual
-device/window orientation and existing follow behavior: no unsupported lock switches.
+separate entry points; General retains membership/notices without a permanent gesture
+explanation. The nonactionable Orientation entry was removed; device/window orientation
+still follows the existing platform policy without a lock switch.
 Opening or dismissing a sheet does not reprepare content, seek or save a target.
 
 ### Modes and fitting
@@ -881,17 +882,25 @@ exclusion. A deliberate excess horizontal drag after exhausting pan can still tu
 including fitted artwork overflowing at 1×. Vertical pan does not turn. Side taps
 remain blocked above 1×; successful turns reset transient zoom/pan, failed/cancelled
 turns preserve it. The accepted thresholds/edge velocity/interruption model are unchanged.
-Double-tap zoom is now supported in the **central 40% of paged canvases**. This
-leaves the lateral 30% zones immediate, so repeated navigation taps cannot be mistaken
-for zoom. A central single is confirmed using the platform double-tap interval and a
-frame clock; there is no added delay on side turns. Two nearby taps within the platform
-minimum/maximum interval zoom to 2.5× toward the tapped point; another pair restores
-fit/1×. A Double spread is one canvas, including its small seam, not separate half-page
-zoom states. Actual fitted bounds clamp pan. Long presses, moved/consumed gestures and
-multi-pointer sequences cannot qualify; pinch/swipe retire pending central taps. The
-single-control intent survives completion of an already accepted turn; double-tap
-candidates cannot zoom an obsolete page. Continuous modes retain their scrolling and
-center-control behavior; new double-tap zoom applies to paged modes only.
+Double-tap zoom can target **any point on the displayed artwork**, including lateral
+edges and corners, in paged modes. At fit/1×, brief lateral taps remain immediate page
+navigation. Their pointer sequence is indistinguishable from an ordinary lateral double
+tap, so lateral zoom uses an explicit rule: **hold the first tap for at least 120ms**
+(below the platform long-press timeout), then tap nearby within the platform minimum/
+maximum double-tap interval. The first held lateral tap arms zoom without turning;
+the second can be brief. A held lateral tap without a second tap does nothing. Two
+brief lateral taps remain navigation, not zoom, with no confirmation delay added.
+
+Central doubles and doubles anywhere while already zoomed need no hold. Central singles
+retain the platform confirmation interval/frame clock for chrome; zoomed lateral singles
+remain non-navigating. Two qualifying taps zoom to 2.5× toward the point; another pair
+returns to fit/1×. Hit testing uses the fitted, transformed canvas, including pan, so
+letterboxed backdrop cannot arm zoom. A Double pair, including its seam, remains one
+canvas. Actual geometry clamps pan; no source pixels or resource budgets change.
+Moved/consumed/long-press/multiple-pointer sequences cannot qualify; pinch/pan retire
+candidates. Controls/sheets own their touches. Candidates belong to a single displayed
+spread, and zoom cannot take over an unfinished page transition. Continuous modes
+retain their existing scrolling/center controls; double-tap zoom remains paged-only.
 Original/full-resolution presentation is not added: the bounded decoder remains
 authoritative and zoom does not request additional source pixels.
 
@@ -979,7 +988,7 @@ committed position: seven Next taps could prepare page 7 while page 0 still rema
 source. The regression reproduces replacement during settlement. Artwork taps and icon
 buttons now allow **one active turn and one latest pending direction**, coalescing repeats
 while busy. The first incoming spread is fully presented before that single follow-up
-starts; a transient Next/Previous queued label makes pending intent explicit. A seven-tap
+starts; no queue banners, snackbars or toasts are displayed. A seven-tap
 burst within one turn accepts the initial turn and one coalesced follow-up, not seven
 independent destinations. A later burst after presentation can advance again. Opposite
 taps replace that one pending direction; deliberate drag retains the existing reversal/
@@ -1019,9 +1028,10 @@ Focused Android checklist (re-acceptance pending):
 
 - Light/Dark/Automatic controls over independently dark artwork; hidden/visible chrome,
   light/dark system icon contrast, gesture/three-button bars and application restoration.
-- Center single controls, central double zoom/reset toward the point, immediate lateral
-  turns; pinch, pan, fast swipes and deliberate zoomed-edge handoff without conflicts.
-- Four icon entry points; half-open/expand/collapse/drag-down/scrim/Back/Escape; large fonts,
+- Center single controls; ordinary central doubles; held-first lateral/corner doubles
+  at 1×; ordinary doubles anywhere when zoomed. Brief lateral taps navigate immediately;
+  pinch, pan, fast swipes and deliberate zoomed-edge handoff remain coherent.
+- Three icon entry points; half-open/expand/collapse/drag-down/scrim/Back/Escape; large fonts,
   short landscape windows, TalkBack and Desktop focus/keyboard/hover tooltips.
 - Slider: immediate Preview counter, latest ready image while dragging, final release;
   fast reversals/cancellation/failure; keep progress through close/reopen and restart.
@@ -1031,3 +1041,38 @@ Focused Android checklist (re-acceptance pending):
 
 Physical Android and native Desktop graphical acceptance remain pending. Orientation
 locking, zoom in continuous modes and extra source resolution remain deferred.
+
+
+### Final gesture/UI cleanup — user feedback and verification
+
+The user physically tested the previous refinement and reports that its controls, app
+appearance, sheets, live slider, bounded rapid turns and progress preservation work.
+This follow-up removes the Orientation entry, General's gesture explanation and queued
+navigation messages, and applies the artwork-wide gesture policy above. The controller,
+settings/persistence, decoding, archive validation and image budgets are unchanged.
+
+Final cleanup verification: **56 focused Desktop / 25 focused Android-host** tests
+passed. Full app regressions: **1,454 Desktop / 1,235 Android-host**, zero failures,
+errors or skipped tests. Both full suites include the 15 existing CBZ preparer/security
+tests; Android-host includes preparation-directory coverage. Android `assembleDebug`
+and Desktop `compileKotlin` passed on managed Linux with JDK 21/offline Gradle 9.7.1.
+Unrelated core suites were not rerun because core is unchanged.
+
+Nine new regression methods (three common, six Desktop) cover the held-first boundary,
+candidate timing/expiry, actual artwork hit testing, lateral/corner zoom and reset,
+immediate repeated lateral navigation, pinch/pan interruption, RTL Double/control
+exclusion, letterboxing, and removal of redundant UI while retaining pending intent.
+Existing central, sheet/theme, slider, transition, progress and resource tests remain.
+Two new UI regressions failed on the starting code and pass after the cleanup. The
+initial margin fixture incorrectly requested Previous from page 1 while expecting
+Next; its coordinate was corrected without changing assertions, and final suites pass.
+
+The complete incremental diff passes `git diff --check`. The 399-file hygiene scan
+found no signing secrets, generated artifacts or temporary workflows. All 328 verified
+production/test/build snapshot files remained unchanged through final verification.
+
+Physical Android re-acceptance of this cleanup remains pending. Check central, lateral
+and corner zoom with the explicit held-first rule at 1×; ordinary doubles anywhere
+while zoomed; two/seven brief side taps without banners; pinch/pan and zoomed-edge turns;
+controls/sheet touches; three sheet entry points, rotation and close/reopen progress.
+Native Desktop graphical acceptance remains pending.

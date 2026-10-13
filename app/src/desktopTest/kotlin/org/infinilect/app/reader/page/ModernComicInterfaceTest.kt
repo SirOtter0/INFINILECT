@@ -110,7 +110,7 @@ class ModernComicInterfaceTest {
     }}
     @Test fun iconsReplacePersistentLabelsAndHaveAccessibleTouchTargets()=runTest {Fixture(this).use {f->
         f.start();f.center()
-        for(label in listOf("Back","Previous","Next","Reading mode","Orientation","Page fitting","Settings")) {
+        for(label in listOf("Back","Previous","Next","Reading mode","Page fitting","Settings")) {
             val node=assertNotNull(f.text(label));assertTrue(node.boundsInRoot.width>=47&&node.boundsInRoot.height>=47,label)
         }
         assertFalse(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text in listOf("Previous","Next","Hide")}==true})
@@ -141,7 +141,7 @@ class ModernComicInterfaceTest {
         advanceTimeBy(250);f.scene.sendPointerEvent(PointerEventType.Release,down+Offset(0f,720f),type=PointerType.Touch,timeMillis=testScheduler.currentTime);f.draw(24)
         assertFalse(f.nodes().any{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Reader settings sheet")==true})
         f.click("Settings");f.draw(24);f.key(Key.Escape);f.draw(24);assertNotNull(f.text("Settings"));assertEquals(0,f.exits)
-        f.click("Orientation");f.draw(24);assertNotNull(f.text("Portrait"));assertNotNull(f.back).invoke();f.draw(24)
+        f.click("Reading mode");f.draw(24);assertNotNull(f.text("Left-to-right"));assertNotNull(f.back).invoke();f.draw(24)
         assertTrue(f.reader.state.value.controlsVisible);assertNotNull(f.back).invoke();f.draw();assertFalse(f.reader.state.value.controlsVisible)
     }}
     @Test fun smallWindowLargeFontsKeepSheetActionsScrollableAndCloseReachable()=runTest {Fixture(this,320,220,2f).use {f->
@@ -181,8 +181,78 @@ class ModernComicInterfaceTest {
     @Test fun controlsAndSheetNeverForwardTheirTouchesIntoArtworkNavigation()=runTest {Fixture(this).use {f->
         f.start();f.center();val counter=assertNotNull(f.text("1 / 7"))
         f.tap(counter.boundsInRoot.center);assertEquals(0,f.reader.state.value.position.index);assertNull(f.reader.state.value.transition)
-        f.click("Settings");f.draw(24);val description=assertNotNull(f.text("Double tap the center to zoom. Side taps navigate immediately."))
-        f.tap(description.boundsInRoot.center);assertEquals(0,f.reader.state.value.position.index);assertNull(f.reader.state.value.transition)
+        f.click("Settings");f.draw(24);f.tap(Offset(195f,760f));assertEquals(0,f.reader.state.value.position.index);assertNull(f.reader.state.value.transition)
+    }}
+    @Test fun deliberateLateralAndCornerDoubleTapsZoomWithoutTurningAndResetWithOrdinaryDouble()=runTest {
+        for(at in listOf(Offset(10f,105f),Offset(380f,105f),Offset(10f,675f),Offset(380f,675f),Offset(20f,390f),Offset(370f,390f)))Fixture(this).use {f->
+            f.start();val origin=assertNotNull(f.art(0)).positionInRoot;val ticket=f.reader.state.value.ticket
+            fun double(firstHold:Long) {
+                val t=testScheduler.currentTime
+                f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=t)
+                f.scene.sendPointerEvent(PointerEventType.Release,at,type=PointerType.Touch,timeMillis=t+firstHold)
+                f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=t+firstHold+100)
+                f.scene.sendPointerEvent(PointerEventType.Release,at,type=PointerType.Touch,timeMillis=t+firstHold+110);f.draw(24)
+            }
+            double(130);assertEquals(0,f.reader.state.value.position.index);assertNull(f.reader.state.value.transition)
+            assertEquals(ticket,f.reader.state.value.ticket);assertFalse(f.reader.state.value.controlsVisible)
+            assertNotEquals(origin,assertNotNull(f.art(0)).positionInRoot)
+            double(10);assertEquals(origin,assertNotNull(f.art(0)).positionInRoot);assertFalse(f.reader.state.value.controlsVisible)
+        }
+    }
+    @Test fun ordinaryLateralDoubleIsImmediateNavigationRatherThanZoom()=runTest {
+        for(mode in listOf(PageReadingMode.PAGED_LTR,PageReadingMode.PAGED_RTL))Fixture(this).use {f->
+            f.start();f.reader.mode(mode);f.await(0);val at=Offset(if(mode==PageReadingMode.PAGED_LTR)370f else 20f,390f)
+            val t=testScheduler.currentTime
+            f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=t)
+            f.scene.sendPointerEvent(PointerEventType.Release,at,type=PointerType.Touch,timeMillis=t+10)
+            assertEquals(1,assertNotNull(f.reader.state.value.transition).target) // no confirmation delay
+            f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=t+110)
+            f.scene.sendPointerEvent(PointerEventType.Release,at,type=PointerType.Touch,timeMillis=t+120)
+            assertEquals(1,f.reader.state.value.tapIntent);f.await(2)
+        }
+    }
+    @Test fun heldZoomCandidateIsRetiredByPinchAndPan()=runTest {
+        for(pinch in listOf(false,true))Fixture(this).use {f->
+            f.start();val a=Offset(20f,390f);val b=Offset(240f,390f);val t=testScheduler.currentTime
+            f.scene.sendPointerEvent(PointerEventType.Press,a,type=PointerType.Touch,timeMillis=t)
+            f.scene.sendPointerEvent(PointerEventType.Release,a,type=PointerType.Touch,timeMillis=t+130)
+            assertNull(f.reader.state.value.transition)
+            f.scene.sendPointerEvent(PointerEventType.Press,a,type=PointerType.Touch,timeMillis=t+230)
+            if(pinch) {
+                f.scene.sendPointerEvent(PointerEventType.Press,listOf(ComposeScenePointer(PointerId(1),a,true,PointerType.Touch),ComposeScenePointer(PointerId(2),b,true,PointerType.Touch)),timeMillis=t+240)
+                f.scene.sendPointerEvent(PointerEventType.Release,listOf(ComposeScenePointer(PointerId(1),a,false,PointerType.Touch),ComposeScenePointer(PointerId(2),b,false,PointerType.Touch)),timeMillis=t+260)
+            } else {
+                f.scene.sendPointerEvent(PointerEventType.Move,a+Offset(0f,60f),type=PointerType.Touch,timeMillis=t+240)
+                f.scene.sendPointerEvent(PointerEventType.Release,a+Offset(0f,60f),type=PointerType.Touch,timeMillis=t+260)
+            }
+            f.draw(24);assertEquals(0,f.reader.state.value.position.index);assertNull(f.reader.state.value.transition)
+            assertFalse(f.reader.state.value.controlsVisible)
+        }
+    }
+    @Test fun heldLateralDoubleOnRtlSpreadKeepsIdentityAndControlDoublesDoNotZoom()=runTest {Fixture(this,960,540).use {f->
+        f.start();f.reader.mode(PageReadingMode.PAGED_RTL);f.reader.layout(PageLayout.DOUBLE);f.reader.seek(1);f.await(1)
+        val frames=f.reader.state.value.frames;val origin=assertNotNull(f.art(1)).positionInRoot;val at=Offset(750f,120f);val t=testScheduler.currentTime
+        for((type,time)in listOf(PointerEventType.Press to t,PointerEventType.Release to t+130,PointerEventType.Press to t+230,PointerEventType.Release to t+240))
+            f.scene.sendPointerEvent(type,at,type=PointerType.Touch,timeMillis=time)
+        f.draw(24);assertNotEquals(origin,assertNotNull(f.art(1)).positionInRoot);assertEquals(1,f.reader.state.value.position.index)
+        assertEquals(frames,f.reader.state.value.frames);assertTrue(f.reader.retainedPages<=4)
+        f.center();f.click("Settings");f.draw(24);val zoomed=assertNotNull(f.art(1)).positionInRoot
+        f.click("Reading mode");f.click("Reading mode");f.draw(24)
+        assertEquals(zoomed,assertNotNull(f.art(1)).positionInRoot);assertEquals(1,f.reader.state.value.position.index)
+    }}
+    @Test fun heldTapOutsideArtworkCannotArmZoom()=runTest {Fixture(this).use {f->
+        f.start();val origin=assertNotNull(f.art(0)).positionInRoot;val at=Offset(370f,30f);val t=testScheduler.currentTime
+        for((type,time)in listOf(PointerEventType.Press to t,PointerEventType.Release to t+130,PointerEventType.Press to t+230,PointerEventType.Release to t+240))
+            f.scene.sendPointerEvent(type,at,type=PointerType.Touch,timeMillis=time)
+        f.await(2);assertFalse(f.reader.state.value.controlsVisible)
+        assertEquals(origin,assertNotNull(f.art(2)).positionInRoot)
+    }}
+    @Test fun orientationExplanationAndQueuedBannersAreAbsentButPendingIntentRemains()=runTest {Fixture(this).use {f->
+        f.start();f.reader.tap(.9f);f.reader.tap(.9f);f.draw(1)
+        assertEquals(1,f.reader.state.value.tapIntent)
+        assertNull(f.text("Next queued"));assertNull(f.text("Previous queued"));f.await(2);f.center()
+        assertNull(f.text("Orientation"));f.click("Settings");f.draw(24)
+        assertNull(f.text("Double tap the center to zoom. Side taps navigate immediately."))
     }}
     @Test fun centralDoubleTapZoomsTowardArtworkResetsAndNeverTogglesChromeOrTurns()=runTest {Fixture(this).use {f->
         f.start();val origin=assertNotNull(f.art(0)).positionInRoot;val at=Offset(156f,312f)

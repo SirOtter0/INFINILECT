@@ -12,7 +12,6 @@ import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.clipToBounds
@@ -304,17 +303,22 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                 if (!multiplePointers && !moved && !consumed && size.width > 0 && releasedAt - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
                     val fraction = down.position.x / size.width
                     val action = pageTapAction(fraction, reader.state.value.settings.mode)
-                    if (action == PageTapAction.CONTROLS) {
-                        if(transform.tapAnchor!=current.anchor)transform.doubleTap.clear()
-                        transform.tapAnchor=current.anchor
+                    if(transform.tapAnchor!=current.anchor)transform.doubleTap.clear()
+                    transform.tapAnchor=current.anchor
+                    val second = transform.doubleTap.matches(down.position,down.uptimeMillis,viewConfiguration.doubleTapMinTimeMillis,
+                        viewConfiguration.doubleTapTimeoutMillis,viewConfiguration.touchSlop*2)
+                    val artwork = sourceStamp != null && comicArtworkContains(down.position,fit.size,viewport,zoom,pan)
+                    val zoomIntent = artwork && (second || comicZoomTapIntent(action,zoom,releasedAt-down.uptimeMillis))
+                    if (zoomIntent || action == PageTapAction.CONTROLS) {
                         val double = transform.doubleTap.tap(down.position,down.uptimeMillis,releasedAt,viewConfiguration.doubleTapMinTimeMillis,
                             viewConfiguration.doubleTapTimeoutMillis,viewConfiguration.touchSlop*2)
+                        if(!zoomIntent)transform.doubleTap.clear()
                         transform.tapJob?.cancel()
-                        if(double) {
+                        if(double && zoomIntent && reader.state.value.transition==null) {
                             reader.cancelTransition()
                             val next = comicDoubleTapZoom(zoom,pan,down.position,fit.size,viewport)
                             zoom=next.zoom;pan=next.pan;transform.edgeTicket=null;reader.hideControls()
-                        } else transform.tapJob = tapScope.launch {
+                        } else if(action == PageTapAction.CONTROLS) transform.tapJob = tapScope.launch {
                             val start = withFrameNanos { it }
                             var elapsed=0L
                             while(elapsed < viewConfiguration.doubleTapTimeoutMillis*1_000_000)elapsed=withFrameNanos { it }-start
@@ -328,9 +332,6 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
             }
           }
         }, contentAlignment = Alignment.Center) {
-            if(state.tapIntent!=null) Surface(Modifier.align(Alignment.BottomEnd).zIndex(1f),color=MaterialTheme.colors.surface.copy(alpha=.94f),contentColor=MaterialTheme.colors.onSurface) {
-                Text(if(state.tapIntent>0)"Next queued"else"Previous queued",Modifier.padding(8.dp),style=MaterialTheme.typography.caption)
-            }
             val offset = transition?.offset ?: 0f
             SpreadArtwork(current, state, bitmaps, failedConversions, reader.document.pages,
                 Modifier.fillMaxSize().graphicsLayer {
