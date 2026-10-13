@@ -3,10 +3,13 @@
 package org.infinilect.app.reader.page
 
 import androidx.compose.material.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.*
+import androidx.compose.ui.scene.ComposeScenePointer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import kotlinx.coroutines.*
@@ -53,31 +56,185 @@ class ModernComicInterfaceTest {
         }
         override fun close(){closes++}
     }
-    private class Fixture(val test:TestScope,val width:Int=390,val height:Int=780):AutoCloseable {
+    private class Fixture(val test:TestScope,val width:Int=390,val height:Int=780,val fontScale:Float=1f):AutoCloseable {
         val document=Comic()
         // Deterministic artwork adapter isolates UI clocks from platform native decode scheduling.
         // Existing CbzPagePreparer/SpreadRaster suites retain native decode and subsampling coverage.
         val native=object:RasterDecoder {override suspend fun decode(bytes:ByteArray,mediaType:String)=document.rasters[document.openIndex]}
         val reader=PageReaderController(document,test.backgroundScope,decoder=native,decodeDispatcher=StandardTestDispatcher(test.testScheduler))
-        val scene=ImageComposeScene(width,height,Density(1f),coroutineContext=UnconfinedTestDispatcher(test.testScheduler))
+        val scene=ImageComposeScene(width,height,Density(1f,fontScale),coroutineContext=UnconfinedTestDispatcher(test.testScheduler))
+        var appMode by androidx.compose.runtime.mutableStateOf(org.infinilect.app.ui.ApplicationThemeMode.SYSTEM)
+        var systemDark by androidx.compose.runtime.mutableStateOf(width>=600)
+        var controlsColors:androidx.compose.material.Colors?=null
         var appearance:ReaderAppearance?=null;var back:(()->Unit)?=null;var exits=0
-        suspend fun start(){reader.initialize(null);scene.setContent {MaterialTheme(colors=org.infinilect.app.ui.applicationColors(width>=600)) {PageReader(reader,false,{exits++},"Back",backHandler={enabled,action->back=if(enabled)action else null},appearanceChanged={appearance=it})}};await(0)}
+        suspend fun start(){reader.initialize(null);scene.setContent {MaterialTheme(colors=org.infinilect.app.ui.applicationColors(systemDark)) {PageReader(reader,false,{exits++},"Back",backHandler={enabled,action->back=if(enabled)action else null},appearanceChanged={appearance=it},controlsDark=appMode.isDark(systemDark),publicationActions={val colors=MaterialTheme.colors;androidx.compose.runtime.SideEffect{controlsColors=colors}})}};await(0)}
         fun draw(n:Int=6){repeat(n){test.advanceTimeBy(16);test.runCurrent();scene.render(test.testScheduler.currentTime*1_000_000).close()};test.runCurrent()}
         fun nodes():List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
-            fun walk(n:SemanticsNode):List<SemanticsNode> = listOf(n)+n.children.flatMap(::walk)
+            fun walk(n:SemanticsNode):List<SemanticsNode> = listOf(n)+(if(n.config.isClearingSemantics)emptyList()else n.children.flatMap(::walk))
             walk(owner.unmergedRootSemanticsNode)
         }
-        fun text(label:String)=nodes().firstOrNull{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true}
+        fun text(label:String):SemanticsNode? = nodes().lastOrNull{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label)==true&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
+            ?:nodes().firstOrNull{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true}
         fun art(index:Int)=nodes().firstOrNull{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Page ${index+1} of 7")==true}
         suspend fun await(anchor:Int){repeat(400){draw();if(reader.state.value.transition==null&&reader.state.value.position.index==anchor&&reader.spread().indices.all{art(it)!=null})return;test.advanceTimeBy(16);yield();Thread.yield()};fail("Spread $anchor not presented")}
-        fun click(label:String){val n=assertNotNull(text(label));assertTrue(n.boundsInRoot.bottom>0&&n.boundsInRoot.top<height);tap(n.boundsInRoot.center);draw(12)}
+        fun click(label:String){
+            if(text(label)==null) {
+                val panel=when(label){"Left-to-right","Right-to-left (manga)","Vertical","Webtoon","Single page","Double page"->"Reading mode";"Fit screen","Fit width","Fit height","Zoom in","Zoom out","Reset zoom"->"Page fitting";else->null}
+                if(panel!=null)click(panel)
+            }
+            var n=assertNotNull(text(label))
+            if(n.boundsInRoot.top>=height || n.boundsInRoot.bottom<=0) {
+                val expand=nodes().firstOrNull{it.config.getOrNull(SemanticsActions.Expand)!=null}
+                expand?.config?.getOrNull(SemanticsActions.Expand)?.action?.invoke();draw(24);n=assertNotNull(text(label))
+            }
+            repeat(5) { if(n.boundsInRoot.height<=0 || n.boundsInRoot.top>=height || n.boundsInRoot.bottom<=0) {
+                nodes().lastOrNull{it.config.getOrNull(SemanticsActions.ScrollBy)!=null}?.config?.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f,180f)
+                draw(24);n=assertNotNull(text(label))
+            } }
+            assertTrue(n.boundsInRoot.height>0&&n.boundsInRoot.bottom>0&&n.boundsInRoot.top<height);tap(n.boundsInRoot.center);draw(12)}
         fun tap(at:Offset){scene.sendPointerEvent(PointerEventType.Press,at);scene.sendPointerEvent(PointerEventType.Release,at);draw()}
-        fun center(){tap(Offset(width*.5f,height*.5f))}
+        fun center(){tap(Offset(width*.5f,height*.5f));draw(24)}
         fun key(key:Key){scene.sendKeyEvent(KeyEvent(key=key,type=KeyEventType.KeyDown));draw()}
         fun resize(w:Int,h:Int){scene.constraints=Constraints.fixed(w,h);draw()}
         fun preview(name:String){System.getenv("INFINILECT_COMIC_PREVIEW_DIRECTORY")?.let {path->val dir=java.nio.file.Path.of(path);java.nio.file.Files.createDirectories(dir);scene.render(test.testScheduler.currentTime*1_000_000).use {image->java.nio.file.Files.write(dir.resolve(name),assertNotNull(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)).use{it.bytes})}}}
         override fun close(){scene.close();reader.close();test.runCurrent();assertNull(appearance);assertEquals(1,document.closes);assertEquals(0,document.handles)}
     }
+    @Test fun applicationOverridesSystemAndAutomaticFollowsResolutionWithoutChangingPage()=runTest {Fixture(this).use {f->
+        f.start();f.reader.navigate(2);f.await(2)
+        for((mode,system,expected)in listOf(Triple(org.infinilect.app.ui.ApplicationThemeMode.LIGHT,true,true),Triple(org.infinilect.app.ui.ApplicationThemeMode.DARK,false,false),Triple(org.infinilect.app.ui.ApplicationThemeMode.SYSTEM,true,false),Triple(org.infinilect.app.ui.ApplicationThemeMode.SYSTEM,false,true))) {
+            f.appMode=mode;f.systemDark=system;f.reader.hideControls();f.draw(24);f.center();f.click("Settings")
+            assertEquals(expected,assertNotNull(f.controlsColors).isLight);assertEquals(2,f.reader.state.value.position.index)
+            assertEquals(!expected,assertNotNull(f.appearance).dark);f.key(Key.Escape);f.draw(24)
+            f.reader.hideControls();f.draw();assertEquals(ReaderAppearance(true,COMIC_BACKGROUND),f.appearance)
+        }
+    }}
+    @Test fun iconsReplacePersistentLabelsAndHaveAccessibleTouchTargets()=runTest {Fixture(this).use {f->
+        f.start();f.center()
+        for(label in listOf("Back","Previous","Next","Reading mode","Orientation","Page fitting","Settings")) {
+            val node=assertNotNull(f.text(label));assertTrue(node.boundsInRoot.width>=47&&node.boundsInRoot.height>=47,label)
+        }
+        assertFalse(f.nodes().any{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text in listOf("Previous","Next","Hide")}==true})
+    }}
+    private fun Fixture.sheet()=nodes().first {it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Reader settings sheet")==true}
+    @Test fun sheetOpensHalfExpandsCollapsesAndOutsideDismissesWithoutASeek()=runTest {Fixture(this).use {f->
+        f.start();val before=f.reader.state.value;f.center();f.click("Reading mode");f.draw(24)
+        assertEquals("Half expanded",f.sheet().config.getOrNull(SemanticsProperties.StateDescription));val half=f.sheet().positionInRoot.y
+        val expand=assertNotNull(f.nodes().firstOrNull{it.config.getOrNull(SemanticsActions.Expand)!=null})
+        assertTrue(assertNotNull(expand.config.getOrNull(SemanticsActions.Expand)?.action).invoke());f.draw(24)
+        assertEquals("Expanded",f.sheet().config.getOrNull(SemanticsProperties.StateDescription));assertTrue(f.sheet().positionInRoot.y<half)
+        val collapse=assertNotNull(f.nodes().firstOrNull{it.config.getOrNull(SemanticsActions.Collapse)!=null})
+        assertTrue(assertNotNull(collapse.config.getOrNull(SemanticsActions.Collapse)?.action).invoke());f.draw(24)
+        assertEquals("Half expanded",f.sheet().config.getOrNull(SemanticsProperties.StateDescription))
+        f.tap(Offset(8f,90f));f.draw(24);assertFalse(f.nodes().any{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Reader settings sheet")==true})
+        assertEquals(before.ticket,f.reader.state.value.ticket);assertEquals(before.position,f.reader.state.value.position);assertEquals(before.frames,f.reader.state.value.frames)
+    }}
+    @Test fun sheetDragCanExpandAndDismissAndBackEscapeRespectModalPriority()=runTest {Fixture(this).use {f->
+        f.start();f.center();f.click("Settings");f.draw(24)
+        val start=Offset(195f,f.sheet().positionInRoot.y+10)
+        f.scene.sendPointerEvent(PointerEventType.Press,start,type=PointerType.Touch,timeMillis=testScheduler.currentTime)
+        advanceTimeBy(250);f.scene.sendPointerEvent(PointerEventType.Move,start-Offset(0f,300f),type=PointerType.Touch,timeMillis=testScheduler.currentTime);f.draw()
+        advanceTimeBy(250);f.scene.sendPointerEvent(PointerEventType.Release,start-Offset(0f,300f),type=PointerType.Touch,timeMillis=testScheduler.currentTime);f.draw(24)
+        assertEquals("Expanded",f.sheet().config.getOrNull(SemanticsProperties.StateDescription))
+        val down=Offset(195f,f.sheet().positionInRoot.y+10)
+        f.scene.sendPointerEvent(PointerEventType.Press,down,type=PointerType.Touch,timeMillis=testScheduler.currentTime)
+        advanceTimeBy(250);f.scene.sendPointerEvent(PointerEventType.Move,down+Offset(0f,720f),type=PointerType.Touch,timeMillis=testScheduler.currentTime);f.draw()
+        advanceTimeBy(250);f.scene.sendPointerEvent(PointerEventType.Release,down+Offset(0f,720f),type=PointerType.Touch,timeMillis=testScheduler.currentTime);f.draw(24)
+        assertFalse(f.nodes().any{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Reader settings sheet")==true})
+        f.click("Settings");f.draw(24);f.key(Key.Escape);f.draw(24);assertNotNull(f.text("Settings"));assertEquals(0,f.exits)
+        f.click("Orientation");f.draw(24);assertNotNull(f.text("Portrait"));assertNotNull(f.back).invoke();f.draw(24)
+        assertTrue(f.reader.state.value.controlsVisible);assertNotNull(f.back).invoke();f.draw();assertFalse(f.reader.state.value.controlsVisible)
+    }}
+    @Test fun smallWindowLargeFontsKeepSheetActionsScrollableAndCloseReachable()=runTest {Fixture(this,320,220,2f).use {f->
+        f.start();f.center();f.click("Settings");f.click("Reading mode");f.draw(24)
+        val close=assertNotNull(f.text("Close settings"));assertTrue(close.boundsInRoot.top<220&&close.boundsInRoot.bottom>0)
+        assertTrue(f.nodes().any{it.config.getOrNull(SemanticsActions.ScrollBy)!=null})
+        f.click("Close settings");f.draw(24);assertEquals(0,f.reader.state.value.position.index)
+    }}
+    @Test fun sliderPointerShowsIntentAndPreviewWithoutCommittingUntilRelease()=runTest {Fixture(this).use {f->
+        f.start();f.center();val slider=assertNotNull(f.nodes().firstOrNull{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Go to page")==true})
+        val b=slider.boundsInRoot;val at=Offset(b.left+12,b.center.y);val end=Offset(b.left+b.width*.70f,b.center.y)
+        f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=testScheduler.currentTime)
+        advanceTimeBy(20);f.scene.sendPointerEvent(PointerEventType.Move,end,type=PointerType.Touch,timeMillis=testScheduler.currentTime);f.draw(1)
+        val scrub=assertNotNull(f.reader.state.value.scrub);assertEquals(0,f.reader.state.value.position.index)
+        assertNotNull(f.text("Preview ${scrub.requested+1} / 7"));assertTrue(f.reader.retainedPages<=3)
+        repeat(40){f.draw();yield()};assertEquals(scrub.requested,f.reader.state.value.scrub?.displayed)
+        assertNotNull(f.art(scrub.requested));assertEquals(0,f.reader.state.value.position.index)
+        f.scene.sendPointerEvent(PointerEventType.Release,end,type=PointerType.Touch,timeMillis=testScheduler.currentTime);f.await(scrub.requested)
+        assertNull(f.reader.state.value.scrub)
+    }}
+    @Test fun sparseOneTimesSwipeConsumesFinalPointerUpMovement()=runTest {Fixture(this).use {f->
+        f.start();val at=Offset(351f,390f);val t=testScheduler.currentTime
+        f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=t)
+        f.scene.sendPointerEvent(PointerEventType.Release,at-Offset(120f,0f),type=PointerType.Touch,timeMillis=t+16);f.await(1)
+        assertFalse(f.reader.state.value.controlsVisible)
+    }}
+    @Test fun doubleTapOnRtlPairUsesOneCanvasAndNoNewRasters()=runTest {Fixture(this,960,540).use {f->
+        f.start();f.reader.mode(PageReadingMode.PAGED_RTL);f.reader.layout(PageLayout.DOUBLE);f.reader.seek(1);f.await(1)
+        val before=f.reader.state.value.frames;val at=Offset(480f,270f);val t=testScheduler.currentTime
+        for((type,time)in listOf(PointerEventType.Press to t,PointerEventType.Release to t+10,PointerEventType.Press to t+110,PointerEventType.Release to t+120)) {
+            f.scene.sendPointerEvent(type,at,type=PointerType.Touch,timeMillis=time);f.draw(1)
+        }
+        f.draw(24);assertEquals(1,f.reader.state.value.position.index);assertEquals(before,f.reader.state.value.frames)
+        val a=assertNotNull(f.art(1)).positionInRoot;val b=assertNotNull(f.art(2)).positionInRoot
+        assertTrue(a.x>b.x);assertFalse(f.reader.state.value.controlsVisible);assertTrue(f.reader.retainedPages<=4)
+    }}
+    @Test fun controlsAndSheetNeverForwardTheirTouchesIntoArtworkNavigation()=runTest {Fixture(this).use {f->
+        f.start();f.center();val counter=assertNotNull(f.text("1 / 7"))
+        f.tap(counter.boundsInRoot.center);assertEquals(0,f.reader.state.value.position.index);assertNull(f.reader.state.value.transition)
+        f.click("Settings");f.draw(24);val description=assertNotNull(f.text("Double tap the center to zoom. Side taps navigate immediately."))
+        f.tap(description.boundsInRoot.center);assertEquals(0,f.reader.state.value.position.index);assertNull(f.reader.state.value.transition)
+    }}
+    @Test fun centralDoubleTapZoomsTowardArtworkResetsAndNeverTogglesChromeOrTurns()=runTest {Fixture(this).use {f->
+        f.start();val origin=assertNotNull(f.art(0)).positionInRoot;val at=Offset(156f,312f)
+        fun touch(type:PointerEventType,time:Long){f.scene.sendPointerEvent(type,at,type=PointerType.Touch,timeMillis=time);f.draw(1)}
+        val base=testScheduler.currentTime;touch(PointerEventType.Press,base);touch(PointerEventType.Release,base+10)
+        touch(PointerEventType.Press,base+110);touch(PointerEventType.Release,base+120);f.draw(24)
+        assertEquals(0,f.reader.state.value.position.index);assertFalse(f.reader.state.value.controlsVisible);assertNull(f.reader.state.value.transition)
+        assertNotEquals(origin,assertNotNull(f.art(0)).positionInRoot)
+        f.tap(Offset(351f,390f));assertEquals(0,f.reader.state.value.position.index)
+        val next=testScheduler.currentTime;touch(PointerEventType.Press,next);touch(PointerEventType.Release,next+10);touch(PointerEventType.Press,next+110);touch(PointerEventType.Release,next+120);f.draw(24)
+        assertEquals(origin,assertNotNull(f.art(0)).positionInRoot);assertFalse(f.reader.state.value.controlsVisible)
+        f.tap(Offset(351f,390f));f.await(1)
+    }}
+    @Test fun centralSingleTapWaitsOnlyForDoubleTapAndLongPressNeverNavigates()=runTest {Fixture(this).use {f->
+        f.start();val at=Offset(195f,390f);val t=testScheduler.currentTime
+        f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=t);f.scene.sendPointerEvent(PointerEventType.Release,at,type=PointerType.Touch,timeMillis=t+10);f.draw(2)
+        assertFalse(f.reader.state.value.controlsVisible);f.draw(24);assertTrue(f.reader.state.value.controlsVisible)
+        f.reader.hideControls();val later=testScheduler.currentTime;val side=Offset(351f,390f)
+        f.scene.sendPointerEvent(PointerEventType.Press,side,type=PointerType.Touch,timeMillis=later);f.scene.sendPointerEvent(PointerEventType.Release,side,type=PointerType.Touch,timeMillis=later+600);f.draw(24)
+        assertEquals(0,f.reader.state.value.position.index);assertFalse(f.reader.state.value.controlsVisible)
+    }}
+    @Test fun pinchAfterOneCentralTapRetiresThePendingSingleTap()=runTest {Fixture(this).use {f->
+        f.start();val a=Offset(160f,390f);val b=Offset(240f,390f);val t=testScheduler.currentTime
+        f.scene.sendPointerEvent(PointerEventType.Press,a,type=PointerType.Touch,timeMillis=t);f.scene.sendPointerEvent(PointerEventType.Release,a,type=PointerType.Touch,timeMillis=t+10);f.draw(1)
+        fun send(type:PointerEventType,first:Boolean,second:Boolean,time:Long){f.scene.sendPointerEvent(type,listOf(ComposeScenePointer(PointerId(1),a,first,PointerType.Touch),ComposeScenePointer(PointerId(2),b,second,PointerType.Touch)),timeMillis=time);f.draw(1)}
+        send(PointerEventType.Press,true,false,t+100);send(PointerEventType.Press,true,true,t+110);send(PointerEventType.Release,false,false,t+150);f.draw(24)
+        assertFalse(f.reader.state.value.controlsVisible);assertNull(f.reader.state.value.transition);assertEquals(0,f.reader.state.value.position.index)
+    }}
+    @Test fun sevenFastSideTapsKeepTheFirstIncomingImageAndAtMostOneFollowingTurn()=runTest {
+        for(mode in listOf(PageReadingMode.PAGED_LTR,PageReadingMode.PAGED_RTL))for(layout in PageLayout.entries)Fixture(this).use {f->
+            f.start();f.reader.mode(mode);f.reader.layout(layout);f.await(0)
+            val at=Offset(if(mode==PageReadingMode.PAGED_LTR)351f else 39f,390f);val t=testScheduler.currentTime
+            var first:Long?=null
+            repeat(7){i->f.scene.sendPointerEvent(PointerEventType.Press,at,type=PointerType.Touch,timeMillis=t+i*20)
+                f.scene.sendPointerEvent(PointerEventType.Release,at,type=PointerType.Touch,timeMillis=t+i*20+10);f.draw(1)
+                val incoming=assertNotNull(f.reader.state.value.transition);if(first==null)first=incoming.ticket
+                assertEquals(first,incoming.ticket);assertEquals(1,incoming.target);assertTrue(f.reader.retainedPages<=4)
+            }
+            f.await(if(layout==PageLayout.DOUBLE)3 else 2);assertNull(f.reader.state.value.tapIntent)
+        }
+    }
+    @Test fun lightDarkPortraitLandscapeAndDesktopRefinementPreviews()=runTest {
+        for((w,h,name)in listOf(Triple(390,780,"portrait"),Triple(960,540,"landscape"),Triple(1280,800,"desktop")))for(dark in listOf(false,true))Fixture(this,w,h).use {f->
+            f.systemDark=dark;f.start();f.reader.layout(PageLayout.DOUBLE);f.reader.seek(1);f.await(1);f.center()
+            val prefix="refined-$name-${if(dark)"dark"else"light"}";f.preview("$prefix-controls.png")
+            f.click("Reading mode");f.draw(24);f.preview("$prefix-sheet.png");f.key(Key.Escape);f.draw(24)
+            f.reader.hideControls();f.draw();f.preview("$prefix-artwork.png")
+        }
+    }
+    @Test fun lightApplicationControlsKeepDarkArtworkButUseLightSurfaces()=runTest {Fixture(this).use {f->
+        f.start();f.center();f.click("Settings");assertTrue(assertNotNull(f.controlsColors).isLight)
+    }}
     @Test fun immersiveSurfaceHasNoChromeUntilCenterAndSystemAppearanceExpires()=runTest {Fixture(this).use {f->
         f.start();assertNull(f.text("Settings"));assertNull(f.text("1 / 7"));assertEquals(ReaderAppearance(true,COMIC_BACKGROUND),f.appearance)
         val ticket=f.reader.state.value.ticket;val b=assertNotNull(f.art(0)).boundsInRoot
@@ -92,13 +249,11 @@ class ModernComicInterfaceTest {
         f.start();f.center();val slider=assertNotNull(f.nodes().firstOrNull{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Go to page")==true})
         assertTrue(assertNotNull(slider.config.getOrNull(SemanticsActions.SetProgress)?.action).invoke(5f));assertEquals(0,f.reader.state.value.position.index);f.await(4);assertNotNull(f.text("5 / 7"))
     }}
-    @Test fun compactLandscapeKeepsCenterFreeAndSliderReachableThroughSettings()=runTest {Fixture(this,640,240).use {f->
-        f.start();f.center();assertNotNull(f.text("1 / 7"));f.click("Settings");f.click("Go to page")
-        val slider=assertNotNull(f.nodes().firstOrNull {it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose page")==true})
-        assertTrue(assertNotNull(slider.config.getOrNull(SemanticsActions.SetProgress)?.action).invoke(5f));f.draw()
-        assertEquals(0,f.reader.state.value.position.index)
-        val confirm=f.nodes().last {it.config.getOrNull(SemanticsProperties.Text)?.any {t->t.text=="Go to page"}==true}
-        assertTrue(confirm.boundsInRoot.top<240&&confirm.boundsInRoot.bottom>0);f.tap(confirm.boundsInRoot.center);f.await(4)
+    @Test fun compactLandscapeKeepsCenterFreeAndSliderReachable()=runTest {Fixture(this,640,240).use {f->
+        f.start();f.center();assertNotNull(f.text("1 / 7"))
+        val slider=assertNotNull(f.nodes().firstOrNull {it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Go to page")==true})
+        assertTrue(assertNotNull(slider.config.getOrNull(SemanticsActions.SetProgress)?.action).invoke(5f))
+        assertEquals(0,f.reader.state.value.position.index);f.await(4)
     }}
     @Test fun keyboardPhysicalDirectionsRespectMangaAndEscapeDismissesBeforeExit()=runTest {Fixture(this).use {f->
         f.start();f.key(Key.DirectionRight);f.await(1);f.reader.mode(PageReadingMode.PAGED_RTL);f.await(1)

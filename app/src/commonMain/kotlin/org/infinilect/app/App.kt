@@ -169,7 +169,7 @@ fun App(
                 )
                 is OpenPublicationState.PageReady -> key(current.reader) {
                     org.infinilect.app.reader.page.PageReader(current.reader, saveFailed, application::back, backLabel,
-                        backHandler = backHandler, appearanceChanged = readerAppearance,
+                        backHandler = backHandler, appearanceChanged = readerAppearance, controlsDark = appDark,
                         publicationActions = { LibraryAction(LibraryActionState(membership.inLibrary, membership.busy, membership.unavailable), application.collections::toggleLibrary) },
                         notices = {
                             if (membership.unavailable) {

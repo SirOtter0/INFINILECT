@@ -21,6 +21,10 @@ internal sealed interface PageFrame {
     data object Unavailable : PageFrame
 }
 internal data class PagePosition(val index: Int, val fraction: Double = 0.0)
+/** Scalar preview identity only; durable/session position stays authoritative until release. */
+internal data class PageScrub(val requested: Int, val displayed: Int, val released: Boolean = false)
+internal const val PAGE_SCRUB_INTERVAL_MILLIS = 80L
+
 internal data class PageReaderState(
     val position: PagePosition = PagePosition(0),
     val settings: PageReaderSettings = PageReaderSettings(),
@@ -29,6 +33,8 @@ internal data class PageReaderState(
     val controlsVisible: Boolean = false,
     val transition: PageTransition? = null,
     val navigationFailed: Boolean = false,
+    val scrub: PageScrub? = null,
+    val tapIntent: Int? = null,
 )
 
 /** UI-thread commands and immutable state. One serialized acquisition/decode worker,
@@ -46,6 +52,7 @@ internal class PageReaderController(
     private val mutableState = MutableStateFlow(PageReaderState())
     val state = mutableState.asStateFlow()
     val settingsSaveFailed = preferences?.saveFailed ?: MutableStateFlow(false).asStateFlow()
+    private var scrubJob: Job? = null
     private var request: Job? = null
     private var timer: Job? = null
     private var generation = 0L
@@ -95,17 +102,19 @@ internal class PageReaderController(
     }
     fun navigate(index: Int) {
         if (closed || index !in document.pages.indices) return
+        cancelScrub()
         if (state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)) {
             requestTurn(spread(index).anchor); return
         }
         semanticPosition = PagePosition(index)
-        mutableState.value = state.value.copy(position = semanticPosition, ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
+        mutableState.value = state.value.copy(position = semanticPosition, ticket = state.value.ticket + 1, transition = null, tapIntent = null, navigationFailed = false)
         loadWindow(index)
     }
     fun next() = turn(1)
     fun previous() = turn(-1)
     private fun turn(direction: Int) {
         if (closed) return
+        cancelScrub()
         val s = state.value
         if (!pagedMode(s.settings.mode)) { navigate(s.position.index + direction); return }
         // Coalesce rapid requests into one latest target, never an animation queue.
@@ -122,7 +131,7 @@ internal class PageReaderController(
         val offset = old?.offset?.takeIf { side == 0 || it * side <= 0 } ?: 0f
         val ticket = s.ticket + 1
         mutableState.value = s.copy(ticket = ticket, navigationFailed = false,
-            transition = PageTransition(ticket, s.position.index, target, offset,
+            tapIntent = null, transition = PageTransition(ticket, s.position.index, target, offset,
                 if (target == s.position.index) PageTransitionPhase.RETURNING else PageTransitionPhase.WAITING))
         loadWindow(s.position.index, visible = listOf(target))
     }
@@ -130,6 +139,7 @@ internal class PageReaderController(
      * Uses the same identity/ticket/resource guards as fit-page dragging. */
     fun beginEdgeDrag(sourceStamp: Long?): Long? = beginDrag(1f, sourceStamp)
     fun beginDrag(zoom: Float, sourceStamp: Long?): Long? {
+        if (state.value.scrub != null) return null
         if (closed || zoom != 1f || !pagedMode(state.value.settings.mode)) return null
         val s = state.value
         val source = s.frames[s.position.index] as? PageFrame.Ready ?: return null
@@ -144,7 +154,7 @@ internal class PageReaderController(
             else PageDragContinuation(it.target, it.phase, it.offset, s.navigationFailed)
         }
         mutableState.value = s.copy(ticket = ticket, navigationFailed = false,
-            transition = PageTransition(ticket, s.position.index, target, offset, PageTransitionPhase.DRAGGING,
+            tapIntent = null, transition = PageTransition(ticket, s.position.index, target, offset, PageTransitionPhase.DRAGGING,
                 continuation = continuation))
         loadWindow(s.position.index, visible = listOf(target))
         return ticket
@@ -202,7 +212,7 @@ internal class PageReaderController(
     fun returnTransition(ticket: Long, failed: Boolean = false) {
         val t = state.value.transition ?: return
         if (closed || t.ticket != ticket) return
-        mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.RETURNING, targetStamp = null, targetStamps = emptyMap(), continuation = null), navigationFailed = failed)
+        mutableState.value = state.value.copy(transition = t.copy(phase = PageTransitionPhase.RETURNING, targetStamp = null, targetStamps = emptyMap(), continuation = null), navigationFailed = failed, tapIntent = if (failed) null else state.value.tapIntent)
     }
     fun transitionOffset(ticket: Long, offset: Float) {
         val t = state.value.transition ?: return
@@ -230,7 +240,7 @@ internal class PageReaderController(
     }
     fun cancelTransition() {
         if (closed || state.value.transition == null) return
-        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, transition = null)
+        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, transition = null, tapIntent = null)
         loadWindow(state.value.position.index)
     }
     fun toggleControls() {
@@ -239,8 +249,8 @@ internal class PageReaderController(
     fun tap(fraction: Float) {
         if (closed) return
         when (pageTapAction(fraction, state.value.settings.mode)) {
-            PageTapAction.PREVIOUS -> previous()
-            PageTapAction.NEXT -> next()
+            PageTapAction.PREVIOUS -> stepTap(-1)
+            PageTapAction.NEXT -> stepTap(1)
             PageTapAction.CONTROLS -> toggleControls()
             null -> Unit
         }
@@ -251,8 +261,15 @@ internal class PageReaderController(
         if (pageIndex in document.pages.indices && spread(pageIndex).second == null) presented(ticket, pageIndex, mapOf(pageIndex to stamp))
     }
     fun presented(ticket: Long, pageIndex: Int, stamps: Map<Int, Long>) {
-        if (closed || state.value.transition != null || ticket != state.value.ticket || pageIndex != state.value.position.index) return
-        if (validStamps(pageIndex, stamps)) changedPosition()
+        if (closed || state.value.scrub != null || state.value.transition != null || ticket != state.value.ticket || pageIndex != state.value.position.index) return
+        if (validStamps(pageIndex, stamps)) {
+            changedPosition()
+            // A follow-up starts only after the first incoming spread was really composed at rest.
+            state.value.tapIntent?.let { direction ->
+                mutableState.value = state.value.copy(tapIntent = null)
+                turn(direction)
+            }
+        }
     }
     /** Positive horizontal swipe advances in RTL; negative advances in LTR. */
     fun swipe(right: Boolean) {
@@ -268,28 +285,101 @@ internal class PageReaderController(
     /** Slider/keyboard intent uses the existing validated spatial turn, not early progress. */
     fun seek(index: Int) {
         if (closed || index !in document.pages.indices) return
+        cancelScrub()
         if (pagedMode(state.value.settings.mode)) requestTurn(spread(index).anchor) else navigate(index)
+    }
+    /** One active turn and one latest direction, never seven undisplayed destinations.
+     * Repeated taps in the same direction while busy coalesce; a drag/seek retires the latch. */
+    fun stepTap(direction: Int): Boolean {
+        require(direction == -1 || direction == 1)
+        if (closed || state.value.scrub != null) return false
+        val s = state.value
+        val t = s.transition
+        if (t == null || !pagedMode(s.settings.mode)) { turn(direction); return state.value.position != s.position || state.value.transition != null }
+        val base = if (t.phase == PageTransitionPhase.RETURNING) s.position.index else t.target
+        if (neighbor(base, direction) == null || s.tapIntent == direction) return false
+        mutableState.value = s.copy(tapIntent = direction)
+        return true
+    }
+    /** At most one delayed scalar seek. The existing serialized worker owns all pixel work. */
+    fun previewPage(index: Int) {
+        if (closed || index !in document.pages.indices) return
+        val s = state.value
+        if (s.scrub?.let { it.requested == index && !it.released } == true) return
+        if (s.scrub == null) {
+            flush()
+            mutableState.value = s.copy(ticket = s.ticket + 1, transition = null, tapIntent = null,
+                navigationFailed = false, scrub = PageScrub(index, s.position.index))
+        } else mutableState.value = s.copy(scrub = s.scrub.copy(requested = index, released = false))
+        if (pagedMode(s.settings.mode) && scrubJob?.isActive != true) scrubJob = scope.launch {
+            delay(PAGE_SCRUB_INTERVAL_MILLIS)
+            requestPreview()
+        }
+    }
+    private fun requestPreview() {
+        val s = state.value
+        val scrub = s.scrub ?: return
+        mutableState.value = s.copy(ticket = s.ticket + 1, navigationFailed = false)
+        loadWindow(scrub.displayed, visible = listOf(spread(scrub.requested).anchor))
+    }
+    fun releasePreview() {
+        val scrub = state.value.scrub ?: return
+        scrubJob?.cancel(); scrubJob = null
+        if (!pagedMode(state.value.settings.mode)) {
+            val target = scrub.requested
+            cancelScrub(); navigate(target)
+        } else {
+            mutableState.value = state.value.copy(scrub = scrub.copy(released = true))
+            requestPreview()
+        }
+    }
+    /** Conversion readiness selects a visual preview, never a durable reading locator. */
+    fun previewReady(ticket: Long, target: Int, stamps: Map<Int, Long>) {
+        val s = state.value
+        val scrub = s.scrub ?: return
+        if (closed || ticket != s.ticket || target != spread(scrub.requested).anchor || !validStamps(target, stamps)) return
+        if (scrub.displayed != target) mutableState.value = s.copy(scrub = scrub.copy(displayed = target))
+    }
+    /** Release + a composed complete preview may establish the final logical position.
+     * The normal new-ticket presented acknowledgement remains responsible for progress. */
+    fun previewPresented(ticket: Long, target: Int, stamps: Map<Int, Long>) {
+        val s = state.value
+        val scrub = s.scrub ?: return
+        if (closed || ticket != s.ticket || !scrub.released || target != scrub.displayed ||
+            target != spread(scrub.requested).anchor || !validStamps(target, stamps)) return
+        semanticPosition = PagePosition(scrub.requested)
+        mutableState.value = s.copy(position = PagePosition(target), ticket = s.ticket + 1, scrub = null, navigationFailed = false)
+        loadWindow(target)
+    }
+    fun cancelScrub(failed: Boolean = false) {
+        if (closed || state.value.scrub == null) return
+        scrubJob?.cancel(); scrubJob = null
+        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, scrub = null, transition = null,
+            tapIntent = null, navigationFailed = failed)
+        loadWindow(state.value.position.index)
     }
     fun hideControls() { if (!closed) mutableState.value = state.value.copy(controlsVisible = false) }
     private fun settings(settings: PageReaderSettings) {
         if (closed || settings == state.value.settings) return
+        cancelScrub()
         val regroup = settings.mode != state.value.settings.mode || settings.layout != state.value.settings.layout
         preferences?.submit(settingsLease, settings)
         flush()
         if (regroup) spreads = pageSpreads(document.pages, settings)
-        mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1, transition = null, navigationFailed = false)
+        mutableState.value = state.value.copy(settings = settings, ticket = state.value.ticket + 1, transition = null, tapIntent = null, navigationFailed = false)
         mutableState.value = state.value.copy(position = normalize(semanticPosition))
         loadWindow(state.value.position.index, force = regroup)
     }
     /** A resized viewport restores the same semantic position and retires old layout callbacks. */
     fun presentationChanged() {
         if (closed) return
+        cancelScrub()
         flush()
-        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, transition = null)
+        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, transition = null, tapIntent = null)
         loadWindow(state.value.position.index)
     }
     fun report(ticket: Long, pageIndex: Int, fraction: Double, visiblePages: List<Int> = emptyList()) {
-        if (closed || ticket != state.value.ticket || pageIndex !in document.pages.indices || !fraction.isFinite() ||
+        if (closed || state.value.scrub != null || ticket != state.value.ticket || pageIndex !in document.pages.indices || !fraction.isFinite() ||
             state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)) return
         semanticPosition = PagePosition(pageIndex, fraction.coerceIn(0.0, 1.0))
         mutableState.value = state.value.copy(position = semanticPosition, transition = null)
@@ -297,7 +387,7 @@ internal class PageReaderController(
     }
     /** Initial/restored viewport can request frames without claiming a new reading position. */
     fun visible(ticket: Long, pages: List<Int>) {
-        if (!closed && ticket == state.value.ticket) loadWindow(state.value.position.index, visible = pages)
+        if (!closed && state.value.scrub == null && ticket == state.value.ticket) loadWindow(state.value.position.index, visible = pages)
     }
     private fun locator(position: PagePosition) = ReadingLocator.Page(document.pages[position.index].key, position.index, position.fraction)
     private fun changedPosition() {
@@ -315,9 +405,9 @@ internal class PageReaderController(
         // at most three Single/continuous or four Double slots; no decode/map for the whole book.
         val double = state.value.settings.layout == PageLayout.DOUBLE && pagedMode(state.value.settings.mode)
         val wanted = if (double) {
-            val target = visible.firstOrNull { it != center } ?: neighbor(center, 1)
+            val target = visible.firstOrNull { it != center } ?: if (state.value.scrub != null) center else neighbor(center, 1)
             (spread(center).indices + target?.let { spread(it).indices }.orEmpty()).distinct().take(PagePolicy.SPREAD_RETAINED)
-        } else (listOf(center) + visible.take(PagePolicy.RETAINED) + listOf(center - PagePolicy.PREFETCH, center + PagePolicy.PREFETCH))
+        } else (listOf(center) + visible.take(PagePolicy.RETAINED) + if (state.value.scrub != null) emptyList() else listOf(center - PagePolicy.PREFETCH, center + PagePolicy.PREFETCH))
             .filter { it in document.pages.indices }.distinct().take(PagePolicy.RETAINED)
         if (!force && wanted == window) return
         window = wanted
@@ -366,8 +456,9 @@ internal class PageReaderController(
     fun flush() { timer?.cancel(); timer = null; pending?.let { persistence?.submit(it) }; pending = null; preferences?.flush() }
     fun close() {
         if (closed) return
+        scrubJob?.cancel(); scrubJob = null
         closed = true; generation++; request?.cancel(); flush(); window = emptyList()
-        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, frames = emptyMap(), transition = null)
+        mutableState.value = state.value.copy(ticket = state.value.ticket + 1, frames = emptyMap(), transition = null, scrub = null, tapIntent = null)
         document.close()
     }
 }

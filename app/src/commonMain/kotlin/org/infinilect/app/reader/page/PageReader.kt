@@ -12,6 +12,7 @@ import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.clipToBounds
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -40,11 +42,18 @@ import kotlinx.coroutines.flow.*
 import org.infinilect.app.media.rasterImageBitmap
 import org.infinilect.core.PageEntry
 
-internal class PageTransform {
+internal class ComicTapOwner { var job: Job? = null }
+internal class PageTransform(val taps: ComicTapOwner = ComicTapOwner()) {
     var zoom by mutableFloatStateOf(1f)
     var pan by mutableStateOf(Offset.Zero)
     var edgeTicket by mutableStateOf<Long?>(null)
-    fun reset() { zoom = 1f; pan = Offset.Zero; edgeTicket = null }
+    val doubleTap = ComicDoubleTap()
+    var tapJob: Job?
+        get() = taps.job
+        set(value) { taps.job = value }
+    var tapAnchor: Int? = null
+    fun resetTap() { tapJob?.cancel(); tapJob = null; doubleTap.clear(); edgeTicket = null }
+    fun reset() { zoom = 1f; pan = Offset.Zero; resetTap() }
 }
 
 /** Presentation only: bitmap conversion is a UI adapter, not part of page semantics. */
@@ -54,6 +63,7 @@ internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBac
     appearanceChanged: (ReaderAppearance?) -> Unit = {},
     publicationActions: (@Composable () -> Unit)? = null,
     notices: (@Composable () -> Unit)? = null,
+    controlsDark: Boolean = !MaterialTheme.colors.isLight,
 ) {
     val state by reader.state.collectAsState()
     val settingsFailed by reader.settingsSaveFailed.collectAsState()
@@ -67,22 +77,27 @@ internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBac
     val validConversions = presented.filter { (index, old) -> (readyFrames[index] as? PageFrame.Ready)?.stamp == old.stamp }
     val bitmaps = validConversions.filterValues { it.bitmap != null }.mapValues { it.value.bitmap!! }
     val failedConversions = validConversions.filterValues { it.bitmap == null }.keys
-    val transform = remember(reader, state.position.index, state.settings) { PageTransform() }
+    val taps = remember(reader) { ComicTapOwner() }
+    val transform = remember(reader, state.position.index, state.settings) { PageTransform(taps) }
     val focus = remember(reader) { FocusRequester() }
     var artworkFocused by remember { mutableStateOf(false) }
-    backHandler(state.controlsVisible) { reader.hideControls() }
-    ReaderAppearanceEffect(ReaderAppearance(true, COMIC_BACKGROUND), appearanceChanged)
-    LaunchedEffect(reader, state.controlsVisible) { if (!state.controlsVisible) { withFrameNanos { }; focus.requestFocus() } }
+    var artworkPlaced by remember(reader) { mutableStateOf(false) }
+    DisposableEffect(reader,state.settings) { onDispose { taps.job?.cancel(); taps.job=null } }
+    LaunchedEffect(reader, artworkPlaced, state.position.index, state.settings, state.controlsVisible) {
+        if (artworkPlaced && !state.controlsVisible) { withFrameNanos { }; focus.requestFocus() }
+    }
     fun zoomBy(delta: Float) { reader.cancelTransition(); transform.edgeTicket = null; transform.zoom = (transform.zoom + delta).coerceIn(1f, 4f); transform.pan = Offset.Zero }
-    MaterialTheme(colors = applicationColors(true).copy(background = COMIC_BACKGROUND)) {
-    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colors.onBackground) {
-    Box(Modifier.fillMaxSize().background(COMIC_BACKGROUND).focusRequester(focus).onFocusChanged { artworkFocused = it.isFocused }
+    MaterialTheme(colors = applicationColors(controlsDark)) {
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colors.onSurface) {
+    ComicSheetHost(reader,state,transform,backHandler,publicationActions,notices,onDismissed={if(artworkPlaced)focus.requestFocus()}) { openSheet,sheetOpen ->
+    ReaderAppearanceEffect(if(state.controlsVisible || sheetOpen) ReaderAppearance(controlsDark,MaterialTheme.colors.surface) else ReaderAppearance(true,COMIC_BACKGROUND),appearanceChanged)
+    Box(Modifier.fillMaxSize().background(COMIC_BACKGROUND).focusRequester(focus).onPlaced { artworkPlaced=true }.onFocusChanged { artworkFocused = it.isFocused }
         .onKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) false
             else when {
                 event.key == Key.Escape -> { if (state.controlsVisible) reader.hideControls() else onBack(); true }
                 event.key == Key.F10 -> { reader.toggleControls(); true }
-                !artworkFocused -> false
+                sheetOpen || !artworkFocused -> false
                 event.key == Key.DirectionRight && pagedMode(state.settings.mode) -> { transform.reset(); reader.tap(.9f); reader.hideControls(); true }
                 event.key == Key.DirectionLeft && pagedMode(state.settings.mode) -> { transform.reset(); reader.tap(.1f); reader.hideControls(); true }
                 event.key == Key.PageDown -> { transform.reset(); reader.next(); reader.hideControls(); true }
@@ -96,13 +111,16 @@ internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBac
             }
         }.focusable()) {
         val continuous = state.settings.mode == PageReadingMode.VERTICAL || state.settings.mode == PageReadingMode.WEBTOON
-        if (continuous) ContinuousPages(reader, state, bitmaps, Modifier.fillMaxSize())
-        else PagedCanvas(reader, state, bitmaps, failedConversions, transform, Modifier.fillMaxSize())
-        if (state.controlsVisible) PageReaderChrome(reader, state, onBack, backLabel, transform, saveFailed, settingsFailed, publicationActions, notices)
+        CompositionLocalProvider(LocalContentColor provides Color.White) {
+            if (continuous) ContinuousPages(reader, state, bitmaps, Modifier.fillMaxSize())
+            else PagedCanvas(reader, state, bitmaps, failedConversions, transform, Modifier.fillMaxSize())
+        }
+        if (state.controlsVisible) ComicChrome(reader,state,transform,onBack,backLabel,saveFailed,settingsFailed,openSheet)
         // Failures stay visible even with hidden chrome, without reserving page height.
         else if (saveFailed || settingsFailed || state.navigationFailed) Surface(Modifier.align(Alignment.BottomCenter), color = MaterialTheme.colors.surface.copy(alpha = .94f)) {
             Text(if (state.navigationFailed) "Requested page unavailable or unsupported" else if (saveFailed) "Reading position could not be saved on this device." else "Page reader preferences could not be saved on this device.", Modifier.padding(8.dp))
         }
+    }
     }
     }
     }
@@ -111,7 +129,7 @@ internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBac
 internal val COMIC_BACKGROUND = Color(0xFF080C0C)
 internal fun fitLabel(fit: PageFit) = when (fit) { PageFit.SCREEN -> "Fit screen"; PageFit.WIDTH -> "Fit width"; PageFit.HEIGHT -> "Fit height" }
 
-private fun modeLabel(mode: PageReadingMode) = when (mode) {
+internal fun modeLabel(mode: PageReadingMode) = when (mode) {
     PageReadingMode.PAGED_RTL -> "Right-to-left (manga)"
     PageReadingMode.PAGED_LTR -> "Left-to-right"
     PageReadingMode.VERTICAL -> "Vertical"
@@ -122,11 +140,22 @@ private fun modeLabel(mode: PageReadingMode) = when (mode) {
 internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, failedConversions: Set<Int>, transform: PageTransform, modifier: Modifier) {
     var zoom by transform::zoom
     var pan by transform::pan
-    val current = reader.spread(state.position.index)
+    val tapScope = rememberCoroutineScope()
+    val current = reader.spread(state.scrub?.displayed ?: state.position.index)
     fun stamps(spread: PageSpread): Map<Int, Long>? = spread.indices.associateWith { index ->
         (state.frames[index] as? PageFrame.Ready)?.stamp?.takeIf { bitmaps[index] != null } ?: return null
     }
     val sourceStamp by rememberUpdatedState(stamps(current)?.get(current.anchor))
+    val scrub = state.scrub
+    val preview = scrub?.let { reader.spread(it.requested) }
+    val previewStamps = preview?.let(::stamps)
+    val previewFailed = preview?.indices?.any { state.frames[it] is PageFrame.Unavailable || it in failedConversions } == true
+    LaunchedEffect(reader,state.ticket,preview?.anchor,previewStamps,previewFailed) {
+        if(scrub!=null) {
+            if(previewFailed)reader.cancelScrub(failed=true)
+            else if(previewStamps!=null)reader.previewReady(state.ticket,preview.anchor,previewStamps)
+        }
+    }
     val transition = state.transition
     val target = transition?.let { reader.spread(it.target) }
     val targetStamps = target?.let(::stamps)
@@ -159,11 +188,11 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
         val panAtFit = fit.size.width > viewport.width + .5f || fit.size.height > viewport.height + .5f
         // A resized canvas retires callbacks from the previous spatial presentation.
         DisposableEffect(reader, width, maxHeight) { transform.reset(); reader.presentationChanged(); onDispose {} }
-        Box(Modifier.fillMaxSize().pointerInput(reader, transform, width, maxHeight, fit) {
+        Box(Modifier.fillMaxSize().pointerInput(reader, transform, width, maxHeight, fit, scrub != null) {
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent()
-                    if (event.type == PointerEventType.Scroll && event.changes.none { it.isConsumed }) {
+                    if (scrub == null && event.type == PointerEventType.Scroll && event.changes.none { it.isConsumed }) {
                         val delta = event.changes.firstOrNull()?.scrollDelta ?: Offset.Zero
                         if (zoom > 1f || panAtFit) {
                             val bounds = pagePanBounds(fit.size, viewport, zoom)
@@ -178,11 +207,18 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
             }
         }.semantics {
             onClick(label = "Toggle reader controls") { reader.toggleControls(); true }
-            customActions = listOf(CustomAccessibilityAction("Previous page") { transform.reset(); reader.previous(); true },
-                CustomAccessibilityAction("Next page") { transform.reset(); reader.next(); true })
-        }.pointerInput(reader, transform, width, maxHeight, fit) {
+            customActions = listOf(CustomAccessibilityAction("Previous page") { transform.reset(); reader.stepTap(-1); true },
+                CustomAccessibilityAction("Next page") { transform.reset(); reader.stepTap(1); true },
+                CustomAccessibilityAction("Zoom or reset") { reader.cancelTransition();transform.resetTap()
+                    val next=comicDoubleTapZoom(zoom,pan,Offset(viewport.width/2,viewport.height/2),fit.size,viewport)
+                    zoom=next.zoom;pan=next.pan;true })
+        }.pointerInput(reader, transform, width, maxHeight, fit, scrub != null) {
+          coroutineScope {
             awaitEachGesture {
                 val down = awaitFirstDown()
+                if (scrub != null) return@awaitEachGesture
+                transform.tapJob?.cancel()
+                var releasedAt = down.uptimeMillis
                 val velocity = VelocityTracker().also { it.addPosition(down.uptimeMillis, down.position) }
                 var horizontal = 0f
                 var vertical = 0f
@@ -195,7 +231,7 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                 // Freeze an active presentation before slop, so settlement cannot
                 // replace this gesture's source/transform midway through recognition.
                 val oldEdge = reader.state.value.transition?.takeIf { zoom == 1f || transform.edgeTicket == it.ticket }
-                if (oldEdge != null) {
+                if (oldEdge != null && pageTapAction(down.position.x / size.width, state.settings.mode) == PageTapAction.CONTROLS) {
                     dragTicket = if (zoom == 1f) reader.beginDrag(zoom, sourceStamp) else reader.beginEdgeDrag(sourceStamp)
                     if (dragTicket != null && (zoom > 1f || panAtFit)) {
                         transform.edgeTicket = dragTicket
@@ -207,13 +243,15 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                 do {
                     val event = awaitPointerEvent()
                     val primary = event.changes.firstOrNull { it.id == down.id }
-                    primary?.let { velocity.addPosition(it.uptimeMillis, it.position) }
+                    primary?.let { velocity.addPosition(it.uptimeMillis, it.position); releasedAt = it.uptimeMillis }
                     if (event.changes.any { it.isConsumed } && dragTicket == null) consumed = true
                     if (event.changes.count { it.pressed } > 1) {
                         multiplePointers = true
+                        transform.resetTap()
                         reader.cancelTransition(); dragTicket = null; transform.edgeTicket = null; edgePan.overscroll = 0f
                     }
                     if (event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) moved = true
+                    if(moved) {transform.tapJob?.cancel();transform.doubleTap.clear()}
                     val factor = event.calculateZoom()
                     val delta = event.calculatePan()
                     if (multiplePointers) {
@@ -243,12 +281,13 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                         }
                         primary?.let { edgeVelocity.add(it.uptimeMillis, edgePan.overscroll) }
                     } else {
-                        horizontal += delta.x; vertical += delta.y
+                        val measured = primary?.let { it.position - it.previousPosition } ?: Offset.Zero
+                        horizontal += measured.x; vertical += measured.y
                         if (!consumed && size.width > 0) {
                             if (!fitDragStarted && kotlin.math.abs(horizontal) > viewConfiguration.touchSlop && kotlin.math.abs(horizontal) > kotlin.math.abs(vertical) * 1.2f) {
                                 if (dragTicket == null) dragTicket = reader.beginDrag(zoom, sourceStamp)
                                 dragTicket?.let { reader.drag(it, horizontal / size.width); fitDragStarted = true }
-                            } else if (fitDragStarted) dragTicket?.let { reader.drag(it, delta.x / size.width) }
+                            } else if (fitDragStarted) dragTicket?.let { reader.drag(it, measured.x / size.width) }
                         }
                     }
                     if (moved && !consumed && (multiplePointers || zoom > 1f || panAtFit)) reader.hideControls()
@@ -262,18 +301,36 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                     if (fitDragStarted || edgePan.horizontalMotion) reader.hideControls()
                     dragTicket = null
                 }
-                if (!multiplePointers && !moved && !consumed && size.width > 0) {
+                if (!multiplePointers && !moved && !consumed && size.width > 0 && releasedAt - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
                     val fraction = down.position.x / size.width
                     val action = pageTapAction(fraction, reader.state.value.settings.mode)
-                    if (action == PageTapAction.CONTROLS || zoom == 1f) {
-                        if (action != PageTapAction.CONTROLS) transform.reset()
-                        reader.tap(fraction)
-                        if (action != PageTapAction.CONTROLS) reader.hideControls()
+                    if (action == PageTapAction.CONTROLS) {
+                        if(transform.tapAnchor!=current.anchor)transform.doubleTap.clear()
+                        transform.tapAnchor=current.anchor
+                        val double = transform.doubleTap.tap(down.position,down.uptimeMillis,releasedAt,viewConfiguration.doubleTapMinTimeMillis,
+                            viewConfiguration.doubleTapTimeoutMillis,viewConfiguration.touchSlop*2)
+                        transform.tapJob?.cancel()
+                        if(double) {
+                            reader.cancelTransition()
+                            val next = comicDoubleTapZoom(zoom,pan,down.position,fit.size,viewport)
+                            zoom=next.zoom;pan=next.pan;transform.edgeTicket=null;reader.hideControls()
+                        } else transform.tapJob = tapScope.launch {
+                            val start = withFrameNanos { it }
+                            var elapsed=0L
+                            while(elapsed < viewConfiguration.doubleTapTimeoutMillis*1_000_000)elapsed=withFrameNanos { it }-start
+                            transform.doubleTap.clear();reader.toggleControls()
+                        }
+                    } else if(action != null && zoom == 1f) {
+                        transform.resetTap();reader.tap(fraction);reader.hideControls()
                     }
                 }
                 } finally { dragTicket?.let { reader.returnTransition(it) } }
             }
+          }
         }, contentAlignment = Alignment.Center) {
+            if(state.tapIntent!=null) Surface(Modifier.align(Alignment.BottomEnd).zIndex(1f),color=MaterialTheme.colors.surface.copy(alpha=.94f),contentColor=MaterialTheme.colors.onSurface) {
+                Text(if(state.tapIntent>0)"Next queued"else"Previous queued",Modifier.padding(8.dp),style=MaterialTheme.typography.caption)
+            }
             val offset = transition?.offset ?: 0f
             SpreadArtwork(current, state, bitmaps, failedConversions, reader.document.pages,
                 Modifier.fillMaxSize().graphicsLayer {
@@ -284,10 +341,14 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                 SpreadArtwork(target, state, bitmaps, failedConversions, reader.document.pages,
                     Modifier.fillMaxSize().graphicsLayer { translationX = size.width * (offset + side) })
                 if (transition.phase == PageTransitionPhase.WAITING && targetStamps == null && !targetFailed)
-                    Text("Loading ${target.indicator(reader.document.pages.size)}", Modifier.align(Alignment.BottomCenter))
+                    Text("Loading ${target.indicator(reader.document.pages.size)}", Modifier.align(Alignment.BottomCenter), color=Color.White)
             }
             if (transition == null) stamps(current)?.let { ready ->
-                SideEffect { reader.presented(state.ticket, current.anchor, ready) }
+                if(scrub==null && state.tapIntent==null) SideEffect { reader.presented(state.ticket,current.anchor,ready) }
+                else LaunchedEffect(reader,state.ticket,current.anchor,ready,scrub?.released) {
+                    withFrameNanos { }
+                    if(scrub!=null)reader.previewPresented(state.ticket,current.anchor,ready) else reader.presented(state.ticket,current.anchor,ready)
+                }
             }
         }
     }
@@ -317,111 +378,6 @@ private fun SpreadArtwork(spread: PageSpread, state: PageReaderState, bitmaps: M
                     with(density) { Modifier.requiredSize(fit.pages[slot].width.toDp(), fit.pages[slot].height.toDp()) })
             }
         } else Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text("Loading ${spread.indicator(count)}") }
-    }
-}
-
-/** Sibling overlay: buttons consume their own input before the canvas beneath them.
- * A bounded scrollable chrome column also keeps all controls reachable in short windows. */
-@Composable
-private fun BoxScope.PageReaderChrome(reader: PageReaderController, state: PageReaderState, onBack: () -> Unit, backLabel: String,
-    transform: PageTransform, saveFailed: Boolean, settingsFailed: Boolean, publicationActions: (@Composable () -> Unit)?, notices: (@Composable () -> Unit)?) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-      val compact = maxHeight < 300.dp
-      val topLimit = maxHeight / 3
-      val bottomLimit = maxHeight * 2 / 3
-      val navigationIndex = state.transition?.takeIf { it.phase != PageTransitionPhase.RETURNING }?.target ?: state.position.index
-      Column(Modifier.fillMaxSize()) {
-        Surface(Modifier.heightIn(max = topLimit).verticalScroll(rememberScrollState()), color = MaterialTheme.colors.surface.copy(alpha = .94f)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text(backLabel) }
-                Column(Modifier.weight(1f)) {
-                    Text(reader.document.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (compact) Text(reader.spread(state.position.index).indicator(reader.document.pages.size), style = MaterialTheme.typography.caption)
-                }
-                TextButton(onClick = reader::toggleControls) { Text("Hide") }
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Surface(Modifier.heightIn(max = bottomLimit).verticalScroll(rememberScrollState()), color = MaterialTheme.colors.surface.copy(alpha = .94f)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                if (!compact) Text(reader.spread(state.position.index).indicator(reader.document.pages.size), Modifier.align(Alignment.CenterHorizontally))
-                var requested by remember(reader) { mutableFloatStateOf((state.position.index + 1).toFloat()) }
-                var scrubbing by remember(reader) { mutableStateOf(false) }
-                if (!scrubbing) requested = (state.position.index + 1).toFloat()
-                if (!compact && reader.document.pages.size > 1) Slider(requested, { requested = it; scrubbing = true },
-                    Modifier.fillMaxWidth().height(48.dp).semantics {
-                        contentDescription = "Go to page"
-                        stateDescription = "Page ${requested.roundToInt()} of ${reader.document.pages.size}"
-                        setProgress { value -> if (!value.isFinite()) false else { transform.reset(); reader.seek((value.roundToInt() - 1).coerceIn(reader.document.pages.indices)); true } }
-                    },
-                    valueRange = 1f..reader.document.pages.size.toFloat(),
-                    onValueChangeFinished = { transform.reset(); reader.seek(requested.roundToInt() - 1); scrubbing = false })
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    TextButton(enabled = navigationIndex > 0, onClick = { transform.reset(); reader.previous() }) { Text("Previous") }
-                    var settings by remember { mutableStateOf(false) }
-                    var fitting by remember { mutableStateOf(false) }
-                    var seeking by remember { mutableStateOf(false) }
-                    Box {
-                        TextButton(onClick = { settings = true }) { Text("Settings") }
-                        DropdownMenu(expanded = settings, onDismissRequest = { settings = false }, modifier = Modifier.heightIn(max = 420.dp)) {
-                            if (pagedMode(state.settings.mode)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                    TextButton(onClick = { reader.cancelTransition(); transform.edgeTicket = null; transform.zoom = (transform.zoom - .5f).coerceAtLeast(1f); transform.pan = Offset.Zero; settings = false }) { Text("Zoom out") }
-                                    TextButton(onClick = { reader.cancelTransition(); transform.edgeTicket = null; transform.zoom = (transform.zoom + .5f).coerceAtMost(4f); settings = false }) { Text("Zoom in") }
-                                    TextButton(onClick = { reader.cancelTransition(); transform.reset(); settings = false }) { Text("Reset zoom") }
-                                }
-                            }
-                            if (compact) DropdownMenuItem(onClick = { settings = false; requested = (state.position.index + 1).toFloat(); seeking = true }) { Text("Go to page") }
-                            Text("Reading direction", Modifier.padding(12.dp), style = MaterialTheme.typography.subtitle2)
-                            for (mode in listOf(PageReadingMode.PAGED_LTR, PageReadingMode.PAGED_RTL)) {
-                                DropdownMenuItem(onClick = { reader.mode(mode); settings = false }, modifier = Modifier.semantics { selected = state.settings.mode == mode }) { Text(modeLabel(mode)) }
-                            }
-                            // Retain the earlier reader's modes/zoom; PR #21 adds none of them.
-                            Divider()
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                for (mode in listOf(PageReadingMode.VERTICAL, PageReadingMode.WEBTOON)) TextButton(onClick = { reader.mode(mode); settings = false },
-                                    modifier = Modifier.semantics { selected = state.settings.mode == mode }) { Text(modeLabel(mode)) }
-                            }
-                            if (state.settings.mode == PageReadingMode.PAGED_LTR || state.settings.mode == PageReadingMode.PAGED_RTL) {
-                                Divider()
-                                Text("Page layout", Modifier.padding(12.dp), style = MaterialTheme.typography.subtitle2)
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                    for (layout in PageLayout.entries) {
-                                        TextButton(onClick = { reader.layout(layout); settings = false }, modifier = Modifier.semantics { selected = state.settings.layout == layout }) {
-                                            Text(if (layout == PageLayout.SINGLE) "Single page" else "Double page")
-                                        }
-                                    }
-                                }
-                                Divider()
-                                DropdownMenuItem(onClick = { settings = false; fitting = true }) { Text("Page fitting") }
-                            }
-                            if (publicationActions != null || notices != null) {
-                                Divider()
-                                publicationActions?.invoke()
-                                notices?.invoke()
-                            }
-                        }
-                    }
-                    if (seeking) AlertDialog(onDismissRequest = { seeking = false; scrubbing = false }, title = { Text("Go to page") },
-                        text = { Column { Text("Page ${requested.roundToInt()} of ${reader.document.pages.size}")
-                            if (reader.document.pages.size > 1) Slider(requested, { requested = it; scrubbing = true }, valueRange = 1f..reader.document.pages.size.toFloat(),
-                                modifier = Modifier.semantics { contentDescription = "Choose page" })
-                        } }, buttons = { Row { TextButton(onClick = { seeking = false; scrubbing = false }) { Text("Cancel") }
-                            TextButton(onClick = { transform.reset(); reader.seek(requested.roundToInt() - 1); seeking = false; scrubbing = false }) { Text("Go to page") } } })
-                    if (fitting) AlertDialog(onDismissRequest = { fitting = false }, title = { Text("Page fitting") },
-                        text = { Column(Modifier.heightIn(max = bottomLimit).verticalScroll(rememberScrollState())) {
-                            Text("Fit screen shows the complete artwork. Width and height allow panning without stretching.")
-                            for (fit in PageFit.entries) TextButton(onClick = { reader.fit(fit); fitting = false },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { selected = state.settings.fit == fit }) { Text(fitLabel(fit)) }
-                        } }, buttons = { TextButton(onClick = { fitting = false }) { Text("Close") } })
-                    TextButton(enabled = reader.spread(navigationIndex).indices.last() < reader.document.pages.lastIndex, onClick = { transform.reset(); reader.next() }) { Text("Next") }
-                }
-                if (saveFailed) Text("Reading position could not be saved on this device.")
-                if (settingsFailed) Text("Page reader preferences could not be saved on this device.")
-                if (state.navigationFailed) Text("Requested page unavailable or unsupported")
-            }
-        }
-      }
     }
 }
 
