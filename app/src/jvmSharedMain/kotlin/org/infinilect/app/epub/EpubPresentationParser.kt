@@ -11,6 +11,8 @@ private val blockTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "bl
 private val htmlWhitespace = Regex("[\\t\\r\\n ]+")
 private fun headingTag(tag: String) = tag.length == 2 && tag[0] == 'h' && tag[1] in '1'..'6'
 
+private val untranslatedTags = setOf("code", "kbd", "samp")
+
 /** No browser, network, CSS evaluation or image decoder. Bounded current-chapter semantics. */
 internal class BoundedEpubParser : EpubParser {
     private suspend fun xml(document: EpubDocument, path: EpubEntryPath): Pair<EpubXmlNode, Map<EpubXmlNode, EpubImage>> {
@@ -133,21 +135,21 @@ internal class BoundedEpubParser : EpubParser {
             }
             runs.clear(); units = 0; blockEvents = 0
         }
-        fun append(text: String, em: Boolean, strong: Boolean, target: EpubTarget?, literal: Boolean = false) {
+        fun append(text: String, em: Boolean, strong: Boolean, target: EpubTarget?, literal: Boolean = false, translatable: Boolean = true) {
             if (text.isEmpty()) return
             if (units + text.length > 8192 || ++blockEvents > EpubWindowPolicy.APPEND_EVENTS || legacy && ++runCount > 8192) limit()
             units += text.length
             // Preserve Unicode/text order; collapse HTML whitespace only, not code points.
             val normalized = if (literal) text else text.replace(htmlWhitespace, " ")
             val previous = runStyle
-            if (previous == null || previous.emphasis != em || previous.strong != strong || previous.target != target) {
-                finishRun(); runStyle = EpubRun("", em, strong, target)
+            if (previous == null || previous.emphasis != em || previous.strong != strong || previous.target != target || previous.translatable != translatable) {
+                finishRun(); runStyle = EpubRun("", em, strong, target, translatable)
             }
             // Linear coalescing: thousands of adjacent inline spans must not copy
             // the growing text/run object for every append event.
             runText.append(normalized)
         }
-        fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: EpubListMarker? = null, pre: Boolean = false) {
+        fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: EpubListMarker? = null, pre: Boolean = false, protectedText: Boolean = false) {
             job.ensureActive()
             val rasterWrapper = rasterWrappers[node]
             val tag = if (rasterWrapper != null) "img" else node.name.local
@@ -186,20 +188,20 @@ internal class BoundedEpubParser : EpubParser {
             } else target
             if (tag == "hr") { /* semantic separator, no injected reading text */ }
             else if (tag == "br") append("\n", em, strong, nextTarget, literal = true)
-            else if (tag == "img") append("[Image${node.attr("alt")?.let { alt -> alt.substring(0, alt.epubUtf16(alt.epubPointAtUtf16(minOf(256, alt.length)))) }?.let { ": $it" } ?: " not rendered"}]", em, strong, null)
+            else if (tag == "img") append("[Image${node.attr("alt")?.let { alt -> alt.substring(0, alt.epubUtf16(alt.epubPointAtUtf16(minOf(256, alt.length)))) }?.let { ": $it" } ?: " not rendered"}]", em, strong, null, translatable = false)
             else {
                 var child = 0
                 var ordinal = if (tag == "ol") node.attr("start")?.toIntOrNull()?.also { requireEpub(it in 1..9999) } ?: 1 else 1
                 if (tag == "ol" && node.attr("start") != null) requireEpub(node.attr("start")!!.toIntOrNull() != null)
                 for (part in node.content) when (part) {
-                    is EpubXmlContent.Text -> append(part.value.toString(), em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, literal = pre || tag == "pre")
+                    is EpubXmlContent.Text -> append(part.value.toString(), em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, literal = pre || tag == "pre", translatable = !(protectedText || pre || tag == "pre" || tag in untranslatedTags))
                     is EpubXmlContent.Element -> {
                         val childList = if ((tag == "ol" || tag == "ul") && part.value.name.local == "li") {
                             val depth = (list?.depth ?: -1) + 1
                             if (depth > 7 || ordinal > 9999) limit()
                             EpubListMarker(tag == "ol", ordinal++, depth)
                         } else list
-                        visit(part.value, pathParts + child++, em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, quote || tag == "blockquote", childList, pre || tag == "pre")
+                        visit(part.value, pathParts + child++, em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, quote || tag == "blockquote", childList, pre || tag == "pre", protectedText || tag in untranslatedTags)
                     }
                 }
             }

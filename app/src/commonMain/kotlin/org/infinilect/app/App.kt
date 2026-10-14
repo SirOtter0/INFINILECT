@@ -154,7 +154,7 @@ fun App(
                 }
                 is OpenPublicationState.EpubReady -> org.infinilect.app.reader.epub.EpubReader(
                     current.reader, saveFailed, application::back, backLabel, backHandler,
-                    appearanceChanged = readerAppearance,
+                    appearanceChanged = readerAppearance, applicationDark = appDark,
                     publicationActions = {
                         LibraryAction(LibraryActionState(membership.inLibrary, membership.busy, membership.unavailable), application.collections::toggleLibrary)
                     },

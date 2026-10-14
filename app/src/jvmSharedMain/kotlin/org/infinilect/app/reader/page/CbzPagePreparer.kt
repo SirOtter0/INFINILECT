@@ -244,7 +244,7 @@ private class CbzDocument(
             content = CbzPageHandle(zip.getInputStream(entry), entry.size, entry.crc, io)
             return synchronized(lock) {
                 check(!closed)
-                PageHandle(checkNotNull(content)) { handles.remove(it) }.also { handles.add(it); handle = it; transferred = true }
+                PageHandle(checkNotNull(content)) { synchronized(lock) { handles.remove(it) } }.also { handles.add(it); handle = it; transferred = true }
             }
         } finally {
             synchronized(lock) { opening.remove(job) }

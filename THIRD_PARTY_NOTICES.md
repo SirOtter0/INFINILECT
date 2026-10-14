@@ -1,5 +1,23 @@
 # Third-party notices
 
+## Local EPUB translation — PR #31
+
+Android adds the pinned Foxlet 0.5.0 SDK (MIT wrapper, MPL-2.0 Bergamot, MIT Marian).
+The complete component graph retains its Apache-2.0, BSD, MIT, zlib, Unicode-3.0
+and LLVM runtime terms: [complete notices](third-party/foxlet-THIRD_PARTY_NOTICES.txt),
+[NOTICE](third-party/foxlet-NOTICE.txt), [MIT](third-party/foxlet-LICENSE.txt),
+[corresponding-source offer](third-party/foxlet-SOURCE.txt). Preserve those Java
+resources in APKs. The checked SDK corresponds to source commit
+`0eff2a15032362115848a496ce1df8ed9fc68650`; the SDK binary is generated, never tracked.
+
+Models are separately [MPL-2.0](third-party/mozilla-translation-models-LICENSE.txt),
+confirmed by [Mozilla](https://github.com/mozilla/translations/issues/1434#issuecomment-4734030816).
+Only explicitly requested, hash-pinned English↔Spanish models are downloaded into
+private storage; no weights, book files or ML Kit are bundled. Model licenses are
+not inferred from the wrapper license. INFINILECT stays GPL-3.0-or-later; MPL
+source/notice obligations are retained. See [architecture and evidence](docs/EPUB_TRANSLATION.md).
+
+
 ## Bounded local PDF — PR #20
 
 Desktop adds only the direct `org.apache.pdfbox:pdfbox:3.0.8` dependency, Apache-2.0,

@@ -1,3 +1,9 @@
+import java.io.File
+import java.security.MessageDigest
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.compose")
@@ -5,6 +11,44 @@ plugins {
     id("com.android.kotlin.multiplatform.library")
     id("app.cash.sqldelight")
 }
+
+// Pinned, checksummed upstream SDK; generated AAR stays under build/ and is never tracked.
+// Corresponding MPL-covered source: Foxlet commit 0eff2a15032362115848a496ce1df8ed9fc68650.
+val foxletArtifact = layout.buildDirectory.file("translation-sdk/foxlet-v0.5.0.aar")
+val prepareEpubTranslationSdk = tasks.register("prepareEpubTranslationSdk") {
+    val localSdk = providers.gradleProperty("infinilect.foxletSdk")
+    inputs.property("localSdk", localSdk.orElse(""))
+    outputs.file(foxletArtifact)
+    doLast {
+        val output = foxletArtifact.get().asFile
+        output.parentFile.mkdirs()
+        val expected = "5dbb384907d69c2aba129fd15dba30dda94ede0fa556dc6a167d041ee479ec0e"
+        fun verified(file: File) = file.isFile && MessageDigest.getInstance("SHA-256")
+            .digest(file.readBytes()).joinToString("") { "%02x".format(it) } == expected
+        if (!verified(output)) {
+            val provided = localSdk.orNull?.let { File(it) }
+            if (provided != null) {
+                check(verified(provided)) { "Provided Foxlet SDK checksum mismatch." }
+                provided.copyTo(output, overwrite = true)
+            } else {
+            check(!gradle.startParameter.isOffline) { "Foxlet SDK is not cached. Run prepareEpubTranslationSdk online once, or supply -Pinfinilect.foxletSdk=/path/to/verified/foxlet-v0.5.0.aar." }
+            val temporary = File(output.parentFile, "foxlet.part")
+            try {
+                val connection = URI("https://github.com/yinvoke/foxlet-translate/releases/download/v0.5.0/foxlet-v0.5.0.aar").toURL().openConnection()
+                connection.connectTimeout = 30_000; connection.readTimeout = 30_000
+                connection.getInputStream().use { input -> temporary.outputStream().use { out ->
+                    val buffer = ByteArray(8192); var total = 0
+                    while (true) { val read = input.read(buffer); if (read < 0) break; total += read; check(total <= 3_000_000); out.write(buffer, 0, read) }
+                } }
+                check(verified(temporary)) { "Foxlet SDK checksum mismatch." }
+                Files.move(temporary.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            } finally { temporary.delete() }
+            }
+        }
+        check(verified(output))
+    }
+}
+
 
 kotlin {
     applyDefaultHierarchyTemplate()
@@ -51,6 +95,7 @@ kotlin {
             dependsOn(jvmSharedMain)
             dependencies {
                 implementation("io.ktor:ktor-client-android:3.6.0")
+                implementation(files(foxletArtifact).builtBy(prepareEpubTranslationSdk))
                 implementation("app.cash.sqldelight:android-driver:2.4.0")
             }
         }
@@ -121,4 +166,14 @@ mapOf(
         classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
         mainClass.set(entrypoint)
     }
+}
+
+// Real native prototype only: not a dependency of test/check/build, no model download.
+tasks.register<JavaExec>("epubNativeTranslationCheck") {
+    group = "verification"
+    description = "Run verified Foxlet ARM smoke inference from Kotlin (optionally under QEMU; not Android acceptance)."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.reader.epub.EpubNativeTranslationCheck")
 }

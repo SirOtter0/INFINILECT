@@ -132,7 +132,7 @@ internal fun EpubContentsPanel(reader: EpubReaderController, current: EpubReader
 
 @Composable
 internal fun EpubSettingsPanel(settings: EpubReaderSettings, change: (EpubReaderSettings) -> Unit, maxHeight: Dp,
-    publicationActions: (@Composable () -> Unit)?, close: () -> Unit) {
+    publicationActions: (@Composable () -> Unit)?, close: () -> Unit, translationControls: (@Composable () -> Unit)? = null) {
     EpubControlPanel("Reading settings", maxHeight, close) {
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             EpubSettingStep("Font size", "${settings.fontSize}", settings.fontSize > 14, settings.fontSize < 30,
@@ -153,6 +153,7 @@ internal fun EpubSettingsPanel(settings: EpubReaderSettings, change: (EpubReader
                     }
                 }
             }
+            translationControls?.invoke()
             Text("Saved for all EPUBs on this device.", style = MaterialTheme.typography.caption)
             publicationActions?.let {
                 Divider(color = MaterialTheme.colors.onSurface.copy(alpha = .12f))

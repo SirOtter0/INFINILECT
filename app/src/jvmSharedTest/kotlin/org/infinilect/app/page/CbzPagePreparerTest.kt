@@ -9,6 +9,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.util.zip.ZipInputStream
 import java.util.zip.CRC32
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.infinilect.app.media.Raster
@@ -290,6 +294,70 @@ class CbzPagePreparerTest {
             }
             doc.close()
         } finally { owner.close(); owner.awaitClosed() }
+    }
+
+
+    @Test fun concurrentHandleCloseCannotMutateDocumentShutdownSnapshot() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("cbz-close-interleaving")
+        val owner = CbzPagePreparer(root)
+        val snapshotEntered = CountDownLatch(1); val releaseSnapshot = CountDownLatch(1)
+        val snapshotError = AtomicReference<Throwable?>(); val releaseError = AtomicReference<Throwable?>()
+        var closing: Thread? = null; var releasing: Thread? = null
+        val handles = mutableListOf<ResourceContent>()
+        try {
+            val doc = owner.prepare(publication(), loader(archive(listOf("1.png" to png, "2.png" to png2))))
+            handles.add(doc.openPage(doc.pages[0])); handles.add(doc.openPage(doc.pages[1]))
+            // Only our own private registry is instrumented: pause next() after the
+            // iterator captures its modification count while shutdown owns its lock.
+            // No production hook, sleeps, random repetition or weakened assertion.
+            val field = doc.javaClass.getDeclaredField("handles").apply { isAccessible = true }
+            @Suppress("UNCHECKED_CAST")
+            val original = field.get(doc) as MutableSet<Any>
+            val first = AtomicBoolean(true)
+            val gated = object : AbstractMutableSet<Any>() {
+                private val backing = LinkedHashSet(original)
+                override val size get() = backing.size
+                override fun add(element: Any) = backing.add(element)
+                override fun remove(element: Any) = backing.remove(element)
+                override fun iterator(): MutableIterator<Any> {
+                    val delegate = backing.iterator()
+                    return object : MutableIterator<Any> {
+                        override fun hasNext() = delegate.hasNext()
+                        override fun remove() = delegate.remove()
+                        override fun next(): Any {
+                            if (first.compareAndSet(true, false)) {
+                                snapshotEntered.countDown()
+                                check(releaseSnapshot.await(5, TimeUnit.SECONDS)) { "Snapshot gate timed out" }
+                            }
+                            return delegate.next()
+                        }
+                    }
+                }
+            }
+            field.set(doc, gated)
+            closing = Thread { try { doc.close() } catch (e: Throwable) { snapshotError.set(e) } }
+            closing.start(); assertTrue(snapshotEntered.await(5, TimeUnit.SECONDS))
+            releasing = Thread { try { handles.first().close() } catch (e: Throwable) { releaseError.set(e) } }
+            releasing.start()
+            val monitor = java.lang.management.ManagementFactory.getThreadMXBean()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            // Before the fix removal completes inside the gated snapshot. With the
+            // fix it blocks on the same owner monitor until that snapshot is released.
+            while (releasing.isAlive) {
+                if (monitor.getThreadInfo(releasing.threadId())?.lockOwnerId == closing.threadId()) break
+                check(System.nanoTime() < deadline) { "Handle close did not reach ownership boundary" }
+                Thread.onSpinWait()
+            }
+            releaseSnapshot.countDown(); closing.join(5000); releasing.join(5000)
+            assertFalse(closing.isAlive); assertFalse(releasing.isAlive)
+            assertNull(snapshotError.get(), "Document shutdown must snapshot a consistently owned set")
+            assertNull(releaseError.get()); assertTrue(gated.isEmpty())
+            handles.forEach { assertFails { it.read(ByteArray(1)) } }
+            doc.close() // idempotent
+        } finally {
+            releaseSnapshot.countDown(); closing?.join(5000); releasing?.join(5000)
+            handles.forEach { it.close() }; owner.close(); owner.awaitClosed(); root.toFile().deleteRecursively()
+        }
     }
 
     private fun ByteArray.indexOfSignature(signature: ByteArray): Int = (0..size - signature.size).first { start -> signature.indices.all { this[start + it] == signature[it] } }

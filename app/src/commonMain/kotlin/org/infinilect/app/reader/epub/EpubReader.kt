@@ -7,6 +7,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.SelectionState
+import androidx.compose.foundation.text.selection.rememberSelectionState
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -55,6 +58,8 @@ internal fun EpubReader(
     publicationActions: (@Composable () -> Unit)? = null,
     notices: (@Composable () -> Unit)? = null,
     appearanceChanged: (ReaderAppearance?) -> Unit = {},
+    applicationDark: Boolean = isSystemInDarkTheme(),
+    selectionState: SelectionState? = null,
 ) {
     DisposableEffect(reader) {
         // Presentation replacement restores the live semantic locator, never chapter entry.
@@ -71,8 +76,11 @@ internal fun EpubReader(
     }
     val progression by reader.progression.collectAsState()
     val settings by reader.settings.collectAsState()
+    val translated by reader.translation.state.collectAsState()
+    val selection = selectionState ?: key(reader) { rememberSelectionState() }
+    var selectionTicket by remember(reader) { mutableLongStateOf(-1L) }
     val settingsSaveFailed by reader.settingsSaveFailed.collectAsState()
-    val dark = epubReaderIsDark(settings.theme, isSystemInDarkTheme())
+    val dark = epubReaderIsDark(settings.theme, applicationDark)
     val controls = remember(reader) { EpubReaderControls() }
     val readingFocus = remember(reader) { FocusRequester() }
     val keyboardScroll = remember(reader) { EpubKeyboardScroll() }
@@ -91,6 +99,7 @@ internal fun EpubReader(
         if (controls.panel != null) closePanel() else controls.dismiss()
     }
     val current = (state as? EpubReaderState.Ready) ?: displayed
+    LaunchedEffect(reader, current?.ticket, translated.blocks) { selection.clear(); selectionTicket = current?.ticket ?: -1L }
     val error = (state as? EpubReaderState.Error)?.message ?: current?.error
     LaunchedEffect(reader, current?.presentation, controls.visible) {
         if (current != null) {
@@ -167,7 +176,7 @@ internal fun EpubReader(
                     }
                 } else key(reader, current.presentation) {
                     // Chrome is an overlay: opening/closing it never changes list geometry.
-                    ChapterBody(reader, current, settings, keyboardScroll, Modifier.widthIn(max = 760.dp).fillMaxSize())
+                    ChapterBody(reader, current, settings, keyboardScroll, selection, selectionTicket, translated.blocks, Modifier.widthIn(max = 760.dp).fillMaxSize())
                 }
                 Column(Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxWidth()) {
                     if (controls.visible) Surface(Modifier.epubTapBarrier(), elevation = 0.dp) {
@@ -191,6 +200,12 @@ internal fun EpubReader(
                             notices?.invoke()
                         }
                     }
+                    if (translated.translated && translated.blocks == null) Surface(Modifier.epubTapBarrier()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (translated.busy) "Preparing translation · showing Original" else "Translation unavailable · showing Original", Modifier.weight(1f), style = MaterialTheme.typography.caption)
+                            TextButton(onClick = { reader.translatedReading(false) }) { Text("Original") }
+                        }
+                    }
                     if (showLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp).epubTapBarrier().semantics { contentDescription = "Preparing EPUB passage" })
                 }
                 if (controls.visible) {
@@ -200,9 +215,10 @@ internal fun EpubReader(
                         { controls.open(EpubReaderPanel.CONTENTS) }, { controls.open(EpubReaderPanel.SETTINGS) }, contentsFocus, settingsFocus,
                         modifier = Modifier.align(Alignment.BottomCenter))
                 }
+                if (translated.selection != null) EpubSelectionTranslationPanel(reader.translation, maxHeight)
                 when (controls.panel) {
                     EpubReaderPanel.CONTENTS -> EpubContentsPanel(reader, current, maxHeight, closePanel)
-                    EpubReaderPanel.SETTINGS -> EpubSettingsPanel(settings, reader::presentationChanged, maxHeight, publicationActions, closePanel)
+                    EpubReaderPanel.SETTINGS -> EpubSettingsPanel(settings, reader::presentationChanged, maxHeight, publicationActions, closePanel) { EpubTranslationSettings(reader) }
                     null -> Unit
                 }
             }
@@ -216,8 +232,9 @@ internal fun epubListPrefix(block: EpubBlock): String = if (block.kind != EpubBl
 private data class EpubScrollSample(val index: Int, val pixels: Int, val scrolling: Boolean, val key: Any?, val ticket: Long, val layout: TextLayoutResult?)
 
 @Composable
-private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Ready, settings: EpubReaderSettings, keyboard: EpubKeyboardScroll, modifier: Modifier) {
+private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Ready, settings: EpubReaderSettings, keyboard: EpubKeyboardScroll, selection: SelectionState, selectionTicket: Long, projection: List<EpubTranslatedBlock>?, modifier: Modifier) {
     val latestReady by rememberUpdatedState(ready)
+    val latestProjection by rememberUpdatedState(projection)
     val list = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val scrollJob = remember { arrayOfNulls<Job>(1) }
@@ -304,7 +321,9 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
         list.scrollToItem(block)
         if (points > 0 && ready.chapter.blocks[block].image == null && ready.chapter.blocks[block].kind != EpubBlockKind.SEPARATOR) {
             val layout = snapshotFlow { layouts[ready.chapter.startBlock + block] }.filterNotNull().first()
-            val utf16 = ready.chapter.blocks[block].text.epubUtf16(points) + epubListPrefix(ready.chapter.blocks[block]).length
+            val displayBlock = projection?.getOrNull(block)?.takeIf { it.source === ready.chapter.blocks[block] }
+            val displayPoints = displayBlock?.sourceToDisplay(points) ?: points
+            val utf16 = (displayBlock?.text ?: ready.chapter.blocks[block].text).epubUtf16(displayPoints) + epubListPrefix(ready.chapter.blocks[block]).length
             val line = layout.getLineForOffset(utf16.coerceAtMost(layout.layoutInput.text.length))
             // Restore inside the semantic line, not a rounded boundary shared with its predecessor.
             val lineTop = ceil(layout.getLineTop(line)).toInt().coerceAtLeast(0)
@@ -340,7 +359,9 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
             val points = if (block.image != null || block.kind == EpubBlockKind.SEPARATOR) 0 else {
                 if (layout == null) return@collect
                 val line = layout.getLineForVerticalPosition(pixels.toFloat())
-                block.text.epubPointAtUtf16((layout.getLineStart(line) - epubListPrefix(block).length).coerceAtLeast(0))
+                val displayBlock = latestProjection?.getOrNull(index)?.takeIf { it.source === block }
+                val displayPoints = (displayBlock?.text ?: block.text).epubPointAtUtf16((layout.getLineStart(line) - epubListPrefix(block).length).coerceAtLeast(0))
+                displayBlock?.displayToSource(displayPoints) ?: displayPoints
             }
             // A temporary buffer end is not the semantic chapter end. Reporting its
             // last paragraph makes the following rebase look like reverse movement
@@ -350,22 +371,37 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
             } else reader.report(frame.ticket, index, points)
         }
     }
-    SelectionContainer {
+    val translateSelection = {
+        val captured = selection.selectedTexts.joinToString("\n") { it.text }
+        if (selectionTicket == latestReady.ticket && reader.displayed.value?.ticket == latestReady.ticket)
+            reader.translation.selection(captured, latestReady.chapter)
+        selection.clear()
+    }
+    val canTranslate = reader.translation.unavailable == null && !reader.translation.state.value.translated
+    SelectionContainer(state = selection, modifier = Modifier.semantics {
+        if (canTranslate && selection.selectedTexts.isNotEmpty()) customActions = listOf(
+            CustomAccessibilityAction("Translate selection") { translateSelection(); true },
+        )
+    }.epubTranslationMenu(
+        enabled = canTranslate,
+        translate = translateSelection,
+    )) {
     LazyColumn(modifier, state = list, userScrollEnabled = restored,
         contentPadding = PaddingValues(start = settings.margin.dp, end = settings.margin.dp, top = 12.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         itemsIndexed(ready.chapter.blocks, key = { index, _ -> ready.chapter.startBlock + index }) { index, block ->
             if (block.kind == EpubBlockKind.SEPARATOR) Divider(Modifier.padding(vertical = 12.dp))
-            else if (block.image != null) LocalImage(block.image, bitmaps[block.image])
+            else if (block.image != null) DisableSelection { LocalImage(block.image, bitmaps[block.image]) }
             else {
                 // Borrow the result already owned by this composed text node. Placement
                 // repins the actual first visible item after LazyColumn applies its new
                 // indices; measurement can still observe the previous scroll position.
                 val placedLayout = remember(block) { arrayOfNulls<TextLayoutResult>(1) }
-                val text = remember(block, linkColor) {
+                val projected = projection?.getOrNull(index)?.takeIf { it.source === block }
+                val text = remember(block, projected, linkColor) {
                     buildAnnotatedString {
                         append(epubListPrefix(block))
-                        for ((runIndex, run) in block.runs.withIndex()) {
+                        for ((runIndex, run) in (projected?.runs ?: block.runs).withIndex()) {
                             val style = SpanStyle(fontWeight = if (run.strong) FontWeight.Bold else null,
                                 fontStyle = if (run.emphasis) FontStyle.Italic else null)
                             withStyle(style) {
@@ -379,6 +415,7 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
                     }
                 }
                 val size = settings.fontSize * when (block.kind) { EpubBlockKind.HEADING -> when (block.headingLevel) { 1 -> 1.5f; 2 -> 1.3f; 3 -> 1.15f; else -> 1f }; EpubBlockKind.CAPTION -> .9f; else -> 1f }
+                EpubSelectableText(block.kind != EpubBlockKind.IMAGE) {
                 Text(text, style = MaterialTheme.typography.body1.copy(fontSize = size.sp, lineHeight = (size * settings.lineSpacingPercent / 100).sp,
                     fontWeight = if (block.kind == EpubBlockKind.HEADING) FontWeight.Bold else FontWeight.Normal,
                     fontStyle = if (block.kind == EpubBlockKind.QUOTE || block.kind == EpubBlockKind.CAPTION) FontStyle.Italic else FontStyle.Normal,
@@ -390,10 +427,16 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
                         placedLayout[0] = it
                         retainLayout(ready.chapter.startBlock + index, it)
                     })
+                }
             }
         }
     }
     }
+}
+
+@Composable
+private fun EpubSelectableText(bookText: Boolean, content: @Composable () -> Unit) {
+    if (bookText) content() else DisableSelection(content)
 }
 
 @Composable

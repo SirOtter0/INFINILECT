@@ -51,11 +51,11 @@ class FileEpubReaderSettingsStoreTest {
     }
     private fun mutateInt(offset: Int, value: Int) {
         val bytes = Files.readAllBytes(record); ByteBuffer.wrap(bytes).putInt(offset, value)
-        MessageDigest.getInstance("SHA-256").digest(bytes.copyOfRange(0, 36)).copyInto(bytes, 36)
+        MessageDigest.getInstance("SHA-256").digest(bytes.copyOfRange(0, bytes.size - 32)).copyInto(bytes, bytes.size - 32)
         Files.write(record, bytes)
     }
     @Test fun unsupportedFutureSchemaLoadsDefaults() = runBlocking {
-        FileEpubReaderSettingsStore(directory).save(EpubReaderPreferences(settings, 1)); mutateInt(8, 2)
+        FileEpubReaderSettingsStore(directory).save(EpubReaderPreferences(settings, 1)); mutateInt(8, 3)
         assertEquals(EpubReaderPreferences(), FileEpubReaderSettingsStore(directory).load())
     }
     @Test fun checksumValidOutOfRangeValuesAndInvalidThemeAreRejected() = runBlocking {

@@ -243,7 +243,7 @@ private fun writeBlock(out: DataOutputStream, b: EpubBlock) {
     out.writeBoolean(b.image != null); b.image?.let { writeString(out, it.path.value); writeString(out, it.mediaType); writeString(out, it.alt) }
     out.writeInt(b.runs.size)
     b.runs.forEach { r ->
-        out.writeByte((if (r.emphasis) 1 else 0) or (if (r.strong) 2 else 0) or (if (r.target != null) 4 else 0)); writeString(out, r.text)
+        out.writeByte((if (r.emphasis) 1 else 0) or (if (r.strong) 2 else 0) or (if (r.target != null) 4 else 0) or (if (!r.translatable) 8 else 0)); writeString(out, r.text)
         r.target?.let { writeString(out, it.path.value); out.writeBoolean(it.anchor != null); it.anchor?.let { a -> writeString(out, a) } }
     }
 }
@@ -272,7 +272,7 @@ private fun readBlock(input: DataInputStream, manifest: Map<EpubEntryPath, EpubM
     val count = input.readInt(); if (count !in 0..minOf(windowRuns, EpubWindowPolicy.APPEND_EVENTS)) throw CorruptSemanticCache()
     var units = 0
     val runs = List(count) {
-        val flags = input.readUnsignedByte(); if (flags and 7 != flags) throw CorruptSemanticCache()
+        val flags = input.readUnsignedByte(); if (flags and 15 != flags) throw CorruptSemanticCache()
         val text = readString(input, minOf(8192 - units, windowUnits - units)); units += text.length
         val target = if (flags and 4 != 0) {
             val targetPath = EpubEntryPath(readString(input, 512))
@@ -280,7 +280,7 @@ private fun readBlock(input: DataInputStream, manifest: Map<EpubEntryPath, EpubM
             if (targetPath !in spine) throw CorruptSemanticCache()
             EpubTarget(targetPath, anchor)
         } else null
-        EpubRun(text, flags and 1 != 0, flags and 2 != 0, target)
+        EpubRun(text, flags and 1 != 0, flags and 2 != 0, target, flags and 8 == 0)
     }
     return EpubBlock(path, offset, EpubBlockKind.entries[kind], runs, logical, heading, marker, image)
 }

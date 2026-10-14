@@ -196,4 +196,12 @@ class EpubPresentationTest {
         assertEquals(EpubFailure.LIMIT, assertFailsWith<EpubException> { BoundedEpubParser().chapter(doc, chapter) }.failure); assertEquals(1, doc.opened)
     }
 
+    @Test fun translationProvenanceProtectsCodeEvenWhenNestedInsideFormatting() = runBlocking {
+        val block = parse("<p>Read <code>A<em>B<strong>C</strong></em></code> today.</p>").blocks.single()
+        assertEquals("Read ABC today.", block.text)
+        assertTrue(block.runs.filter { it.text in setOf("A", "B", "C") }.all { !it.translatable })
+        assertEquals(3, block.runs.count { !it.translatable })
+        assertTrue(block.runs.filter { it.text !in setOf("A", "B", "C") }.all { it.translatable })
+    }
+
 }

@@ -16,7 +16,7 @@ import kotlinx.coroutines.*
 
 internal const val EPUB_SETTINGS_DIRECTORY_NAME = "epub-reader-preferences-v1"
 internal const val EPUB_SETTINGS_RECORD_NAME = "settings.preferences"
-internal const val EPUB_SETTINGS_RECORD_BYTES = 68
+internal const val EPUB_SETTINGS_RECORD_BYTES = 80
 private const val magic = 0x494e464550554253L // INFEPUBS
 private val processLock = Any()
 private val tempName = Regex("t-[0-9a-f-]{36}\\.part")
@@ -87,10 +87,10 @@ internal class FileEpubReaderSettingsStore(
     private fun read(root: Path): EpubReaderPreferences? = try {
         val path = root.resolve(EPUB_SETTINGS_RECORD_NAME)
         if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) null else FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
-            if (channel.size() != EPUB_SETTINGS_RECORD_BYTES.toLong()) return@use null
-            val bytes = ByteBuffer.allocate(EPUB_SETTINGS_RECORD_BYTES)
+            if (channel.size() !in setOf(68L, EPUB_SETTINGS_RECORD_BYTES.toLong())) return@use null
+            val bytes = ByteBuffer.allocate(channel.size().toInt())
             while (bytes.hasRemaining()) if (channel.read(bytes) <= 0) return@use null
-            if (channel.size() != EPUB_SETTINGS_RECORD_BYTES.toLong()) return@use null
+            if (channel.size() !in setOf(68L, EPUB_SETTINGS_RECORD_BYTES.toLong())) return@use null
             decode(bytes.array())
         }
     } catch (_: Exception) { null }
@@ -103,21 +103,33 @@ internal class FileEpubReaderSettingsStore(
         }
         private fun encode(record: EpubReaderPreferences): ByteArray {
             val buffer = ByteBuffer.allocate(EPUB_SETTINGS_RECORD_BYTES)
-            buffer.putLong(magic).putInt(1)
+            buffer.putLong(magic).putInt(2)
             val settings = record.settings
             buffer.putInt(settings.fontSize).putInt(settings.lineSpacingPercent).putInt(settings.margin)
             buffer.putInt(when (settings.theme) { EpubReadingTheme.SYSTEM -> 0; EpubReadingTheme.LIGHT -> 1; EpubReadingTheme.DARK -> 2 })
+            buffer.putInt(when(settings.translationSource) { "en" -> 1; "es" -> 2; else -> 0 })
+            buffer.putInt(if (settings.translationTarget == "en") 1 else 2).putInt(if (settings.translated) 1 else 0)
             buffer.putLong(record.updatedAtEpochMillis)
-            buffer.put(MessageDigest.getInstance("SHA-256").digest(buffer.array().copyOfRange(0, 36)))
+            buffer.put(MessageDigest.getInstance("SHA-256").digest(buffer.array().copyOfRange(0, 48)))
             return buffer.array()
         }
         private fun decode(bytes: ByteArray): EpubReaderPreferences {
-            require(MessageDigest.isEqual(bytes.copyOfRange(36, 68), MessageDigest.getInstance("SHA-256").digest(bytes.copyOfRange(0, 36))))
+            require(bytes.size in setOf(68, 80))
+            val payload = bytes.size - 32
+            require(MessageDigest.isEqual(bytes.copyOfRange(payload, bytes.size), MessageDigest.getInstance("SHA-256").digest(bytes.copyOfRange(0, payload))))
             val input = ByteBuffer.wrap(bytes)
-            require(input.long == magic && input.int == 1)
+            require(input.long == magic)
+            val version = input.int
+            require(version == 1 && bytes.size == 68 || version == 2 && bytes.size == 80)
             val font = input.int; val spacing = input.int; val margin = input.int
             val theme = when (input.int) { 0 -> EpubReadingTheme.SYSTEM; 1 -> EpubReadingTheme.LIGHT; 2 -> EpubReadingTheme.DARK; else -> error("Unsupported preference") }
-            return EpubReaderPreferences(EpubReaderSettings(font, spacing, margin, theme), input.long)
+            var source = "metadata"; var target = "es"; var translated = false
+            if (version == 2) {
+                source = when(input.int) { 0 -> "metadata"; 1 -> "en"; 2 -> "es"; else -> error("Unsupported language") }
+                target = when(input.int) { 1 -> "en"; 2 -> "es"; else -> error("Unsupported language") }
+                translated = when(input.int) { 0 -> false; 1 -> true; else -> error("Unsupported mode") }
+            }
+            return EpubReaderPreferences(EpubReaderSettings(font, spacing, margin, theme, source, target, translated), input.long)
         }
     }
 }
