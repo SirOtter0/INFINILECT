@@ -8,7 +8,7 @@ import java.nio.file.LinkOption.NOFOLLOW_LINKS
 internal const val TRANSLATION_MODEL_DISK_BYTES = 120L * 1024 * 1024
 internal const val TRANSLATION_MODEL_FILES = 128
 
-/** Fixed two-model namespace, including downloads. Never follows links or scans without a bound. */
+/** Fixed verified-model namespace, including downloads. Never follows links or scans without a bound. */
 internal fun translationModelStorageFits(root: Path, reserve: Long = 0): Boolean {
     if (reserve !in 0..TRANSLATION_MODEL_DISK_BYTES) return false
     if (!Files.exists(root, NOFOLLOW_LINKS)) return true

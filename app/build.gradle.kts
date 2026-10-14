@@ -67,6 +67,7 @@ kotlin {
             implementation("org.jetbrains.compose.runtime:runtime:1.12.1")
             implementation("org.jetbrains.compose.foundation:foundation:1.12.1")
             implementation("org.jetbrains.compose.material:material:1.12.1")
+            implementation("org.jetbrains.compose.components:components-resources:1.12.1")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
             implementation("app.cash.sqldelight:runtime:2.4.0")
         }

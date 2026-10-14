@@ -72,6 +72,22 @@ internal class EpubReaderController(
     private var pending: ReadingProgress? = null
     private var lastLocator: ReadingLocator.Epub? = null
     private var lastTimestamp = 0L
+    private var initialized = false
+    private val defaultLanguageObserver = translationService?.let { service -> scope.launch {
+        service.defaultLanguage.collect {
+            if (initialized && !closed && settings.value.translationTarget == "default") {
+                val model = service.engine.models.firstOrNull { candidate ->
+                    candidate.pair.source == (settings.value.translationSource.takeUnless { source -> source == "metadata" }
+                        ?: epubTranslationLanguage(document.metadata.languages.firstOrNull())) && candidate.pair.target == translationTarget()
+                }
+                if (model != translation.state.value.model) {
+                    val translated = settings.value.translated
+                    translation.model(model, checkInstalled = false)
+                    if (translated && model != null && translation.unavailable == null) translation.reading(true)
+                }
+            }
+        }
+    } }
     internal val retainedChapters get() = cache.size
     internal val retainedBlocks get() = cache.values.sumOf { it.blocks.size }
     internal val retainedTextUnits get() = cache.values.sumOf { window -> window.blocks.sumOf { it.text.length } }
@@ -99,9 +115,10 @@ internal class EpubReaderController(
         publish(EpubReaderState.Ready(chapter, index, position, ++generation))
         val model = translation.service?.engine?.models?.firstOrNull {
             it.pair.source == (settings.value.translationSource.takeUnless { value -> value == "metadata" }
-                ?: epubTranslationLanguage(document.metadata.languages.firstOrNull())) && it.pair.target == settings.value.translationTarget
+                ?: epubTranslationLanguage(document.metadata.languages.firstOrNull())) && it.pair.target == translationTarget()
         }
         translation.model(model, checkInstalled = false)
+        initialized = true
         if (settings.value.translated && model != null && translation.unavailable == null) translation.reading(true)
         buffer(1)
     }
@@ -332,16 +349,25 @@ internal class EpubReaderController(
     fun translationMetadata() {
         presentationChanged(settings.value.copy(translationSource = "metadata", translated = false))
         translation.model(translation.service?.engine?.models?.firstOrNull {
-            it.pair.source == epubTranslationLanguage(document.metadata.languages.firstOrNull()) && it.pair.target == settings.value.translationTarget
+            it.pair.source == epubTranslationLanguage(document.metadata.languages.firstOrNull()) && it.pair.target == translationTarget()
+        })
+    }
+    private fun translationTarget() = settings.value.translationTarget.takeUnless { it == "default" }
+        ?: translation.service?.defaultLanguage?.value ?: "en"
+    fun translationDefault() {
+        presentationChanged(settings.value.copy(translationTarget = "default", translated = false))
+        translation.model(translation.service?.engine?.models?.firstOrNull {
+            it.pair.source == (settings.value.translationSource.takeUnless { source -> source == "metadata" }
+                ?: epubTranslationLanguage(document.metadata.languages.firstOrNull())) && it.pair.target == translationTarget()
         })
     }
     fun translatedReading(enabled: Boolean) {
-        presentationChanged(settings.value.copy(translated = enabled, translationTarget =
-            if (enabled) translation.state.value.model?.pair?.target ?: settings.value.translationTarget else settings.value.translationTarget))
+        // Enabling the resolved model must not convert a following default into a manual override.
+        presentationChanged(settings.value.copy(translated = enabled))
         translation.reading(enabled)
     }
     fun close() {
         if (closed) return
-        translation.close(); closed = true; generation++; workGeneration++; request?.cancel(); destination = null; failed = null; mutableLoading.value = false; mutableDisplayed.value = null; flush(); preferences?.flush(); media.close(); cache.clear(); toc = emptyList(); mutableState.value = EpubReaderState.Loading; document.close()
+        defaultLanguageObserver?.cancel(); translation.close(); closed = true; generation++; workGeneration++; request?.cancel(); destination = null; failed = null; mutableLoading.value = false; mutableDisplayed.value = null; flush(); preferences?.flush(); media.close(); cache.clear(); toc = emptyList(); mutableState.value = EpubReaderState.Loading; document.close()
     }
 }

@@ -58,7 +58,7 @@ class EpubTranslationInterfaceTest {
         repeat(12) { runCurrent(); scene.render(testScheduler.currentTime * 1_000_000).close() }; runCurrent()
     }
     @Test fun productionSelectionActionShowsRealCapturedTextResultAndCloseKeepsPosition() = runTest {
-        val service = EpubTranslationService(Engine()); val parser = Parser(withImage = true)
+        val service = EpubTranslationService(Engine()).also { it.defaultLanguage.value = "es" }; val parser = Parser(withImage = true)
         val reader = EpubReaderController(Document(), ReadingProgressId(id, "book", PublicationFormat.EPUB), backgroundScope, parser, translationService = service)
         val selection = SelectionState()
         val scene = ImageComposeScene(400, 700, Density(1f), coroutineContext = StandardTestDispatcher(testScheduler))
@@ -82,7 +82,7 @@ class EpubTranslationInterfaceTest {
         } finally { scene.close(); reader.close(); service.close() }
     }
     @Test fun translatedModeReplacesTextInsideReaderAndOriginalRestoresWithoutReparse() = runTest {
-        val service = EpubTranslationService(Engine()); val parser = Parser()
+        val service = EpubTranslationService(Engine()).also { it.defaultLanguage.value = "es" }; val parser = Parser()
         val reader = EpubReaderController(Document(), ReadingProgressId(id, "book", PublicationFormat.EPUB), backgroundScope, parser, translationService = service)
         val scene = ImageComposeScene(900, 500, Density(1.5f, 1.3f), coroutineContext = StandardTestDispatcher(testScheduler))
         try {

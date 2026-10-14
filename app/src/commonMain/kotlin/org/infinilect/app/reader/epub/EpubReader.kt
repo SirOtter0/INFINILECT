@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.SelectionState
 import androidx.compose.foundation.text.selection.rememberSelectionState
 import androidx.compose.foundation.text.selection.DisableSelection
+import org.infinilect.app.ui.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -61,6 +62,7 @@ internal fun EpubReader(
     applicationDark: Boolean = isSystemInDarkTheme(),
     selectionState: SelectionState? = null,
 ) {
+    val strings = LocalAppStrings.current
     DisposableEffect(reader) {
         // Presentation replacement restores the live semantic locator, never chapter entry.
         reader.presentationChanged()
@@ -131,9 +133,9 @@ internal fun EpubReader(
                 }
             }.semantics {
                 customActions = listOf(
-                    CustomAccessibilityAction("Toggle reading controls") { controls.toggle(); true },
-                    CustomAccessibilityAction("Previous reading viewport") { keyboardScroll.request?.invoke(EpubKeyboardStep.TAP_PREVIOUS); true },
-                    CustomAccessibilityAction("Next reading viewport") { keyboardScroll.request?.invoke(EpubKeyboardStep.TAP_NEXT); true },
+                    CustomAccessibilityAction(strings[UiText.TOGGLE_CONTROLS]) { controls.toggle(); true },
+                    CustomAccessibilityAction(strings[UiText.PREVIOUS_VIEWPORT]) { keyboardScroll.request?.invoke(EpubKeyboardStep.TAP_PREVIOUS); true },
+                    CustomAccessibilityAction(strings[UiText.NEXT_VIEWPORT]) { keyboardScroll.request?.invoke(EpubKeyboardStep.TAP_NEXT); true },
                 )
             }.onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) false
@@ -184,17 +186,17 @@ internal fun EpubReader(
                             EpubIconButton(backLabel, EpubControlIcon.BACK, onBack)
                             Text(reader.document.metadata.title, modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                                 style = MaterialTheme.typography.subtitle1, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            EpubIconButton("Hide reading controls", EpubControlIcon.CLOSE, controls::toggle)
+                            EpubIconButton(strings[UiText.HIDE_CONTROLS], EpubControlIcon.CLOSE, controls::toggle)
                         }
                     }
                     if (saveFailed || settingsSaveFailed || error != null || notices != null) Surface(Modifier.epubTapBarrier(), elevation = 0.dp) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                            if (saveFailed) Text("Reading position could not be saved on this device.", color = MaterialTheme.colors.error)
-                            if (settingsSaveFailed) Text("Reading settings could not be saved on this device.", color = MaterialTheme.colors.error)
+                            if (saveFailed) Text(strings[UiText.POSITION_SAVE_ERROR], color = MaterialTheme.colors.error)
+                            if (settingsSaveFailed) Text(strings[UiText.READING_SAVE_ERROR], color = MaterialTheme.colors.error)
                             error?.let {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(it, color = MaterialTheme.colors.error, modifier = Modifier.weight(1f))
-                                    if (reader.canRetry) TextButton(onClick = reader::retry) { Text("Retry") }
+                                    Text(strings.message(it), color = MaterialTheme.colors.error, modifier = Modifier.weight(1f))
+                                    if (reader.canRetry) TextButton(onClick = reader::retry) { Text(strings[UiText.RETRY]) }
                                 }
                             }
                             notices?.invoke()
@@ -202,11 +204,11 @@ internal fun EpubReader(
                     }
                     if (translated.translated && translated.blocks == null) Surface(Modifier.epubTapBarrier()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (translated.busy) "Preparing translation · showing Original" else "Translation unavailable · showing Original", Modifier.weight(1f), style = MaterialTheme.typography.caption)
-                            TextButton(onClick = { reader.translatedReading(false) }) { Text("Original") }
+                            Text(if (translated.busy) strings[UiText.PREPARING_ORIGINAL] else strings[UiText.UNAVAILABLE_ORIGINAL], Modifier.weight(1f), style = MaterialTheme.typography.caption)
+                            TextButton(onClick = { reader.translatedReading(false) }) { Text(strings[UiText.ORIGINAL]) }
                         }
                     }
-                    if (showLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp).epubTapBarrier().semantics { contentDescription = "Preparing EPUB passage" })
+                    if (showLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp).epubTapBarrier().semantics { contentDescription = strings[UiText.PREPARING_PASSAGE] })
                 }
                 if (controls.visible) {
                     EpubNavigationBar((current?.spineIndex ?: 0) + 1, reader.document.spine.size, progression,
@@ -215,12 +217,13 @@ internal fun EpubReader(
                         { controls.open(EpubReaderPanel.CONTENTS) }, { controls.open(EpubReaderPanel.SETTINGS) }, contentsFocus, settingsFocus,
                         modifier = Modifier.align(Alignment.BottomCenter))
                 }
-                if (translated.selection != null) EpubSelectionTranslationPanel(reader.translation, maxHeight)
+                if (translated.selection != null && translated.requiredModel == null) EpubSelectionTranslationPanel(reader.translation, maxHeight)
                 when (controls.panel) {
                     EpubReaderPanel.CONTENTS -> EpubContentsPanel(reader, current, maxHeight, closePanel)
                     EpubReaderPanel.SETTINGS -> EpubSettingsPanel(settings, reader::presentationChanged, maxHeight, publicationActions, closePanel) { EpubTranslationSettings(reader) }
                     null -> Unit
                 }
+                EpubDownloadPrompt(reader)
             }
         }
     }
@@ -233,6 +236,7 @@ private data class EpubScrollSample(val index: Int, val pixels: Int, val scrolli
 
 @Composable
 private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Ready, settings: EpubReaderSettings, keyboard: EpubKeyboardScroll, selection: SelectionState, selectionTicket: Long, projection: List<EpubTranslatedBlock>?, modifier: Modifier) {
+    val strings = LocalAppStrings.current
     val latestReady by rememberUpdatedState(ready)
     val latestProjection by rememberUpdatedState(projection)
     val list = rememberLazyListState()
@@ -378,14 +382,12 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
         selection.clear()
     }
     val canTranslate = reader.translation.unavailable == null && !reader.translation.state.value.translated
+    EpubSelectionToolbar(selection, canTranslate, translateSelection) {
     SelectionContainer(state = selection, modifier = Modifier.semantics {
         if (canTranslate && selection.selectedTexts.isNotEmpty()) customActions = listOf(
-            CustomAccessibilityAction("Translate selection") { translateSelection(); true },
+            CustomAccessibilityAction(strings[UiText.TRANSLATION_SELECTION]) { translateSelection(); true },
         )
-    }.epubTranslationMenu(
-        enabled = canTranslate,
-        translate = translateSelection,
-    )) {
+    }) {
     LazyColumn(modifier, state = list, userScrollEnabled = restored,
         contentPadding = PaddingValues(start = settings.margin.dp, end = settings.margin.dp, top = 12.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -432,6 +434,7 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
         }
     }
     }
+    }
 }
 
 @Composable
@@ -441,11 +444,12 @@ private fun EpubSelectableText(bookText: Boolean, content: @Composable () -> Uni
 
 @Composable
 private fun LocalImage(image: EpubImage, bitmap: ImageBitmap?) {
+    val strings = LocalAppStrings.current
     // Reserved height is stable through loading/failure: no delayed height jump above the reader.
     Column(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-            if (bitmap != null) Image(bitmap, contentDescription = image.alt.ifBlank { "EPUB illustration" }, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-            else Text(image.alt.ifBlank { "Image unavailable or unsupported" }, style = MaterialTheme.typography.body2)
+            if (bitmap != null) Image(bitmap, contentDescription = image.alt.ifBlank { strings[UiText.ILLUSTRATION] }, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            else Text(image.alt.ifBlank { strings[UiText.IMAGE_UNAVAILABLE] }, style = MaterialTheme.typography.body2)
         }
     }
 }

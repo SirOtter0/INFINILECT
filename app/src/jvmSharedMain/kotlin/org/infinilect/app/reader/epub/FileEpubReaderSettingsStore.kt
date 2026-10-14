@@ -103,12 +103,12 @@ internal class FileEpubReaderSettingsStore(
         }
         private fun encode(record: EpubReaderPreferences): ByteArray {
             val buffer = ByteBuffer.allocate(EPUB_SETTINGS_RECORD_BYTES)
-            buffer.putLong(magic).putInt(2)
+            buffer.putLong(magic).putInt(3)
             val settings = record.settings
             buffer.putInt(settings.fontSize).putInt(settings.lineSpacingPercent).putInt(settings.margin)
             buffer.putInt(when (settings.theme) { EpubReadingTheme.SYSTEM -> 0; EpubReadingTheme.LIGHT -> 1; EpubReadingTheme.DARK -> 2 })
-            buffer.putInt(when(settings.translationSource) { "en" -> 1; "es" -> 2; else -> 0 })
-            buffer.putInt(if (settings.translationTarget == "en") 1 else 2).putInt(if (settings.translated) 1 else 0)
+            buffer.putInt(when(settings.translationSource) { "en" -> 1; "es" -> 2; "ca" -> 3; else -> 0 })
+            buffer.putInt(when(settings.translationTarget) { "en" -> 1; "es" -> 2; "ca" -> 3; else -> 0 }).putInt(if (settings.translated) 1 else 0)
             buffer.putLong(record.updatedAtEpochMillis)
             buffer.put(MessageDigest.getInstance("SHA-256").digest(buffer.array().copyOfRange(0, 48)))
             return buffer.array()
@@ -120,13 +120,13 @@ internal class FileEpubReaderSettingsStore(
             val input = ByteBuffer.wrap(bytes)
             require(input.long == magic)
             val version = input.int
-            require(version == 1 && bytes.size == 68 || version == 2 && bytes.size == 80)
+            require(version == 1 && bytes.size == 68 || version in 2..3 && bytes.size == 80)
             val font = input.int; val spacing = input.int; val margin = input.int
             val theme = when (input.int) { 0 -> EpubReadingTheme.SYSTEM; 1 -> EpubReadingTheme.LIGHT; 2 -> EpubReadingTheme.DARK; else -> error("Unsupported preference") }
-            var source = "metadata"; var target = "es"; var translated = false
-            if (version == 2) {
-                source = when(input.int) { 0 -> "metadata"; 1 -> "en"; 2 -> "es"; else -> error("Unsupported language") }
-                target = when(input.int) { 1 -> "en"; 2 -> "es"; else -> error("Unsupported language") }
+            var source = "metadata"; var target = "default"; var translated = false
+            if (version in 2..3) {
+                source = when(input.int) { 0 -> "metadata"; 1 -> "en"; 2 -> "es"; 3 -> { require(version == 3); "ca" }; else -> error("Unsupported language") }
+                target = when(input.int) { 0 -> { require(version == 3); "default" }; 1 -> "en"; 2 -> "es"; 3 -> { require(version == 3); "ca" }; else -> error("Unsupported language") }
                 translated = when(input.int) { 0 -> false; 1 -> true; else -> error("Unsupported mode") }
             }
             return EpubReaderPreferences(EpubReaderSettings(font, spacing, margin, theme, source, target, translated), input.long)

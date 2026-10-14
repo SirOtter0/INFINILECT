@@ -2,8 +2,7 @@
 
 PR #31 continues the original audit at `9b516669ed4b201a6b79f79c17dfae3be6204dc2`.
 Base: `b08379c6a5072f7114685e4a4c9444e60edcdcc9` (merged PR #30).
-Status: **Android implementation, native cross-build and real Linux ARM/QEMU inference;
-physical Android inference/acceptance pending**. Desktop original reading remains
+Status: **user-reported selection and translated-reading success on a physical realme C55 for the previous APK; this model/language UX follow-up still awaits physical re-acceptance**. Desktop original reading remains
 fully operational; its translation engine is explicitly unavailable. Test providers
 are used only for deterministic shared/UI tests, never as native-engine evidence.
 
@@ -20,7 +19,7 @@ A checksum mismatch is a build error, not an accepted alternative SDK.
 | Candidate | License and model boundary | Verified platform/maintenance findings | Decision |
 | --- | --- | --- | --- |
 | Original browsermt Bergamot | Engine MPL-2.0; Marian MIT; models separately licensed | Inspected head `9271618ebbdc5d21ac4dc4df9e72beb7ce644774`, last upstream push May 2024. Native/WASM API, not an Android Kotlin SDK. Current Mozilla development lives in `mozilla/translations/inference`. | Use the maintained engine adaptation, not assume Firefox's library is directly Android-ready. |
-| Foxlet 0.5.0 | Original wrapper MIT; Bergamot MPL-2.0; Marian MIT; SentencePiece/ruy Apache-2.0; BSD/MIT/zlib/Unicode-3.0 and LLVM runtime licenses retained in its notices | Release September 2026; project is young. ARM64 only, SDK min API 28, explicit Kotlin/JNI lifecycle/model management. Built Android ARM64 and Linux ARM from pinned source; real models translated under QEMU. | Selected, with two pinned direct language pairs and guarded Android availability. |
+| Foxlet 0.5.0 | Original wrapper MIT; Bergamot MPL-2.0; Marian MIT; SentencePiece/ruy Apache-2.0; BSD/MIT/zlib/Unicode-3.0 and LLVM runtime licenses retained in its notices | Release September 2026; project is young. ARM64 only, SDK min API 28, explicit Kotlin/JNI lifecycle/model management. Built Android ARM64 and Linux ARM from pinned source; real models translated under QEMU. | Selected, with four pinned direct language pairs and guarded Android availability. |
 | CTranslate2 | Engine MIT, CPU dependencies include Apache-2.0 ruy/cpu_features and MIT spdlog/cxxopts; engine does not license weights. Helsinki-NLP OPUS-MT en-es model card separately declares Apache-2.0. | Inspected head `8d91aa08225004755360daa43deb62b35b1ed65d`, active October 2026; official Linux x86/ARM64 and Windows x86 distributions. Android requires native cross-build, tokenizer/model conversion and Kotlin bindings; no such adapter was verified here. Default MKL/GPU binary redistribution was not audited or selected. | Viable future Desktop investigation, not silently substituted for this Android implementation. No CT2 model is bundled or used. |
 | Android framework TranslationManager | Public system API; installed provider/model terms are independent | API 31+, advertised provider capabilities required. Not universally present on supported Android devices; no Desktop equivalent. | Not a universal fallback; not integrated. |
 | ML Kit | SDK/models under its own Terms of Service, not the samples' Apache license | Prior audit preserved below. Current GPL distribution compatibility not established. | Not integrated; no linking exception or license change. |
@@ -87,14 +86,13 @@ failed projection keeps Original accessible, with a clear pending/error state.
 Public Compose `SelectionState.selectedTexts` captures selected annotated
 fragments in layout order without reading the clipboard. Selection is scoped to
 the reader/source window and cleared on replacement; image fallback messages are
-excluded. Android's native text context menu adds **Translate**; an equivalent
+excluded. The public Compose context-menu provider displays a direct **Translate** icon alongside **Copy** and **Select all**; an equivalent
 custom accessibility action uses the same capture. Selection is limited to 2,048
 Unicode code points, shows the real language pair/result, Copy and Close. Copy
 writes only the result to the clipboard. Translated selections require returning
 to Original; arbitrary language detection is not implemented.
 
-Reader settings provide Original/Translated, supported language-pair choices,
-model status/download/delete, Cancel/Retry and cache clearing. These live inside
+Reader settings provide Original/Translated, supported language-pair choices, Cancel/Retry and cache clearing. Central model administration is in Settings → Language and translation; a missing model opens an explicit size/language download prompt in the reader. These live inside
 the existing reader panel, not permanent artwork/text chrome. Pending passage
 translation is explicitly labeled as showing Original. Settings opening does not
 restart an active translation, reparse the EPUB or reopen its publication.
@@ -104,13 +102,13 @@ and Android appearance restoration remain in use.
 
 ## Languages, model installation and privacy
 
-First version: **English→Spanish (2.1)** and **Spanish→English (2.0)** only. EPUB
+Verified direct pairs: **English→Spanish (2.1), Spanish→English (2.0), English→Catalan (2.0), Catalan→English (2.0)**. Spanish↔Catalan is not offered as a direct pair. EPUB
 language metadata suggests the source when recognized; unsupported/absent metadata
 requires an explicit supported pair. The destination is persisted; matching source/target
 keeps Original rather than silently selecting another destination. Manual source overrides
 can be reset with Use EPUB language metadata. No fake detection or pivot is offered.
 
-- en-es: 36,576,277 bytes; es-en: 37,014,089 bytes, including vocabulary/shortlist.
+- en-es: 36,576,277 bytes; es-en: 37,014,089 bytes; en-ca: 36,716,532 bytes; ca-en: 36,731,612 bytes, including vocabulary/shortlist. Exact version/asset hashes are pinned in `FoxletEpubTranslation.kt` and checked against the SDK catalog.
 - Exact asset URLs, sizes and SHA-256 values come from Foxlet's pinned Mozilla
   registry; the adapter also verifies that its SDK descriptors match those pins.
 - Opening an original EPUB does not download or create a native translator.
@@ -161,7 +159,7 @@ on representative Android hardware remains an acceptance task.
   disposable application-cache storage; installed models survive Android cache
   clearing and normal restarts.
 - Model disk budget: **120 MiB including staged downloads, 128 filesystem entries**,
-  bounded traversal with no symlink following. Only two pinned pairs are installable;
+  bounded traversal with no symlink following. Only four pinned direct pairs are offered; all four do not fit simultaneously within this fixed budget, so an explicit unused-model deletion may be needed.
   one download runs at a time and reserves its descriptor size before construction.
 - The existing typed `ReadingLocator.Epub` remains the durable location: original
   spine path, element-child ordinal path, Unicode offset and chapter progression.
@@ -170,8 +168,7 @@ on representative Android hardware remains an acceptance task.
   viewport changes restore the live original anchor and retire old UI tickets.
   Translation starts, partial output, failures and cancelled requests never commit
   a destination. Only the reader's valid presented/scroll callbacks can save progress.
-- Existing preferences migrate from the checksummed 68-byte v1 record to an 80-byte
-  v2 record, preserving typography/theme/timestamps and adding language/mode fields.
+- Existing preferences migrate from the checksummed 68-byte v1 record through the compatible 80-byte v2 record to an 80-byte v3 record, preserving typography/theme/timestamps and supporting an explicitly following default/Catalan language codes.
   No database, duplicate settings owner or progress-schema migration is introduced.
 
 ## Native proof and verification
@@ -206,7 +203,7 @@ Opt-in proof (requires separately built/verified native executable and model):
 gradle :app:epubNativeTranslationCheck --args='/absolute/qemu-aarch64 /absolute/arm-sysroot /absolute/smoke /absolute/en-es/config.yml'
 ```
 
-Final verification used JDK 21 and the existing Gradle configuration:
+The previous implementation at `e0937e7` was verified with JDK 21 and the existing Gradle configuration (historical results; follow-up results below):
 
 | Check | Result |
 | --- | --- |
@@ -267,7 +264,7 @@ for regression acceptance, not a comic-reader redesign.
 
 ## Known limitations
 
-Only two verified direct pairs; no automatic detection, whole-book export, exact word
+Only four verified direct pairs; no automatic detection, whole-book export, exact word
 alignment, translation of preformatted/URL runs or engine-backed Desktop support.
 Within-run locator restoration is approximate. Long mixed-style sentences can lose
 context because runs translate separately. Cold window translation can take time;
@@ -328,3 +325,158 @@ Primary sources inspected:
 - [Android translation guide](https://developers.google.com/ml-kit/language/translation/android)
 - [Translation guidelines and attribution](https://developers.google.com/ml-kit/language/translation/translation-terms)
 - [Translation behavior/quality](https://developers.google.com/ml-kit/language/translation)
+
+## Model/language UX follow-up
+
+The user physically confirmed selection translation and translated EPUB reading on
+realme C55 with the previous APK. That evidence does not validate this follow-up's
+new UI, Catalan models, retention or localization. Re-acceptance remains pending.
+
+### Central management and preferences
+
+Settings → **Language and translation** now owns interface language, default reading
+language and model administration. Interface language is local profile data in the
+existing appearance/profile record. Null follows the captured system language at
+startup (en/es/ca; English fallback). A separate optional reading-language override
+in that same record follows interface language until the user overrides it. Old
+appearance/profile/discovery records remain readable; the bounded checksummed v4
+record adds the independent reading preference without a database migration.
+Onboarding's Set up later preserves an explicitly selected interface language.
+
+The existing EPUB preference record now supports v3 (still 80 bytes), reading target
+`default` and Catalan codes. V1 typography/theme and V2 explicit en/es targets are
+preserved. Legacy targets remain reader overrides until **Use default reading
+language** is selected; changing the global default does not silently erase them.
+A late-loaded global default updates a reader using `default`, preserving its live
+original anchor and retiring old translation work. Explicit reader choices win.
+
+`TranslationModels` is application-owned and lazy. It creates no native client,
+inspects no models and runs no inference at startup/Home. One administrative job is
+accepted; duplicate downloads share that job, different requests are rejected
+rather than queued. The explicitly approved download survives reader disposal.
+Cancel/Retry are explicit. Progress is coalesced to integer percentage changes;
+only the open model panel consumes it. Book text never leaves the device.
+
+Installed status, verified download size, actual owned storage, pinning, deletion
+and errors appear in the central panel. Contextual selection/reading requests with
+an absent registered model show pair/size/Download/Continue with Original. Download
+is temporary by default there, pinned by default when explicitly installed from
+Settings. Progress callbacks carry the authoritative administrative command identity; a deterministic cancelled-download trace fails without that guard and passes with it. After completion the current reader request can resume; a disposed or
+obsolete reader cannot publish a result. A failed operation leaves Original usable.
+
+### Retention, recovery and budgets
+
+Pin/last-use metadata lives in a separate resource-ownership record beside existing
+EPUB preferences, not a second user-profile/settings database. It is at most 512
+bytes/four records, checksummed and atomically replaced. Missing/corrupt metadata
+conservatively protects installed models as pinned. Completed files whose retention
+write fails remain protected; installation/storage errors are visible and retryable.
+
+- Pinned models are never eligible for cleanup. Explicit confirmed deletion remains
+  possible. Merely closing a book removes nothing.
+- Temporaries are reused between books. Cleanup is **manual and confirmed**, only
+  after 30 days plus a one-hour safety grace. Hourly usage writes avoid per-paragraph
+  filesystem work; the grace protects use not yet persisted before unexpected exit.
+- Active leases block deletion; cleanup skips them. The adapter drains/unloads and
+  confirms native release before deleting owned model files. Other books, cached
+  translations, Library/History/progress and profile/preferences are untouched.
+- The existing **120 MiB/128-entry model budget**, staged-size reservation, verified
+  assets and atomic SDK installation are unchanged. Four available pairs do not
+  imply four resident/installed models: the disk budget fits three of these small
+  models, and only one native model is loaded for inference.
+- Interrupted downloads are repaired/cleaned by the SDK on the next explicit install. The SDK’s default superseded-version cleanup is explicitly disabled; partial-download recovery cannot silently evict retained versions.
+  Unknown installed versions are never automatically updated or silently removed.
+
+### Direct selection action and EPUB controls
+
+Compose's public `TextContextMenuProvider` and its toolbar/dropdown composition
+locals supply a bounded custom popup. The inspected `ProvideBasicTextContextMenu`
+helper is **internal**, so it is not called, reflected or copied. The popup uses
+public selectedTexts/selectAll APIs, keeps Copy/Select all and a direct translation
+icon (when available), and clamps to the actual safe reader viewport. There is no
+duplicate overflow Translate item. Copy writes the selected/result text; extraction
+never reads the clipboard. Keyboard focus, dismissal and accessibility use standard
+Compose popup/button semantics. Desktop has no fake translation icon when its engine
+is unavailable. Provider-specific OS smart-selection actions are not implemented.
+
+EPUB Previous/Next are accessible 48-dp arrow controls with unchanged controller
+callbacks/disabled states. Continuous-scroll viewport gestures, chapter/window
+boundaries, TOC/internal links and logical progress semantics are unchanged.
+
+### Multilingual investigation and actual native evidence
+
+| Candidate | Primary evidence / license | Technical finding / decision |
+| --- | --- | --- |
+| Mozilla directional intgemm models | [Pinned registry](https://github.com/yinvoke/foxlet-translate/blob/0eff2a15032362115848a496ce1df8ed9fc68650/registry.json); separately MPL-2.0 weights per the Mozilla source/maintainer statement above; SentencePiece code Apache-2.0 | Model, shortlist and tokenizer hashes/sizes verified. English↔Catalan binaries loaded by the real existing ARM engine offline under QEMU and translated three original synthetic sentences in both directions; both repeated passes matched hashes. Added only these two verified directions. |
+| English bridge | [Foxlet public API/integration guide](https://github.com/yinvoke/foxlet-translate/blob/0eff2a15032362115848a496ce1df8ed9fc68650/docs/getting-started.md), `translatePivot`; same separately licensed Mozilla assets | A real native es→en→ca smoke chain translated two synthetic sentences. Not integrated in application language choices: two resident models/workspaces and a second inference stage raise memory/latency and require separate quality/segmentation/cache validation. Sequential unload/reload is a possible future trade-off, not implemented. |
+| OPUS-MT en-ROMANCE | [Primary model card](https://huggingface.co/Helsinki-NLP/opus-mt-en-ROMANCE): Apache-2.0, Marian architecture, separate tokenizer artifacts and required `>>id<<` target token | A multilingual Marian model is not automatically a Foxlet-ready quantized model. Published Hugging Face/checkpoint assets require conversion, quantization, compatible shortlist/tokenizer and target-prefix validation. No native load/conversion was demonstrated; not catalogued or downloaded. |
+| M2M100 418M | [Primary model card](https://huggingface.co/facebook/m2m100_418M): MIT weights/card; tokenizer/runtime must be checked separately | Different model/tokenizer architecture, not a direct Bergamot model. Roughly 1.67 GB for 418M FP32 parameters alone (estimate, not RAM benchmark); unsuitable for this bounded modest-phone slice without another verified backend/quantization. Not integrated. |
+| NLLB distilled 600M | [Primary model card](https://huggingface.co/facebook/nllb-200-distilled-600M): CC-BY-NC-4.0 | Noncommercial restriction fails the chosen redistributable GPL-compatible model boundary; different architecture and much larger resources. Not integrated or downloaded. |
+
+Measured **Linux ARM/QEMU**, one worker/cache zero, three short synthetic sentences:
+en→ca load 1,156 ms, first inference 1,146 ms, repeat 664 ms; ca→en load 1,102 ms,
+first 1,183 ms, repeat 677 ms; reported peak RSS about 139 MiB. The two-sentence
+resident es→en→ca chain reported about 210 MiB, load 2,199 ms, first 1,663 ms and
+repeat 1,011 ms. These are distinct workloads, not an apples-to-apples phone speed
+comparison, and do not establish realme C55 PSS/latency. Source/weights/vocabulary
+and auxiliary assets remain separately licensed; permissive code does not license
+arbitrary models. Android ARM64 uses the existing SDK; Desktop translation remains
+unavailable although native Linux ARM prototype inference is verified.
+
+### Localization: implemented and pending
+
+Compose Multiplatform `components-resources:1.12.1` (Apache-2.0, matching the existing
+Compose version) supplies compiled static strings in `values`, `values-es`,
+`values-ca`. Public getString and Java locale APIs load a finite catalog off the UI
+thread only on startup/language change. A composition-local immutable string table
+updates labels without recreating reading sessions. English is the fallback; resource
+failure retains readable English rather than crashing. No model-generated UI strings.
+
+| Surface | Actual coverage |
+| --- | --- |
+| Interface/default reading settings and model management | en/es/ca strings, errors, confirmation, progress and accessibility |
+| Profile/onboarding editor | en/es/ca, real local preference persistence and country labels |
+| Application Settings (appearance/discovery preferences) | en/es/ca; source filter subjects/behavior remain unchanged |
+| EPUB controls, reading settings, selection/result/download panels | en/es/ca, arrows, accessibility, known EPUB/translation errors |
+| Main navigation/import accessibility and Home greeting/local section labels | Localized; remaining Home/discovery/details text is pending |
+| Library, History, Search/acquisition/details; TXT/PDF/CBZ controls/errors | Full extraction/translation remains pending; original functionality retained |
+
+The UI explicitly describes this partial scope. **The entire application is not yet
+localized.** Original publication metadata and source rights statements are not
+rewritten. System-language changes outside the app while its process remains alive
+may require a normal relaunch; explicit en/es/ca changes apply within the app without
+restarting it. Broad Home scrolling/recomposition work belongs to PR #32; no phone
+performance improvement is claimed here.
+
+### Follow-up verification and realme C55 checklist
+
+| Check | Result |
+| --- | --- |
+| Focused Desktop / Android-host | 110 / 80 passed; 0 failures/errors/skips |
+| Full Desktop app | 1,510 passed; 0 failures/errors/skips |
+| Full Android-host app | 1,284 passed; 0 failures/errors/skips |
+| Android debug APK assembly / Desktop Kotlin compilation, JDK 21 | Both passed |
+| Real Catalan model / bridge prototypes | Offline native ARM/QEMU passed; not physical Android |
+| Diff / secret/artifact hygiene / verified source fingerprint | Passed / clean / unchanged |
+
+The original UI regression found a missing contextual Close-panel accessibility label; production preserves it and the existing assertion passes. The cancelled-download progress trace fails before the command-identity guard and passes afterward. No tests are weakened/disabled. Core is unchanged; unrelated core suites were not rerun. Physical acceptance of this follow-up remains pending.
+
+1. Upgrade the existing development installation; verify profile, Library/History,
+   reader typography and deep original locators. Open Settings → Language and translation.
+2. Choose en/es/ca interface and an independent reading default; restart and verify
+   both preferences/country. Check the documented partial localization, themes,
+   large fonts, Back/Escape and keyboard focus.
+3. Inspect four actual directions/sizes/storage. Explicitly download, Cancel/Retry,
+   pin/unpin and confirm Delete. Attempt a fourth installed model against the fixed
+   budget; no hidden download or automatic pinned deletion is allowed.
+4. On an original EPUB with a missing supported pair, select Unicode/mixed text →
+   direct translation icon → pair/size consent → Download or keep Original. Repeat
+   for translated reading. Leave the reader during download and inspect central status.
+5. Check Copy/Select all, one-tap Translate and Copy result; no duplicate overflow
+   action. Check arrows/disabled states, viewport navigation and long windows.
+6. Test English↔Spanish and English↔Catalan with appropriate original languages.
+   Spanish↔Catalan must report no direct pair, not simulate a bridge. Download needed
+   resources explicitly, enable airplane mode and test selection/reading/cache/reopen.
+7. Check preserved original anchors after Original/Translated, typography, rotation,
+   language changes and errors. Pinned/recent/active models must survive cleanup;
+   closing a book must not delete a model. General Home jank remains PR #32 work.

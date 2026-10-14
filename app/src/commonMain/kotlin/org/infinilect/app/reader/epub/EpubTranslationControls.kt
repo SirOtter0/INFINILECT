@@ -12,79 +12,83 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-
-internal expect fun Modifier.epubTranslationMenu(enabled: Boolean, translate: () -> Unit): Modifier
-
-private fun language(code: String) = if (code == "en") "English" else "Spanish"
+import org.infinilect.app.ui.*
 
 @Composable
 internal fun EpubTranslationSettings(reader: EpubReaderController) {
+    val strings = LocalAppStrings.current
     val translation = reader.translation
     val state by translation.state.collectAsState()
     LaunchedEffect(translation) { translation.refresh() }
     Divider()
-    Text("Reading language", style = MaterialTheme.typography.subtitle2)
-    val unavailable = translation.unavailable
-    if (unavailable != null) { Text(unavailable, style = MaterialTheme.typography.body2); return }
-    Text("Local translation · Foxlet / Bergamot", style = MaterialTheme.typography.caption)
-    Text("EPUB language: ${reader.document.metadata.languages.joinToString().ifBlank { "not provided" }}. Metadata is a suggestion, not language detection.", style = MaterialTheme.typography.caption)
-    if (epubTranslationLanguage(reader.document.metadata.languages.firstOrNull()) != null) {
-        TextButton(onClick = reader::translationMetadata, enabled = !state.busy) { Text("Use EPUB language metadata") }
-    }
-    if (state.model == null) Text("Choose a supported pair. When source and target match, continue with Original.", style = MaterialTheme.typography.caption)
+    Text(strings[UiText.READING_LANGUAGE], style = MaterialTheme.typography.subtitle2)
+    translation.unavailable?.let { Text(strings.message(it), style = MaterialTheme.typography.body2); return }
+    Text(strings.format(UiText.METADATA_LANGUAGE, reader.document.metadata.languages.joinToString().ifBlank { strings[UiText.NOT_PROVIDED] }), style = MaterialTheme.typography.caption)
+    if (epubTranslationLanguage(reader.document.metadata.languages.firstOrNull()) != null)
+        TextButton(reader::translationMetadata, enabled = !state.busy) { Text(strings[UiText.USE_METADATA]) }
+    TextButton(reader::translationDefault, enabled = !state.busy) { Text(strings[UiText.USE_DEFAULT]) }
+    if (state.model == null) Text(strings[UiText.NO_PAIR], style = MaterialTheme.typography.caption)
     translation.service?.engine?.models?.forEach { model ->
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            RadioButton(state.model == model, onClick = { reader.translationModel(model) }, enabled = !state.busy)
-            TextButton(onClick = { reader.translationModel(model) }, enabled = !state.busy) {
-                Text("${language(model.pair.source)} → ${language(model.pair.target)}")
+            RadioButton(state.model == model, { reader.translationModel(model) }, enabled = !state.busy)
+            TextButton({ reader.translationModel(model) }, enabled = !state.busy) {
+                Text("${strings.language(model.pair.source)} → ${strings.language(model.pair.target)}")
             }
         }
     }
     Row(Modifier.fillMaxWidth()) {
-        TextButton(onClick = { reader.translatedReading(false) }) { Text(if (!state.translated) "✓ Original" else "Original") }
-        TextButton(onClick = { reader.translatedReading(true) }, enabled = state.model != null && state.installed && !state.busy) {
-            Text(if (state.translated) "✓ Translated" else "Translated")
+        TextButton({ reader.translatedReading(false) }) { Text((if (!state.translated) "✓ " else "") + strings[UiText.ORIGINAL]) }
+        TextButton({ reader.translatedReading(true) }, enabled = state.model != null && !state.busy) {
+            Text((if (state.translated) "✓ " else "") + strings[UiText.TRANSLATED])
         }
     }
-    state.model?.let { model ->
-        Text(if (state.installed) "Model installed · available offline" else "Model required · approximately ${(model.bytes + 1_048_575) / 1_048_576} MiB", style = MaterialTheme.typography.caption)
-        if (!state.installed) TextButton(onClick = translation::install, enabled = !state.busy) { Text("Download model") }
-        else TextButton(onClick = translation::remove, enabled = !state.busy) { Text("Delete model") }
-    }
+    if (state.installed) Text(strings[UiText.MODEL_OFFLINE], style = MaterialTheme.typography.caption)
+    Text(strings[UiText.MANAGE_MODELS], style = MaterialTheme.typography.caption)
     if (state.busy) {
-        if (state.total > 0) LinearProgressIndicator((state.downloaded.toFloat() / state.total).coerceIn(0f, 1f), Modifier.fillMaxWidth())
-        else LinearProgressIndicator(Modifier.fillMaxWidth())
-        TextButton(onClick = translation::cancel) { Text("Cancel") }
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+        TextButton(translation::cancel) { Text(strings[UiText.CANCEL]) }
     }
     state.message?.let {
-        Text(it, color = MaterialTheme.colors.error)
-        TextButton(onClick = translation::retry, enabled = !state.busy) { Text("Retry") }
+        Text(strings.message(it), color = MaterialTheme.colors.error)
+        TextButton(translation::retry, enabled = !state.busy) { Text(strings[UiText.RETRY]) }
     }
-    TextButton(onClick = translation::clear, enabled = !state.busy) { Text("Clear saved translations") }
-    Text("Model downloads contact Mozilla. Book text stays on this device. Models and Bergamot: MPL-2.0; Foxlet: MIT. Mozilla does not endorse this application.", style = MaterialTheme.typography.caption)
-    Text("Corresponding source and licenses: github.com/yinvoke/foxlet-translate/tree/0eff2a15032362115848a496ce1df8ed9fc68650; github.com/mozilla/firefox-translations-models", style = MaterialTheme.typography.caption)
+    TextButton(translation::clear, enabled = !state.busy) { Text(strings[UiText.CLEAR_TRANSLATIONS]) }
+    Text(strings[UiText.PRIVACY_MODELS], style = MaterialTheme.typography.caption)
+}
+
+@Composable
+internal fun EpubDownloadPrompt(reader: EpubReaderController) {
+    val strings = LocalAppStrings.current
+    val state by reader.translation.state.collectAsState()
+    val model = state.requiredModel ?: return
+    val cancel = { reader.translatedReading(false); reader.translation.dismissSelection() }
+    AlertDialog(onDismissRequest = cancel,
+        title = { Text(strings[UiText.MODEL_REQUIRED]) },
+        text = { Text(strings.format(UiText.MODEL_DOWNLOAD_QUESTION, strings.language(model.pair.source), strings.language(model.pair.target), (model.bytes + 1_048_575) / 1_048_576)) },
+        confirmButton = { TextButton(reader.translation::install) { Text(strings[UiText.DOWNLOAD]) } },
+        dismissButton = { TextButton(cancel) { Text(strings[UiText.KEEP_ORIGINAL]) } })
 }
 
 @Suppress("DEPRECATION")
 @Composable
 internal fun EpubSelectionTranslationPanel(translation: EpubTranslationController, maxHeight: Dp) {
+    val strings = LocalAppStrings.current
     val state by translation.state.collectAsState()
     val clipboard = LocalClipboardManager.current
-    EpubControlPanel("Translate selection", maxHeight, translation::dismissSelection) {
+    EpubControlPanel(strings[UiText.TRANSLATION_SELECTION], maxHeight, translation::dismissSelection) {
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            state.model?.let { Text("${language(it.pair.source)} → ${language(it.pair.target)}", style = MaterialTheme.typography.subtitle2) }
+            state.model?.let { Text("${strings.language(it.pair.source)} → ${strings.language(it.pair.target)}", style = MaterialTheme.typography.subtitle2) }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.selectionResult?.let { result ->
                 Text(result)
-                TextButton(onClick = { clipboard.setText(AnnotatedString(result)) }) { Text("Copy translation") }
+                TextButton({ clipboard.setText(AnnotatedString(result)) }) { Text(strings[UiText.COPY_TRANSLATION]) }
             }
-            state.message?.let { Text(it, color = MaterialTheme.colors.error) }
+            state.message?.let { Text(strings.message(it), color = MaterialTheme.colors.error) }
             if (!state.busy && state.selectionResult == null) {
-                translation.unavailable?.let { Text(it) }
-                Text(if (state.selection.isNullOrBlank()) "Close and select a shorter passage. Original text is unchanged." else "Prepare the language model in reading settings, then retry. Original text is unchanged.", style = MaterialTheme.typography.body2)
-                TextButton(onClick = translation::retrySelection, enabled = !state.selection.isNullOrBlank()) { Text("Retry") }
+                Text(strings[if (state.selection.isNullOrBlank()) UiText.SHORTER_SELECTION else UiText.PREPARE_MODEL], style = MaterialTheme.typography.body2)
+                TextButton(translation::retrySelection, enabled = !state.selection.isNullOrBlank()) { Text(strings[UiText.RETRY]) }
             }
-            if (state.busy) TextButton(onClick = translation::cancel) { Text("Cancel") }
+            if (state.busy) TextButton(translation::cancel) { Text(strings[UiText.CANCEL]) }
         }
     }
 }

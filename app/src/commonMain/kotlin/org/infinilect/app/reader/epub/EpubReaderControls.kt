@@ -11,6 +11,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
+import org.infinilect.app.ui.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,22 +37,24 @@ internal fun epubReaderColors(dark: Boolean): Colors = if (dark) darkColors(
     onBackground = Color(0xFF252823), onSurface = Color(0xFF252823),
 )
 
-internal enum class EpubControlIcon { BACK, CONTENTS, SETTINGS, CLOSE }
+internal enum class EpubControlIcon { BACK, NEXT, CONTENTS, SETTINGS, CLOSE }
 
 /** Small vectors drawn in place: no icon dependency, bitmap or image-provider ownership. */
 @Composable
-internal fun EpubIconButton(label: String, icon: EpubControlIcon, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    IconButton(onClick, modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = label }) {
+internal fun EpubIconButton(label: String, icon: EpubControlIcon, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val strings = LocalAppStrings.current
+    IconButton(onClick, enabled = enabled, modifier = modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = label }) {
         if (icon == EpubControlIcon.SETTINGS) Text("Aa", style = MaterialTheme.typography.subtitle1,
             modifier = Modifier.clearAndSetSemantics {})
         else {
-            val color = LocalContentColor.current
+            val color = LocalContentColor.current.copy(alpha = LocalContentAlpha.current)
             Canvas(Modifier.size(24.dp)) {
                 fun line(x: Float, y: Float, ex: Float, ey: Float) = drawLine(color,
                     Offset(size.width * x / 24, size.height * y / 24), Offset(size.width * ex / 24, size.height * ey / 24),
                     strokeWidth = 1.8.dp.toPx(), cap = StrokeCap.Round)
                 when (icon) {
                     EpubControlIcon.BACK -> { line(19f,12f,5f,12f); line(5f,12f,11f,6f); line(5f,12f,11f,18f) }
+                    EpubControlIcon.NEXT -> { line(5f,12f,19f,12f); line(19f,12f,13f,6f); line(19f,12f,13f,18f) }
                     EpubControlIcon.CONTENTS -> { line(5f,6f,19f,6f); line(5f,12f,19f,12f); line(5f,18f,15f,18f) }
                     EpubControlIcon.CLOSE -> { line(6f,6f,18f,18f); line(6f,18f,18f,6f) }
                     EpubControlIcon.SETTINGS -> Unit
@@ -67,18 +70,19 @@ internal fun EpubNavigationBar(
     onPrevious: () -> Unit, onNext: () -> Unit, onContents: () -> Unit, onSettings: () -> Unit,
     contentsFocus: FocusRequester, settingsFocus: FocusRequester, modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current
     Surface(modifier.widthIn(max = 760.dp).fillMaxWidth().epubTapBarrier(), elevation = 0.dp) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
             Divider(color = MaterialTheme.colors.onSurface.copy(alpha = .12f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onPrevious, enabled = previous, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Previous") }
-                EpubIconButton("Contents", EpubControlIcon.CONTENTS, onContents, Modifier.focusRequester(contentsFocus))
-                EpubIconButton("Settings", EpubControlIcon.SETTINGS, onSettings, Modifier.focusRequester(settingsFocus))
-                TextButton(onNext, enabled = next, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Next") }
+                EpubIconButton(strings[UiText.PREVIOUS], EpubControlIcon.BACK, onPrevious, Modifier.weight(1f), enabled = previous)
+                EpubIconButton(strings[UiText.CONTENTS], EpubControlIcon.CONTENTS, onContents, Modifier.focusRequester(contentsFocus))
+                EpubIconButton(strings[UiText.SETTINGS], EpubControlIcon.SETTINGS, onSettings, Modifier.focusRequester(settingsFocus))
+                EpubIconButton(strings[UiText.NEXT], EpubControlIcon.NEXT, onNext, Modifier.weight(1f), enabled = next)
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Section $chapter of $chapters", style = MaterialTheme.typography.caption)
-                Text("${epubProgressPercent(progression)}% of book", style = MaterialTheme.typography.caption)
+                Text(strings.format(UiText.SECTION, chapter, chapters), style = MaterialTheme.typography.caption)
+                Text(strings.format(UiText.BOOK_PROGRESS, epubProgressPercent(progression)), style = MaterialTheme.typography.caption)
             }
             LinearProgressIndicator(progress = progression.toFloat().coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth().height(2.dp),
                 backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = .08f))
@@ -91,6 +95,7 @@ internal fun epubProgressPercent(progression: Double): Int = (progression.coerce
 /** Native modal focus/dismissal, constrained to the actual reader viewport on both platforms. */
 @Composable
 internal fun EpubControlPanel(title: String, maxHeight: Dp, close: () -> Unit, body: @Composable ColumnScope.() -> Unit) {
+    val strings = LocalAppStrings.current
     val closeFocus = remember { FocusRequester() }
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 480.dp).fillMaxWidth(.92f).heightIn(max = (maxHeight - 32.dp).coerceAtLeast(120.dp))
@@ -99,10 +104,10 @@ internal fun EpubControlPanel(title: String, maxHeight: Dp, close: () -> Unit, b
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, modifier = Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.h6)
-                    EpubIconButton("Close $title", EpubControlIcon.CLOSE, close, Modifier.focusRequester(closeFocus))
+                    EpubIconButton(strings.format(UiText.CLOSE_PANEL, title), EpubControlIcon.CLOSE, close, Modifier.focusRequester(closeFocus))
                 }
                 body()
-                TextButton(close, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("Done") }
+                TextButton(close, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text(strings[UiText.DONE]) }
             }
         }
         LaunchedEffect(Unit) { closeFocus.requestFocus() }
@@ -111,17 +116,18 @@ internal fun EpubControlPanel(title: String, maxHeight: Dp, close: () -> Unit, b
 
 @Composable
 internal fun EpubContentsPanel(reader: EpubReaderController, current: EpubReaderState.Ready?, maxHeight: Dp, close: () -> Unit) {
-    val entries = remember(reader) {
+    val strings = LocalAppStrings.current
+    val entries = remember(reader, strings) {
         reader.toc.ifEmpty { reader.document.spine.mapIndexed { index, spine ->
-            EpubTocEntry("Chapter ${index + 1}", EpubTarget(reader.document.manifest.single { it.id == spine.itemId }.path), 0)
+            EpubTocEntry(strings.format(UiText.CHAPTER, index + 1), EpubTarget(reader.document.manifest.single { it.id == spine.itemId }.path), 0)
         } }
     }
-    EpubControlPanel("Contents", maxHeight, close) {
+    EpubControlPanel(strings[UiText.CONTENTS], maxHeight, close) {
         LazyColumn(Modifier.weight(1f, fill = false).fillMaxWidth()) {
             items(entries) { entry ->
                 TextButton(onClick = { close(); reader.navigate(entry.target) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .padding(start = (entry.depth.coerceAtMost(8) * 12).dp).semantics {
-                        if (entry.target.path == current?.chapter?.path) stateDescription = "In current chapter"
+                        if (entry.target.path == current?.chapter?.path) stateDescription = strings[UiText.CURRENT_CHAPTER]
                     }) {
                     Text(entry.label, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.body2)
                 }
@@ -133,19 +139,20 @@ internal fun EpubContentsPanel(reader: EpubReaderController, current: EpubReader
 @Composable
 internal fun EpubSettingsPanel(settings: EpubReaderSettings, change: (EpubReaderSettings) -> Unit, maxHeight: Dp,
     publicationActions: (@Composable () -> Unit)?, close: () -> Unit, translationControls: (@Composable () -> Unit)? = null) {
-    EpubControlPanel("Reading settings", maxHeight, close) {
+    val strings = LocalAppStrings.current
+    EpubControlPanel(strings[UiText.READING_SETTINGS], maxHeight, close) {
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            EpubSettingStep("Font size", "${settings.fontSize}", settings.fontSize > 14, settings.fontSize < 30,
+            EpubSettingStep(strings[UiText.FONT_SIZE], "${settings.fontSize}", settings.fontSize > 14, settings.fontSize < 30,
                 { change(settings.copy(fontSize = (settings.fontSize - 2).coerceAtLeast(14))) }, { change(settings.copy(fontSize = (settings.fontSize + 2).coerceAtMost(30))) })
-            EpubSettingStep("Line spacing", "${settings.lineSpacingPercent}%", settings.lineSpacingPercent > 120, settings.lineSpacingPercent < 200,
+            EpubSettingStep(strings[UiText.LINE_SPACING], "${settings.lineSpacingPercent}%", settings.lineSpacingPercent > 120, settings.lineSpacingPercent < 200,
                 { change(settings.copy(lineSpacingPercent = (settings.lineSpacingPercent - 10).coerceAtLeast(120))) }, { change(settings.copy(lineSpacingPercent = (settings.lineSpacingPercent + 10).coerceAtMost(200))) })
-            EpubSettingStep("Margins", "${settings.margin}", settings.margin > 8, settings.margin < 40,
+            EpubSettingStep(strings[UiText.MARGINS], "${settings.margin}", settings.margin > 8, settings.margin < 40,
                 { change(settings.copy(margin = (settings.margin - 4).coerceAtLeast(8))) }, { change(settings.copy(margin = (settings.margin + 4).coerceAtMost(40))) })
             Divider(color = MaterialTheme.colors.onSurface.copy(alpha = .12f))
-            Text("Appearance", style = MaterialTheme.typography.subtitle2, modifier = Modifier.semantics { heading() })
+            Text(strings[UiText.APPEARANCE], style = MaterialTheme.typography.subtitle2, modifier = Modifier.semantics { heading() })
             Column(Modifier.selectableGroup()) {
                 EpubReadingTheme.entries.forEach { theme ->
-                    val label = when (theme) { EpubReadingTheme.SYSTEM -> "System"; EpubReadingTheme.LIGHT -> "Light"; EpubReadingTheme.DARK -> "Dark" }
+                    val label = when (theme) { EpubReadingTheme.SYSTEM -> strings[UiText.SYSTEM]; EpubReadingTheme.LIGHT -> strings[UiText.LIGHT]; EpubReadingTheme.DARK -> strings[UiText.DARK] }
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(selected = settings.theme == theme,
                         role = Role.RadioButton, onClick = { change(settings.copy(theme = theme)) }), verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(settings.theme == theme, onClick = null)
@@ -154,10 +161,10 @@ internal fun EpubSettingsPanel(settings: EpubReaderSettings, change: (EpubReader
                 }
             }
             translationControls?.invoke()
-            Text("Saved for all EPUBs on this device.", style = MaterialTheme.typography.caption)
+            Text(strings[UiText.EPUB_PREFS], style = MaterialTheme.typography.caption)
             publicationActions?.let {
                 Divider(color = MaterialTheme.colors.onSurface.copy(alpha = .12f))
-                Text("This publication", style = MaterialTheme.typography.subtitle2, modifier = Modifier.semantics { heading() })
+                Text(strings[UiText.THIS_PUBLICATION], style = MaterialTheme.typography.subtitle2, modifier = Modifier.semantics { heading() })
                 it()
             }
         }
@@ -166,12 +173,13 @@ internal fun EpubSettingsPanel(settings: EpubReaderSettings, change: (EpubReader
 
 @Composable
 private fun EpubSettingStep(label: String, value: String, less: Boolean, more: Boolean, decrease: () -> Unit, increase: () -> Unit) {
+    val strings = LocalAppStrings.current
     Column {
         Text(label, style = MaterialTheme.typography.subtitle2)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(decrease, enabled = less, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Decrease $label" }) { EpubStepIcon(false) }
+            TextButton(decrease, enabled = less, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = strings.format(UiText.DECREASE, label) }) { EpubStepIcon(false) }
             Text(value, modifier = Modifier.weight(1f), style = MaterialTheme.typography.body2)
-            TextButton(increase, enabled = more, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Increase $label" }) { EpubStepIcon(true) }
+            TextButton(increase, enabled = more, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = strings.format(UiText.INCREASE, label) }) { EpubStepIcon(true) }
         }
     }
 }

@@ -37,7 +37,7 @@ class EpubTranslationTest {
         override suspend fun clear() { values.clear() }
     }
     @Test fun selectionUsesExactUnicodeTextWithoutInstallingModels() = runTest {
-        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine), this, listOf("book", "sha"), "en") {}
+        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, listOf("book", "sha"), "en") {}
         controller.selection("Hello 🌍"); runCurrent()
         assertEquals("[Hello 🌍]", controller.state.value.selectionResult)
         assertEquals("Hello 🌍", controller.state.value.selection)
@@ -47,7 +47,7 @@ class EpubTranslationTest {
     @Test fun preservesStylesOwnedLinksImagesAndSourceOffsets() = runTest {
         val target = EpubTarget(path, "note")
         val source = chapter(EpubRun("Bold", strong = true), EpubRun(" italic ", emphasis = true), EpubRun("note", target = target), EpubRun("[Image alt]", translatable = false))
-        val engine = Engine(); val projected = EpubTranslationService(engine).passage(model, listOf("book"), source).single()
+        val engine = Engine(); val projected = EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)).passage(model, listOf("book"), source).single()
         assertSame(source.blocks.single(), projected.source)
         assertTrue(projected.runs[0].strong); assertTrue(projected.runs[1].emphasis); assertEquals(target, projected.runs[2].target)
         assertEquals("[Image alt]", projected.runs[3].text)
@@ -55,7 +55,7 @@ class EpubTranslationTest {
         assertEquals(3, engine.calls)
     }
     @Test fun skipsPreformattedCodeWhitespaceAndLiteralUrls() = runTest {
-        val engine = Engine(); val service = EpubTranslationService(engine)
+        val engine = Engine(); val service = EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler))
         val code = chapter(EpubRun("println(hello)"), kind = EpubBlockKind.PREFORMATTED)
         assertEquals(code.blocks.single().runs, service.passage(model, null, code).single().runs)
         val text = chapter(EpubRun("code", translatable = false), EpubRun("https://example.org/a"), EpubRun(" \n "))
@@ -73,12 +73,12 @@ class EpubTranslationTest {
         for (size in listOf(2047, 2048, 2049, 8192)) {
             val engine = Engine(); engine.operation = { it }
             val input = "🌍".repeat(size)
-            assertEquals(input, EpubTranslationService(engine).text(model, null, input))
+            assertEquals(input, EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)).text(model, null, input))
             assertEquals((size + 2047) / 2048, engine.calls)
         }
     }
     @Test fun cacheReuseSeparatesPublicationRevisionLanguageAndModel() = runTest {
-        val cache = Cache(); val engine = Engine(); val service = EpubTranslationService(engine, cache)
+        val cache = Cache(); val engine = Engine(); val service = EpubTranslationService(engine, cache, modelDispatcher = StandardTestDispatcher(testScheduler))
         val identity = listOf("source/book", "resource", "sha1")
         repeat(2) { assertEquals("[text]", service.text(model, identity, "text")) }
         assertEquals(1, engine.calls)
@@ -90,12 +90,12 @@ class EpubTranslationTest {
         service.clear(); service.text(model, identity, "text"); assertEquals(6, engine.calls)
     }
     @Test fun unknownByteRevisionCannotPersistentlyReuseResults() = runTest {
-        val cache = Cache(); val engine = Engine(); val service = EpubTranslationService(engine, cache)
+        val cache = Cache(); val engine = Engine(); val service = EpubTranslationService(engine, cache, modelDispatcher = StandardTestDispatcher(testScheduler))
         repeat(2) { service.text(model, null, "text") }
         assertEquals(2, engine.calls); assertTrue(cache.values.isEmpty())
     }
     @Test fun providerErrorsAndOversizedOutputRemainControlled() = runTest {
-        val engine = Engine(); val service = EpubTranslationService(engine)
+        val engine = Engine(); val service = EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler))
         engine.operation = { error("failure") }
         assertFailsWith<IllegalStateException> { service.text(model, null, "text") }
         engine.operation = { "x".repeat(EpubTranslationPolicy.OUTPUT_UNITS + 1) }
@@ -103,7 +103,7 @@ class EpubTranslationTest {
     }
     @Test fun explicitDownloadRemovalAndRetryWithoutAutomaticInstallation() = runTest {
         val engine = Engine(); engine.ready = false
-        val controller = EpubTranslationController(EpubTranslationService(engine), this, null, "en") {}
+        val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, null, "en") {}
         controller.chapter(chapter(EpubRun("Hello"))); controller.reading(true); runCurrent()
         assertNull(controller.state.value.blocks); assertNotNull(controller.state.value.message); assertEquals(0, engine.installs)
         controller.install(); runCurrent(); assertEquals(1, engine.installs); assertTrue(controller.state.value.installed)
@@ -114,7 +114,7 @@ class EpubTranslationTest {
     @Test fun cancelledNoncooperativeNativeWorkCannotPublishOrOverlapNewIntent() = runTest {
         val gate = CompletableDeferred<Unit>(); val engine = Engine()
         engine.operation = { withContext(NonCancellable) { gate.await() }; "[$it]" }
-        val cache = Cache(); val service = EpubTranslationService(engine, cache)
+        val cache = Cache(); val service = EpubTranslationService(engine, cache, modelDispatcher = StandardTestDispatcher(testScheduler))
         val controller = EpubTranslationController(service, this, listOf("book", "sha"), "en") {}
         controller.chapter(chapter(EpubRun("old"))); controller.reading(true); runCurrent()
         repeat(20) { controller.chapter(chapter(EpubRun("new $it"))); runCurrent() }
@@ -127,7 +127,7 @@ class EpubTranslationTest {
     @Test fun switchingOriginalOrLanguageRetiresPreviousProjection() = runTest {
         val gate = CompletableDeferred<Unit>(); val engine = Engine()
         engine.operation = { withContext(NonCancellable) { gate.await() }; "[$it]" }
-        val controller = EpubTranslationController(EpubTranslationService(engine), this, null, "en") {}
+        val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, null, "en") {}
         controller.chapter(chapter(EpubRun("old"))); controller.reading(true); runCurrent()
         controller.model(engine.models.last()); gate.complete(Unit); runCurrent()
         assertFalse(controller.state.value.translated); assertNull(controller.state.value.blocks)
@@ -136,20 +136,20 @@ class EpubTranslationTest {
     @Test fun closeRejectsStaleCallbacksAndReleasesOnlyApplicationOwnedEngine() = runTest {
         val gate = CompletableDeferred<Unit>(); val engine = Engine()
         engine.operation = { withContext(NonCancellable) { gate.await() }; it }
-        val service = EpubTranslationService(engine)
+        val service = EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler))
         val controller = EpubTranslationController(service, this, null, "en") {}
         controller.selection("old"); runCurrent(); controller.close(); service.close(); gate.complete(Unit); runCurrent()
         assertNull(controller.state.value.selectionResult); assertEquals(1, engine.closes)
         assertFailsWith<IllegalStateException> { service.text(model, null, "new") }
     }
     @Test fun unsupportedMetadataRequiresAnExplicitSupportedPair() = runTest {
-        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine), this, null, "fr") {}
+        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, null, "fr") {}
         assertNull(controller.state.value.model)
         controller.model(model); runCurrent(); assertEquals(model, controller.state.value.model); controller.close()
         assertFailsWith<IllegalArgumentException> { TranslationPair("fr", "es") }
     }
     @Test fun newWindowReleasesOldProjectionAndFailedReplacementDoesNotPublishPartialText() = runTest {
-        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine), this, null, "en") {}
+        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, null, "en") {}
         controller.chapter(chapter(EpubRun("one"))); controller.reading(true); runCurrent()
         val previous = controller.state.value.blocks!!
         engine.operation = { error("failure") }
@@ -173,7 +173,7 @@ class EpubTranslationTest {
         assertTrue(controller.state.value.translated); controller.close()
     }
     @Test fun sourcePresentationAndPerRequestLimitsAreEnforcedBeforeInference() = runTest {
-        val engine = Engine(); val service = EpubTranslationService(engine)
+        val engine = Engine(); val service = EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler))
         assertFailsWith<IllegalArgumentException> { service.text(model, null, "x".repeat(8193)) }
         val block = chapter(EpubRun("text")).blocks.single()
         val huge = EpubChapter(path, List(257) { block }, emptyMap())
@@ -182,7 +182,7 @@ class EpubTranslationTest {
     }
 
     @Test fun staleSelectionActionCannotBorrowTextFromAnObsoleteChapter() = runTest {
-        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine), this, null, "en") {}
+        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, null, "en") {}
         val old = chapter(EpubRun("old")); val latest = chapter(EpubRun("latest"))
         controller.chapter(old); controller.chapter(latest)
         controller.selection("old", old); runCurrent()
@@ -193,7 +193,7 @@ class EpubTranslationTest {
 
     @Test fun retryRepeatsExplicitFailedDownloadWithoutAutomaticInstallation() = runTest {
         val engine = Engine(); engine.ready = false; engine.installFailures = 1
-        val controller = EpubTranslationController(EpubTranslationService(engine), this, null, "en") {}
+        val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, null, "en") {}
         controller.refresh(); runCurrent(); assertEquals(0, engine.installs)
         controller.install(); runCurrent(); assertEquals(1, engine.installs); assertNotNull(controller.state.value.message)
         controller.retry(); runCurrent(); assertEquals(2, engine.installs); assertTrue(controller.state.value.installed)
@@ -203,7 +203,7 @@ class EpubTranslationTest {
         val received = mutableListOf<String>(); val engine = Engine()
         engine.operation = { received.add(it); it }
         val input = "word ".repeat(1025)
-        assertEquals(input, EpubTranslationService(engine).text(model, null, input))
+        assertEquals(input, EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)).text(model, null, input))
         assertTrue(received.all { it.startsWith("word") && it.endsWith("word") })
         assertTrue(received.all { it.epubCodePoints() <= 2048 })
     }
@@ -216,7 +216,7 @@ class EpubTranslationTest {
     }
 
     @Test fun oversizedSelectionShowsABoundedErrorPanelAndNeverInvokesProvider() = runTest {
-        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine), this, null, "en") {}
+        val engine = Engine(); val controller = EpubTranslationController(EpubTranslationService(engine, modelDispatcher = StandardTestDispatcher(testScheduler)), this, null, "en") {}
         controller.selection("x".repeat(2049)); runCurrent()
         assertEquals("", controller.state.value.selection); assertNotNull(controller.state.value.message)
         assertEquals(0, engine.calls); controller.dismissSelection(); controller.close()

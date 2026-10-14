@@ -53,9 +53,28 @@ class EpubTranslationProgressTest {
         override suspend fun save(progress: ReadingProgress): Boolean { value = progress; return true }
         override suspend fun remove(id: ReadingProgressId): Boolean { value = null; return true }
     }
+    @Test fun delayedDefaultLanguageRestoresThePairWithoutMovingTheOriginalAnchorAndManualChoiceWins() = runTest {
+        val engine = Engine(); val service = EpubTranslationService(engine); val parser = Parser()
+        val reader = EpubReaderController(Document(), id, backgroundScope, parser, translationService = service)
+        try {
+            reader.initialize(null); runCurrent(); assertNull(reader.translation.state.value.model)
+            val initial = assertIs<EpubReaderState.Ready>(reader.state.value)
+            reader.report(initial.ticket, 1, 8)
+            service.defaultLanguage.value = "es"; runCurrent()
+            assertEquals(model, reader.translation.state.value.model)
+            assertEquals(1 to 8, assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+            reader.translatedReading(true); runCurrent(); assertNotNull(reader.translation.state.value.blocks)
+            assertEquals("default", reader.settings.value.translationTarget)
+            reader.translationModel(model); runCurrent() // explicit per-reader choice is preserved
+            service.defaultLanguage.value = "ca"; runCurrent()
+            assertEquals(model, reader.translation.state.value.model)
+            assertEquals("es", reader.settings.value.translationTarget)
+            assertEquals(1 to 8, assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+        } finally { reader.close(); service.close() }
+    }
     @Test fun togglesTypographyRecreationAndReopenPreserveOriginalDeepUnicodeLocator() = runTest {
         val store = Progress(); val persistence = ProgressPersistence(store, StandardTestDispatcher(testScheduler)) { 20 }
-        val engine = Engine(); val service = EpubTranslationService(engine); val parser = Parser()
+        val engine = Engine(); val service = EpubTranslationService(engine).also { it.defaultLanguage.value = "es" }; val parser = Parser()
         val reader = EpubReaderController(Document(), id, this, parser, persistence, translationService = service, resourceRevision = "sha")
         try {
             reader.initialize(null); runCurrent(); assertEquals(0, engine.installs); assertEquals(0, engine.calls)
@@ -89,7 +108,7 @@ class EpubTranslationProgressTest {
     @Test fun pendingFailedAndCancelledProjectionCannotAdvanceProgressOrAcceptOldUiTickets() = runTest {
         val store = Progress(); val persistence = ProgressPersistence(store, StandardTestDispatcher(testScheduler)) { 20 }
         val engine = Engine(); engine.gate = CompletableDeferred()
-        val service = EpubTranslationService(engine)
+        val service = EpubTranslationService(engine).also { it.defaultLanguage.value = "es" }
         val reader = EpubReaderController(Document(), id, this, Parser(), persistence, translationService = service, resourceRevision = "sha")
         try {
             reader.initialize(null); val frame = assertIs<EpubReaderState.Ready>(reader.state.value)
@@ -105,7 +124,7 @@ class EpubTranslationProgressTest {
         } finally { reader.close(); service.close(); persistence.close(); persistence.awaitClosed() }
     }
     @Test fun deepPositionIn3000BlockChapterStaysBoundedAcrossForwardAndReverseWindows() = runTest {
-        val engine = Engine(); val service = EpubTranslationService(engine)
+        val engine = Engine(); val service = EpubTranslationService(engine).also { it.defaultLanguage.value = "es" }
         val windows = object : EpubParser {
             override suspend fun toc(document: EpubDocument) = emptyList<EpubTocEntry>()
             override suspend fun chapter(document: EpubDocument, path: EpubEntryPath): EpubChapter = error("No full chapter materialization")

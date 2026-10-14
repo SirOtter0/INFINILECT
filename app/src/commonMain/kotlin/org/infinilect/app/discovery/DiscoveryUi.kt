@@ -185,22 +185,31 @@ internal fun DiscoveryDetails(entry: DiscoveryEntry, application: ApplicationSes
 
 @Composable
 internal fun DiscoveryPreferenceControls(preferences: DiscoveryPreferences, change: (DiscoveryPreferences) -> Unit) {
+    val strings = org.infinilect.app.ui.LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(DiscoveryStrings.DISCOVERY, style = MaterialTheme.typography.h6, modifier = Modifier.semantics { heading() })
+        Text(strings[org.infinilect.app.ui.UiText.DISCOVERY], style = MaterialTheme.typography.h6, modifier = Modifier.semantics { heading() })
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(DiscoveryStrings.SHOW_ONLINE_DISCOVERY_ON_HOME, Modifier.weight(1f)); Switch(preferences.homeEnabled, { change(preferences.copy(homeEnabled = it)) }, Modifier.semantics { contentDescription = DiscoveryStrings.SHOW_ONLINE_DISCOVERY_ON_HOME })
+            Text(strings[org.infinilect.app.ui.UiText.ONLINE_DISCOVERY], Modifier.weight(1f)); Switch(preferences.homeEnabled, { change(preferences.copy(homeEnabled = it)) }, Modifier.semantics { contentDescription = strings[org.infinilect.app.ui.UiText.ONLINE_DISCOVERY] })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(DiscoveryStrings.PERSONALIZE_WITH_LOCAL_INTERESTS, Modifier.weight(1f)); Switch(preferences.personalized, { change(preferences.copy(personalized = it)) }, Modifier.semantics { contentDescription = DiscoveryStrings.PERSONALIZE_WITH_LOCAL_INTERESTS })
+            Text(strings[org.infinilect.app.ui.UiText.LOCAL_INTERESTS], Modifier.weight(1f)); Switch(preferences.personalized, { change(preferences.copy(personalized = it)) }, Modifier.semantics { contentDescription = strings[org.infinilect.app.ui.UiText.LOCAL_INTERESTS] })
         }
-        Text(DiscoveryStrings.RECOMMENDATION_NOTICE, style = MaterialTheme.typography.body2)
+        Text(strings[org.infinilect.app.ui.UiText.RECOMMENDATION_NOTICE], style = MaterialTheme.typography.body2)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Genre.entries.forEach { genre -> FilterChoice(genre.label, genre in preferences.interests) {
+            Genre.entries.forEach { genre -> FilterChoice(strings[when(genre) {
+                Genre.SCIENCE_FICTION -> org.infinilect.app.ui.UiText.SCIENCE_FICTION
+                Genre.FANTASY -> org.infinilect.app.ui.UiText.FANTASY
+                Genre.MYSTERY -> org.infinilect.app.ui.UiText.MYSTERY
+                Genre.HISTORY -> org.infinilect.app.ui.UiText.GENRE_HISTORY
+                Genre.PHILOSOPHY -> org.infinilect.app.ui.UiText.PHILOSOPHY
+                Genre.ADVENTURE -> org.infinilect.app.ui.UiText.ADVENTURE
+                Genre.ROMANCE -> org.infinilect.app.ui.UiText.ROMANCE
+            }], genre in preferences.interests) {
                 change(preferences.copy(interests = preferences.interests.toMutableSet().apply { if (!add(genre)) remove(genre) }))
             } }
         }
-        TextButton({ change(preferences.copy(interests = emptySet(), inferenceAfter = kotlin.time.Clock.System.now().toEpochMilliseconds())) }, Modifier.heightIn(min = 48.dp)) { Text(DiscoveryStrings.RESET_RECOMMENDATION_PREFERENCES) }
-        Text(DiscoveryStrings.PRIVACY, style = MaterialTheme.typography.caption)
-        Text(DiscoveryStrings.COUNTRY_NOTICE, style = MaterialTheme.typography.caption)
+        TextButton({ change(preferences.copy(interests = emptySet(), inferenceAfter = kotlin.time.Clock.System.now().toEpochMilliseconds())) }, Modifier.heightIn(min = 48.dp)) { Text(strings[org.infinilect.app.ui.UiText.RESET_RECOMMENDATIONS]) }
+        Text(strings[org.infinilect.app.ui.UiText.DISCOVERY_PRIVACY], style = MaterialTheme.typography.caption)
+        Text(strings[org.infinilect.app.ui.UiText.DISCOVERY_COUNTRY], style = MaterialTheme.typography.caption)
     }
 }

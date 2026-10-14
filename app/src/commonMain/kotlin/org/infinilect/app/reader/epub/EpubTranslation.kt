@@ -12,12 +12,14 @@ import kotlinx.coroutines.sync.withLock
 internal fun epubTranslationLanguage(value: String?): String? = when (value?.substringBefore('-')?.lowercase()) {
     "en", "eng" -> "en"
     "es", "spa" -> "es"
+    "ca", "cat" -> "ca"
     else -> null
 }
 internal data class TranslationPair(val source: String, val target: String) {
-    init { require(source in setOf("en", "es") && target in setOf("en", "es") && source != target) }
+    init { require(source in setOf("en", "es", "ca") && target in setOf("en", "es", "ca") && source != target) }
 }
 internal class EpubTranslationException(message: String, cause: Throwable? = null) : Exception(message, cause)
+internal class TranslationModelRequired(val model: TranslationModel) : Exception()
 internal data class TranslationModel(val pair: TranslationPair, val revision: String, val bytes: Long)
 internal interface EpubTranslationEngine {
     /** Stable provider/configuration version; never a publication title or user secret. */
@@ -27,6 +29,7 @@ internal interface EpubTranslationEngine {
     suspend fun installed(model: TranslationModel): Boolean
     suspend fun install(model: TranslationModel, progress: (Long, Long) -> Unit)
     suspend fun remove(model: TranslationModel)
+    suspend fun storageBytes(): Long? = null
     /** Plain text only. Cancellation must drain native work before another request owns it. */
     suspend fun translate(model: TranslationModel, text: String): String
     fun close()
@@ -73,14 +76,18 @@ internal data class EpubTranslatedBlock(val source: EpubBlock, val runs: List<Ep
 }
 
 /** One native permit, shared by readers and selection requests. No background book queue. */
-internal class EpubTranslationService(val engine: EpubTranslationEngine, private val cache: EpubTranslationCache? = null) {
+internal class EpubTranslationService(val engine: EpubTranslationEngine, private val cache: EpubTranslationCache? = null,
+    modelRecords: TranslationModelRecords? = null, modelDispatcher: CoroutineDispatcher = Dispatchers.Default) {
     init { require(engine.identity.length in 1..128) }
     private val permit = Mutex()
+    val models = TranslationModels(engine, modelRecords, modelDispatcher)
+    val defaultLanguage = MutableStateFlow("en")
     private val literalUrl = Regex("""(?:https?://|www\.)\S+""")
     private val closedState = MutableStateFlow(false)
     private val closed get() = closedState.value
     private var cacheEpoch = 0L
-    suspend fun text(model: TranslationModel, identity: List<String>?, source: String): String = permit.withLock {
+    suspend fun text(model: TranslationModel, identity: List<String>?, source: String): String = models.use(model) { translateText(model, identity, source) }
+    private suspend fun translateText(model: TranslationModel, identity: List<String>?, source: String): String = permit.withLock {
         check(!closed); require(source.epubCodePoints() <= 8192); currentCoroutineContext().ensureActive()
         val epoch = cacheEpoch
         val result = StringBuilder()
@@ -111,17 +118,17 @@ internal class EpubTranslationService(val engine: EpubTranslationEngine, private
         }
         result.toString()
     }
-    suspend fun passage(model: TranslationModel, identity: List<String>?, chapter: EpubChapter): List<EpubTranslatedBlock> {
+    suspend fun passage(model: TranslationModel, identity: List<String>?, chapter: EpubChapter): List<EpubTranslatedBlock> = models.use(model) {
         require(chapter.blocks.size <= EpubWindowPolicy.BLOCKS * EpubWindowPolicy.RETAINED &&
             chapter.blocks.sumOf { it.text.length } <= EpubWindowPolicy.TEXT_UNITS * EpubWindowPolicy.RETAINED &&
             chapter.blocks.sumOf { it.runs.size } <= EpubWindowPolicy.APPEND_EVENTS * EpubWindowPolicy.RETAINED)
         var units = 0
-        return chapter.blocks.map { block ->
+        chapter.blocks.map { block ->
             currentCoroutineContext().ensureActive()
             val runs = block.runs.map { run ->
                 if (!run.translatable || block.kind == EpubBlockKind.PREFORMATTED || block.image != null || block.kind == EpubBlockKind.IMAGE ||
                     run.text.isBlank() || run.text.contains(literalUrl)) run
-                else run.copy(text = text(model, identity, run.text))
+                else run.copy(text = translateText(model, identity, run.text))
             }
             units += runs.sumOf { it.text.length }
             require(units <= EpubTranslationPolicy.PRESENTATION_UNITS) { "Translation exceeds the supported passage size." }
@@ -129,8 +136,8 @@ internal class EpubTranslationService(val engine: EpubTranslationEngine, private
         }
     }
     suspend fun clear() = permit.withLock { cacheEpoch++; cache?.clear() }
-    fun close() { if (closedState.compareAndSet(false, true)) { cacheEpoch++; engine.close() } }
-    suspend fun awaitClosed() = engine.awaitClosed()
+    fun close() { if (closedState.compareAndSet(false, true)) { cacheEpoch++; models.close(); engine.close() } }
+    suspend fun awaitClosed() { models.awaitClosed(); engine.awaitClosed() }
 }
 
 internal data class EpubTranslationState(
@@ -138,6 +145,7 @@ internal data class EpubTranslationState(
     val downloaded: Long = 0, val total: Long = 0, val message: String? = null,
     val translated: Boolean = false, val blocks: List<EpubTranslatedBlock>? = null,
     val selection: String? = null, val selectionResult: String? = null,
+    val requiredModel: TranslationModel? = null,
 )
 
 /** Session-owned projection; one replaceable Kotlin job, stale generations cannot publish. */
@@ -153,6 +161,7 @@ internal class EpubTranslationController(
     private var chapter: EpubChapter? = null
     private var job: Job? = null
     private var modelWork = false
+    private var waitingDownload = false
     private var retryRequest: (() -> Unit)? = null
     private val mutableEpoch = MutableStateFlow(0L)
     private var epoch: Long
@@ -167,7 +176,7 @@ internal class EpubTranslationController(
         val reflowing = state.value.blocks != null
         chapter = value
         if (!modelWork) { epoch++; job?.cancel(); retryRequest = null }
-        mutable.value = mutable.value.copy(blocks = null, selection = null, selectionResult = null, busy = if (modelWork) state.value.busy else false)
+        mutable.value = mutable.value.copy(blocks = null, selection = null, selectionResult = null, requiredModel = null, busy = if (modelWork) state.value.busy else false)
         if (reflowing) changed()
         if (state.value.translated && !modelWork) reading(true)
     }
@@ -180,13 +189,18 @@ internal class EpubTranslationController(
         action(true, retry = ::refresh) { model -> val installed = service!!.engine.installed(model); update { it.copy(installed = installed) } }
     }
     fun install() {
-        val ticket = epoch + 1
+        mutable.value = mutable.value.copy(requiredModel = null)
+        waitingDownload = true
         action(true, retry = ::install) { model ->
-        service!!.engine.install(model) { done, total -> mutable.update { value -> if (!closed && epoch == ticket) value.copy(downloaded = done, total = total) else value } }
+        if (!service!!.models.install(model, pinned = false).await()) throw EpubTranslationException(service.models.state.value.error ?: "Model operation could not finish. Original reading remains available; retry.")
+        waitingDownload = false
         update { it.copy(installed = true) }
         }
     }
-    fun remove() { original(); action(retry = ::remove) { model -> service!!.engine.remove(model); update { it.copy(installed = false) } } }
+    fun remove() { original(); action(retry = ::remove) { model ->
+        if (!service!!.models.remove(model).await()) throw EpubTranslationException(service.models.state.value.error ?: "Model operation could not finish. Original reading remains available; retry.")
+        update { it.copy(installed = false) }
+    } }
     fun clear() {
         if (service == null) return
         operation(isModelWork = true, needsEngine = false, retry = ::clear) {
@@ -194,15 +208,19 @@ internal class EpubTranslationController(
         }
     }
     fun original() {
-        epoch++; job?.cancel(); modelWork = false; modelWork = false; mutable.value = mutable.value.copy(translated = false, blocks = null, busy = false, message = null)
+        epoch++; job?.cancel(); modelWork = false; waitingDownload = false; mutable.value = mutable.value.copy(translated = false, blocks = null, busy = false, message = null, requiredModel = null)
         changed()
     }
     fun reading(enabled: Boolean) {
         if (!enabled) { original(); return }
         val value = chapter ?: return
+        if (state.value.model == null) {
+            mutable.value = mutable.value.copy(message = "No verified model is available for this language pair. Choose a supported pair, or continue with Original.")
+            return
+        }
         mutable.value = mutable.value.copy(translated = true)
         action(retry = { reading(true) }) { model ->
-            if (!service!!.engine.installed(model)) throw EpubTranslationException("Download the selected model before translating. Original reading remains available.")
+            if (!service!!.engine.installed(model)) throw TranslationModelRequired(model)
             val blocks = service.passage(model, identity, value)
             update { it.copy(blocks = blocks, installed = true) }
             changed()
@@ -214,10 +232,14 @@ internal class EpubTranslationController(
             mutable.value = mutable.value.copy(selection = "", selectionResult = null, message = "Select up to 2,048 characters from this passage."); return
         }
         mutable.value = mutable.value.copy(selection = text, selectionResult = null)
+        if (state.value.model == null) {
+            mutable.value = mutable.value.copy(message = "No verified model is available for this language pair. Choose a supported pair, or continue with Original.")
+            return
+        }
         if (modelWork && job?.isActive == true) return
         action(retry = ::retrySelection) { model ->
             check(!state.value.translated) { "Return to Original to translate a selection from the book's source language." }
-            if (!service!!.engine.installed(model)) throw EpubTranslationException("Download the selected model before translating. Original reading remains available.")
+            if (!service!!.engine.installed(model)) throw TranslationModelRequired(model)
             val result = service.text(model, identity, text)
             update { it.copy(selectionResult = result, installed = true) }
         }
@@ -227,7 +249,7 @@ internal class EpubTranslationController(
     fun dismissSelection() {
         if (modelWork) { mutable.value = mutable.value.copy(selection = null, selectionResult = null); return }
         epoch++; job?.cancel(); modelWork = false; mutable.value = mutable.value.copy(selection = null, selectionResult = null, busy = false) }
-    fun cancel() { epoch++; job?.cancel(); modelWork = false; mutable.value = mutable.value.copy(busy = false, message = "Translation cancelled. Original text remains available.") }
+    fun cancel() { if (waitingDownload) service?.models?.cancel(); waitingDownload = false; epoch++; job?.cancel(); modelWork = false; mutable.value = mutable.value.copy(busy = false, requiredModel = null, message = "Translation cancelled. Original text remains available.") }
     private suspend fun update(transform: (EpubTranslationState) -> EpubTranslationState) {
         currentCoroutineContext().ensureActive(); check(!closed)
         mutable.value = transform(mutable.value)
@@ -244,7 +266,8 @@ internal class EpubTranslationController(
             try {
                 block(); currentCoroutineContext().ensureActive()
             } catch (e: CancellationException) { throw e }
-            catch (error: Exception) { if (!closed && epoch == ticket) mutable.value = mutable.value.copy(message = when(error) {
+            catch (error: Exception) { if (!closed && epoch == ticket) mutable.value = mutable.value.copy(requiredModel = (error as? TranslationModelRequired)?.model, message = when(error) {
+                is TranslationModelRequired -> "Translation model required"
                 is EpubTranslationException -> error.message
                 is IllegalArgumentException -> "The translated passage exceeds supported text limits. Use Original or a shorter selection."
                 else -> "Local translation could not complete. Check model storage or retry; Original is always available."

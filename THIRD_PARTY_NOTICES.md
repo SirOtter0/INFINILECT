@@ -2,6 +2,13 @@
 
 ## Local EPUB translation — PR #31
 
+The language/model UX follow-up adds Compose Multiplatform
+`org.jetbrains.compose.components:components-resources:1.12.1`, Apache-2.0
+([source](https://github.com/JetBrains/compose-multiplatform/tree/v1.12.1/components/resources)).
+Static English/Spanish/Catalan UI resources are INFINILECT contributions; model
+weights remain separately licensed. English↔Catalan joins the verified Mozilla
+English↔Spanish pairs under the same cited MPL-2.0 model boundary.
+
 Android adds the pinned Foxlet 0.5.0 SDK (MIT wrapper, MPL-2.0 Bergamot, MIT Marian).
 The complete component graph retains its Apache-2.0, BSD, MIT, zlib, Unicode-3.0
 and LLVM runtime terms: [complete notices](third-party/foxlet-THIRD_PARTY_NOTICES.txt),

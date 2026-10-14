@@ -72,6 +72,10 @@ internal class ApplicationSession(
     init {
         observe(searchSession.value); collections.refreshHistory()
         this.scope.launch { collections.history.collect { if (destination.value == Destination.HOME && !it.loading) refreshHomeProgress() } }
+        sources.appearance?.let { preferences -> this.scope.launch { preferences.state.collect { current ->
+            if (current.loaded) sources.translation?.defaultLanguage?.value = current.readingLanguage
+                ?: org.infinilect.app.ui.resolveInterfaceLanguage(current.profile.interfaceLanguage, org.infinilect.app.ui.deviceInterfaceLanguage())
+        } } }
     }
     private fun observe(session: ReadingSession) {
         observer?.cancel(); mutableOpening.value=session.opening.state.value

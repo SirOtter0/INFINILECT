@@ -55,7 +55,7 @@ class FileEpubReaderSettingsStoreTest {
         Files.write(record, bytes)
     }
     @Test fun unsupportedFutureSchemaLoadsDefaults() = runBlocking {
-        FileEpubReaderSettingsStore(directory).save(EpubReaderPreferences(settings, 1)); mutateInt(8, 3)
+        FileEpubReaderSettingsStore(directory).save(EpubReaderPreferences(settings, 1)); mutateInt(8, 4)
         assertEquals(EpubReaderPreferences(), FileEpubReaderSettingsStore(directory).load())
     }
     @Test fun checksumValidOutOfRangeValuesAndInvalidThemeAreRejected() = runBlocking {

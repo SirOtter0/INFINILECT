@@ -23,6 +23,8 @@ internal class FoxletEpubTranslation(context: Context) : EpubTranslationEngine {
     override val models = listOf<TranslationModel>(
         TranslationModel(TranslationPair("en", "es"), "2.1:7d51237c0a07027dcd61643cfbbb0f8c48597d19907ef53d2cae9d6bec2cf25c,3b1c399511c01c84c36fae5c0524df44096288efdc8236e182b5c97d7ad2244c,5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad", 36576277L),
         TranslationModel(TranslationPair("es", "en"), "2.0:e2610211d3b9577d012638fe7e7e74ed7b4b708ce96b9e792e67c282a6492daa,4aed7734152ae0045d1a69ae49c86cfda18f53c61f90e95e1d1de1c7c7c3b033,5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad", 37014089L),
+        TranslationModel(TranslationPair("en", "ca"), "2.0:8f2151a7fb75454f5167a8df8758ec02ab02c0302893851bad7caa6b729822fb,735881c99ff303e55eb2e92a3b86762523d5dd1a4797b2574b851062051426ee,64ebcb5f6cb5a954ced615e48a44a85e77a644e4910544014b299b8ee0fa1b1f", 36716532L),
+        TranslationModel(TranslationPair("ca", "en"), "2.0:74880047539925630601d61aa6c29a0672046236ca6cf33eeaf6f6f6690e914e,b7f9c70823052f60c257eb1c4eff893abea3648aa9d1c23c8774e1e5ef061434,6d22da90905873c2793d0805e34e5c27901b16e7e7a7a427696696f67dfe1f0e", 36731612L),
     )
     private val root = File(application.noBackupFilesDir, "epub-translation-models-v1")
     private val mutex = Mutex()
@@ -47,6 +49,12 @@ internal class FoxletEpubTranslation(context: Context) : EpubTranslationEngine {
         check(fingerprint == model.revision && value.sizeBytes == model.bytes)
         return value
     }
+    override suspend fun storageBytes(): Long? = withContext(Dispatchers.IO) {
+        if (!root.exists()) 0L else if (!translationModelStorageFits(root.toPath())) null
+        else java.nio.file.Files.walk(root.toPath(), 4).use { entries -> entries.filter {
+            java.nio.file.Files.isRegularFile(it, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+        }.mapToLong { java.nio.file.Files.size(it) }.sum() }
+    }
     override suspend fun installed(model: TranslationModel): Boolean = mutex.withLock {
         withContext(Dispatchers.IO) {
             val sdk = client(); val exact = descriptor(sdk, model)
@@ -56,7 +64,7 @@ internal class FoxletEpubTranslation(context: Context) : EpubTranslationEngine {
     override suspend fun install(model: TranslationModel, progress: (Long, Long) -> Unit) = safe { mutex.withLock {
         withContext(Dispatchers.IO) {
             val sdk = client(); val exact = descriptor(sdk, model)
-            sdk.models.cleanup(CleanupOptions(staleTempAge = kotlin.time.Duration.ZERO))
+            sdk.models.cleanup(CleanupOptions(staleTempAge = kotlin.time.Duration.ZERO, removeSuperseded = false))
             if (!translationModelStorageFits(root.toPath())) throw EpubTranslationException("Model storage exceeds its 120 MiB budget. Delete an unused model and retry.")
             if (sdk.models.findUsable(exact.pair)?.descriptor != exact) {
                 unload(sdk); active = null; installedModels.remove(model.pair)
@@ -64,7 +72,7 @@ internal class FoxletEpubTranslation(context: Context) : EpubTranslationEngine {
                 if (!translationModelStorageFits(root.toPath(), model.bytes)) throw EpubTranslationException("Insufficient model storage budget. Delete an unused model and retry.")
             }
             try { installedModels[model.pair] = sdk.models.download(exact) { value -> progress(value.downloadedBytes, value.totalBytes) }; Unit }
-            finally { withContext(NonCancellable) { sdk.models.cleanup(CleanupOptions(staleTempAge = kotlin.time.Duration.ZERO)) } }
+            finally { withContext(NonCancellable) { sdk.models.cleanup(CleanupOptions(staleTempAge = kotlin.time.Duration.ZERO, removeSuperseded = false)) } }
         }
     }
     }

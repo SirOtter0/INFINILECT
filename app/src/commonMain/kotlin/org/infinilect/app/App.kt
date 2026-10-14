@@ -109,8 +109,10 @@ fun App(
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
     val saveFailed by (applicationSources.progress?.saveFailed
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
-    val backLabel=when(destination) { Destination.HOME -> "Back to Home"; Destination.LIBRARY -> "Back to Library"; Destination.HISTORY -> "Back to History"; else -> "Back to results" }
     ApplicationBackHandler(application.opening,application.destination,application::back,backHandler,application.importing)
+    InterfaceLanguage(appearanceState.profile.interfaceLanguage) {
+    val strings = LocalAppStrings.current
+    val backLabel = strings[when(destination) { Destination.HOME -> UiText.BACK_HOME; Destination.LIBRARY -> UiText.BACK_LIBRARY; Destination.HISTORY -> UiText.BACK_HISTORY; else -> UiText.BACK_RESULTS }]
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             when(val current=opening) {
@@ -122,7 +124,7 @@ fun App(
                         importAction = if (localFilePicker != null && applicationSources.localImports != null) ({
                             ImportActionTooltip {
                                 androidx.compose.material.IconButton(enabled = !importing.busy, onClick = { application.importLocal(localFilePicker) },
-                                    modifier = Modifier.size(48.dp).semantics { contentDescription = "Import local file" }) { ImportIcon() }
+                                    modifier = Modifier.size(48.dp).semantics { contentDescription = strings[UiText.IMPORT_FILE] }) { ImportIcon() }
                             }
                         }) else null,
                     ) {
@@ -143,7 +145,7 @@ fun App(
                                         Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, progressRecords.values.toList())
-                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) })
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation)
                                     }
                                 }
                             }
@@ -218,6 +220,7 @@ fun App(
                 }
             }
         }
+    }
     }
 }
 

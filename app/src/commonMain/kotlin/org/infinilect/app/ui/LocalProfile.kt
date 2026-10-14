@@ -13,10 +13,11 @@ internal data class LocalProfile(val displayName: String? = null, val countryCod
         require(displayName == null || displayName.isNotBlank() && displayName == displayName.trim() && displayName.length <= 80 &&
             displayName.none { it.code < 32 || it.code in 127..159 || it == '\u2028' || it == '\u2029' })
         require(countryCode == null || validResidenceCode(countryCode))
-        // English is the only implemented UI language; null follows existing app conventions.
-        require(interfaceLanguage == null || interfaceLanguage == "en")
+        require(interfaceLanguage == null || interfaceLanguage in setOf("en", "es", "ca"))
     }
     val hasDeclaredResidence get() = countryCode != null
 }
-internal data class ApplicationPreferences(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val profile: LocalProfile = LocalProfile(), val discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences())
+internal data class ApplicationPreferences(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val profile: LocalProfile = LocalProfile(), val discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences(), val readingLanguage: String? = null) {
+    init { require(readingLanguage == null || readingLanguage in setOf("en", "es", "ca")) }
+}
 internal fun welcomeGreeting(profile: LocalProfile) = profile.displayName?.let { "Hello, $it!" } ?: "Hello!"

@@ -40,7 +40,7 @@ internal class FileApplicationAppearanceStore(
                 val bytes = buffer.array(); val payload = bytes.copyOfRange(0, bytes.size - 32)
                 require(MessageDigest.isEqual(bytes.takeLast(32).toByteArray(), MessageDigest.getInstance("SHA-256").digest(payload)))
                 DataInputStream(ByteArrayInputStream(payload)).use { input ->
-                    val magic = input.readInt(); require(magic in setOf(0x494E4631, 0x494E4632, 0x494E4633))
+                    val magic = input.readInt(); require(magic in setOf(0x494E4631, 0x494E4632, 0x494E4633, 0x494E4634))
                     val mode = ApplicationThemeMode.entries[input.readInt()]
                     val profile = if (magic == 0x494E4631) LocalProfile() else {
                         val handled = input.readBoolean()
@@ -49,14 +49,15 @@ internal class FileApplicationAppearanceStore(
                         val language = input.readUTF().ifEmpty { null }
                         LocalProfile(name, country, language, handled)
                     }
-                    val discovery = if (magic == 0x494E4633) {
+                    val discovery = if (magic == 0x494E4633 || magic == 0x494E4634) {
                         val enabled = input.readBoolean(); val personalized = input.readBoolean(); val after = input.readLong()
                         val count = input.readUnsignedByte(); require(count <= Genre.entries.size)
                         val interests = List(count) { Genre.entries[input.readUnsignedByte()] }.toSet(); require(interests.size == count)
                         DiscoveryPreferences(enabled, personalized, interests, after)
                     } else DiscoveryPreferences()
+                    val reading = if (magic == 0x494E4634) input.readUTF().ifEmpty { null } else null
                     require(input.available() == 0)
-                    ApplicationPreferences(mode, profile, discovery)
+                    ApplicationPreferences(mode, profile, discovery, reading)
                 }
             }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { ApplicationPreferences() }
@@ -72,18 +73,20 @@ internal class FileApplicationAppearanceStore(
             if (Files.exists(target, NOFOLLOW_LINKS) && !Files.isRegularFile(target, NOFOLLOW_LINKS)) return@withContext false
             val output = ByteArrayOutputStream()
             DataOutputStream(output).use { data ->
-                val legacy = value.profile == LocalProfile() && value.discovery == DiscoveryPreferences()
-                data.writeInt(if (legacy) 0x494E4631 else if (value.discovery == DiscoveryPreferences()) 0x494E4632 else 0x494E4633); data.writeInt(value.mode.ordinal)
+                val modern = value.readingLanguage != null
+                val legacy = !modern && value.profile == LocalProfile() && value.discovery == DiscoveryPreferences()
+                data.writeInt(if (modern) 0x494E4634 else if (legacy) 0x494E4631 else if (value.discovery == DiscoveryPreferences()) 0x494E4632 else 0x494E4633); data.writeInt(value.mode.ordinal)
                 if (!legacy) {
                     data.writeBoolean(value.profile.setupHandled)
                     data.writeUTF(value.profile.displayName.orEmpty()); data.writeUTF(value.profile.countryCode.orEmpty())
                     data.writeUTF(value.profile.interfaceLanguage.orEmpty())
                 }
-                if (value.discovery != DiscoveryPreferences()) {
+                if (modern || value.discovery != DiscoveryPreferences()) {
                     data.writeBoolean(value.discovery.homeEnabled); data.writeBoolean(value.discovery.personalized)
                     data.writeLong(value.discovery.inferenceAfter); data.writeByte(value.discovery.interests.size)
                     value.discovery.interests.sortedBy { it.ordinal }.forEach { data.writeByte(it.ordinal) }
                 }
+                if (modern) data.writeUTF(value.readingLanguage.orEmpty())
             }
             val payload = output.toByteArray()
             val bytes = payload + MessageDigest.getInstance("SHA-256").digest(payload)
