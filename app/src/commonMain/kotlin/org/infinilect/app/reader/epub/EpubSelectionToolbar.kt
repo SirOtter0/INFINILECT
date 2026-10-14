@@ -19,7 +19,9 @@ import androidx.compose.ui.window.*
 import kotlinx.coroutines.CompletableDeferred
 import org.infinilect.app.ui.*
 
-/** Public provider only; a newer selection replaces the current menu. */
+/** Public provider only; a newer selection replaces the current menu.
+ * The toolbar never takes window focus or intercepts events outside its buttons.
+ * SelectionContainer owns handle drags/outside cancellation; the reader owns Back. */
 private class ReaderSelectionMenu : TextContextMenuProvider {
     class Session(val data: TextContextMenuDataProvider, val finished: CompletableDeferred<Unit> = CompletableDeferred())
     var session by mutableStateOf<Session?>(null)
@@ -29,7 +31,7 @@ private class ReaderSelectionMenu : TextContextMenuProvider {
         session?.finished?.complete(Unit); session = next
         try { next.finished.await() } finally { if (session === next) session = null }
     }
-    fun close() { session?.finished?.complete(Unit) }
+    fun close() { session?.finished?.complete(Unit); session = null }
 }
 
 @Suppress("DEPRECATION")
@@ -41,7 +43,8 @@ internal fun EpubSelectionToolbar(selection: SelectionState, enabled: Boolean, t
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
     val provider = remember { ReaderSelectionMenu() }
     var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    DisposableEffect(provider) { onDispose { provider.close() } }
+    DisposableEffect(provider, selection) { onDispose { selection.clear(); provider.close() } }
+    LaunchedEffect(selection.selectedTexts.isEmpty()) { if (selection.selectedTexts.isEmpty()) provider.close() }
     CompositionLocalProvider(LocalTextContextMenuToolbarProvider provides provider, LocalTextContextMenuDropdownProvider provides provider) {
         Box(Modifier.onGloballyPositioned { anchor = it }, propagateMinConstraints = true) {
             content()
@@ -62,13 +65,13 @@ internal fun EpubSelectionToolbar(selection: SelectionState, enabled: Boolean, t
                         return IntOffset((point.x + (bounds.width - popupContentSize.width) / 2).toInt().coerceIn(left, right.coerceAtLeast(left)), y.coerceIn(top, bottom.coerceAtLeast(top)))
                     }
                 } }
-                Popup(popupPositionProvider = position, onDismissRequest = provider::close, properties = PopupProperties(focusable = true)) {
+                Popup(popupPositionProvider = position, onDismissRequest = { selection.clear(); provider.close() }, properties = PopupProperties(focusable = false, dismissOnClickOutside = false, dismissOnBackPress = false)) {
                     Surface(shape = MaterialTheme.shapes.medium, elevation = 4.dp) {
                         FlowRow(Modifier.widthIn(max = 360.dp).padding(4.dp), verticalArrangement = Arrangement.Center) {
-                            if (enabled) IconButton({ translate(); provider.close() }, Modifier.size(48.dp).semantics { contentDescription = strings[UiText.TRANSLATE] }) {
+                            if (enabled) IconButton({ translate(); selection.clear(); provider.close() }, Modifier.size(48.dp).semantics { contentDescription = strings[UiText.TRANSLATE] }) {
                                 Text("A↔文", modifier = Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.subtitle2)
                             }
-                            TextButton({ clipboard.setText(AnnotatedString(selection.selectedTexts.joinToString("\n") { it.text })); provider.close() }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.COPY]) }
+                            TextButton({ clipboard.setText(AnnotatedString(selection.selectedTexts.joinToString("\n") { it.text })); selection.clear(); provider.close() }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.COPY]) }
                             TextButton({ selection.selectAll() }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.SELECT_ALL]) }
                         }
                     }

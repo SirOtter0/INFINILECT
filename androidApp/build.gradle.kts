@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
+import java.util.zip.ZipFile
 plugins {
     id("com.android.application")
     kotlin("plugin.compose")
@@ -30,4 +31,25 @@ dependencies {
     // The manifest directly references this provider to disable automatic font
     // initialization; use the same official stable version at compile/runtime.
     implementation("androidx.startup:startup-runtime:1.2.0")
+}
+
+// Checks the installed-artifact boundary, not just the JVM test classpath.
+tasks.register("verifyDebugLanguageResources") {
+    group = "verification"
+    description = "Verify all shipped interface languages in the assembled debug APK."
+    dependsOn("assembleDebug")
+    val apk = layout.buildDirectory.file("outputs/apk/debug/androidApp-debug.apk")
+    val preparedResources = project(":app").layout.buildDirectory.dir("generated/compose/resourceGenerator/preparedResources/commonMain/composeResources")
+    inputs.file(apk)
+    inputs.dir(preparedResources)
+    doLast {
+        ZipFile(apk.get().asFile).use { archive ->
+            listOf("values", "values-es", "values-ca").forEach { locale ->
+                val path = "assets/composeResources/org.infinilect.app.generated.resources/$locale/strings.commonMain.cvr"
+                val entry = checkNotNull(archive.getEntry(path)) { "Missing packaged language resource: $path" }
+                val prepared = preparedResources.get().file("$locale/strings.commonMain.cvr").asFile
+                check(archive.getInputStream(entry).use { it.readBytes() }.contentEquals(prepared.readBytes())) { "Packaged language resource differs from generated resource: $locale" }
+            }
+        }
+    }
 }

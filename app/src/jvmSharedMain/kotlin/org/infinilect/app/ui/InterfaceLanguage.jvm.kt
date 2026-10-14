@@ -12,3 +12,9 @@ internal actual fun applyInterfaceLanguage(language: String) {
     val requested = Locale.forLanguageTag(language)
     if (Locale.getDefault().language != language) Locale.setDefault(requested)
 }
+
+internal actual fun reportInterfaceLanguageFailure(language: String, exception: Exception) {
+    // No exception message, resource path, profile or publication text in diagnostic output.
+    java.util.logging.Logger.getLogger("INFINILECT.Locale").warning(
+        "stage=load-interface-resources language=$language exception=${exception.javaClass.simpleName}")
+}

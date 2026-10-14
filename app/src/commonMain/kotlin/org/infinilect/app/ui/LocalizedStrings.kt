@@ -48,6 +48,7 @@ internal enum class UiText(val resource: StringResource, val fallback: String) {
     ENGLISH(Res.string.english, "English"),
     SPANISH(Res.string.spanish, "Spanish"),
     CATALAN(Res.string.catalan, "Catalan"),
+    LANGUAGE_TRANSLATION_DESCRIPTION(Res.string.language_translation_description, "App language, reading language and downloaded models"),
     LANGUAGE_TRANSLATION(Res.string.language_translation, "Language and translation"),
     INTERFACE_LANGUAGE(Res.string.interface_language, "Interface language"),
     DEFAULT_READING_LANGUAGE(Res.string.default_reading_language, "Default reading language"),
@@ -147,7 +148,7 @@ internal enum class UiText(val resource: StringResource, val fallback: String) {
     BACK_LIBRARY(Res.string.back_library, "Back to Library"),
     BACK_HISTORY(Res.string.back_history, "Back to History"),
     BACK_RESULTS(Res.string.back_results, "Back to results"),
-    LOCALIZATION_ERROR(Res.string.localization_error, "Language resources could not load. English remains available."),
+    LOCALIZATION_ERROR(Res.string.localization_error, "Language resources could not load. The last available language is still shown."),
     CLOSE_PANEL(Res.string.close_panel, "Close %1\$s"),
     GENRE_HISTORY(Res.string.genre_history, "History"),
     TOGGLE_CONTROLS(Res.string.toggle_controls, "Toggle reading controls"),
@@ -177,6 +178,7 @@ internal enum class UiText(val resource: StringResource, val fallback: String) {
 
 @Immutable
 internal class LocalizedStrings(private val values: Map<UiText, String> = emptyMap(), val failed: Boolean = false) {
+    fun withLoadFailure() = LocalizedStrings(values, failed = true)
     operator fun get(key: UiText): String = values[key] ?: key.fallback
     fun format(key: UiText, vararg args: Any): String {
         var result = get(key)

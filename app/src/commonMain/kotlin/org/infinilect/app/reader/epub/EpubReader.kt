@@ -97,11 +97,12 @@ internal fun EpubReader(
             returnFocus = null
         }
     }
-    backHandler(controls.visible || controls.panel != null) {
-        if (controls.panel != null) closePanel() else controls.dismiss()
+    backHandler(selection.selectedTexts.isNotEmpty() || controls.visible || controls.panel != null) {
+        if (selection.selectedTexts.isNotEmpty()) selection.clear()
+        else if (controls.panel != null) closePanel() else controls.dismiss()
     }
     val current = (state as? EpubReaderState.Ready) ?: displayed
-    LaunchedEffect(reader, current?.ticket, translated.blocks) { selection.clear(); selectionTicket = current?.ticket ?: -1L }
+    LaunchedEffect(reader, current?.ticket, translated.blocks, settings.fontSize, settings.margin, settings.lineSpacingPercent) { selection.clear(); selectionTicket = current?.ticket ?: -1L }
     val error = (state as? EpubReaderState.Error)?.message ?: current?.error
     LaunchedEffect(reader, current?.presentation, controls.visible) {
         if (current != null) {
@@ -125,7 +126,7 @@ internal fun EpubReader(
                 val layout = Triple(it.width, density.density, density.fontScale)
                 if (previousLayout != null && previousLayout != layout) reader.presentationChanged()
                 previousLayout = layout
-            }.epubReaderTap { action ->
+            }.epubReaderTap({ selection.selectedTexts.isNotEmpty() }, selection::clear) { action ->
                 if (controls.panel == null) when (action) {
                     EpubTapAction.CONTROLS -> controls.toggle()
                     EpubTapAction.PREVIOUS -> keyboardScroll.request?.invoke(EpubKeyboardStep.TAP_PREVIOUS)
@@ -140,9 +141,16 @@ internal fun EpubReader(
             }.onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) false
                 else when {
+                    controls.panel == null && current != null && (event.isCtrlPressed || event.isMetaPressed) && event.key == Key.A -> { selection.selectAll(); true }
+                    event.isAltPressed && event.key == Key.T && selection.selectedTexts.isNotEmpty() && reader.translation.unavailable == null && !translated.translated -> {
+                        val captured = selection.selectedTexts.joinToString("\n") { it.text }
+                        if (current != null && selectionTicket == current.ticket) reader.translation.selection(captured, current.chapter)
+                        selection.clear(); true
+                    }
                     event.key == Key.F10 -> { controls.toggle(); true }
                     event.key == Key.Escape -> {
-                        if (controls.panel != null) closePanel() else if (!controls.dismiss()) onBack()
+                        if (selection.selectedTexts.isNotEmpty()) selection.clear()
+                        else if (controls.panel != null) closePanel() else if (!controls.dismiss()) onBack()
                         true
                     }
                     controls.panel == null && event.isAltPressed && event.key == Key.DirectionLeft -> {

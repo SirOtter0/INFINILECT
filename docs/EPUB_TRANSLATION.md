@@ -2,7 +2,7 @@
 
 PR #31 continues the original audit at `9b516669ed4b201a6b79f79c17dfae3be6204dc2`.
 Base: `b08379c6a5072f7114685e4a4c9444e60edcdcc9` (merged PR #30).
-Status: **user-reported selection and translated-reading success on a physical realme C55 for the previous APK; this model/language UX follow-up still awaits physical re-acceptance**. Desktop original reading remains
+Status: **user-reported translation/model-management success on realme C55; the latest APK exposed selection and Android resource-loading defects. This correction requires physical re-acceptance.** Desktop original reading remains
 fully operational; its translation engine is explicitly unavailable. Test providers
 are used only for deterministic shared/UI tests, never as native-engine evidence.
 
@@ -395,8 +395,7 @@ helper is **internal**, so it is not called, reflected or copied. The popup uses
 public selectedTexts/selectAll APIs, keeps Copy/Select all and a direct translation
 icon (when available), and clamps to the actual safe reader viewport. There is no
 duplicate overflow Translate item. Copy writes the selected/result text; extraction
-never reads the clipboard. Keyboard focus, dismissal and accessibility use standard
-Compose popup/button semantics. Desktop has no fake translation icon when its engine
+never reads the clipboard. The toolbar is nonmodal and does not take window focus: Compose owns handle dragging and normal outside-tap clearing; the reader clears selection before Back/Escape. Standard selection keyboard operations stay with the reading surface; Alt+T is a translation shortcut when a real engine is available. Accessibility uses the direct button and selection custom action. Desktop has no fake translation icon when its engine
 is unavailable. Provider-specific OS smart-selection actions are not implemented.
 
 EPUB Previous/Next are accessible 48-dp arrow controls with unchanged controller
@@ -430,7 +429,7 @@ Compose version) supplies compiled static strings in `values`, `values-es`,
 `values-ca`. Public getString and Java locale APIs load a finite catalog off the UI
 thread only on startup/language change. A composition-local immutable string table
 updates labels without recreating reading sessions. English is the fallback; resource
-failure retains readable English rather than crashing. No model-generated UI strings.
+failure retains the last successfully applied language rather than crashing. No model-generated UI strings.
 
 | Surface | Actual coverage |
 | --- | --- |
@@ -448,7 +447,7 @@ may require a normal relaunch; explicit en/es/ca changes apply within the app wi
 restarting it. Broad Home scrolling/recomposition work belongs to PR #32; no phone
 performance improvement is claimed here.
 
-### Follow-up verification and realme C55 checklist
+### Model/language follow-up verification at `3f3ac2a` (historical)
 
 | Check | Result |
 | --- | --- |
@@ -480,3 +479,123 @@ The original UI regression found a missing contextual Close-panel accessibility 
 7. Check preserved original anchors after Original/Translated, typography, rotation,
    language changes and errors. Pinned/recent/active models must survive cleanup;
    closing a book must not delete a model. General Home jank remains PR #32 work.
+
+## Selection, resource packaging and Settings correction (PR #31 follow-up)
+
+Starting HEAD: `3f3ac2aed209e9953f7eb230bd49466290077c65`. The user reported blocked
+selection handles/two-tap cancellation at large text size, missing Spanish resources,
+and an unclear Settings access row. Translation and model management were reported
+working on a physical realme C55; this correction has not yet been tested there.
+
+### Confirmed implementation defects and reproduction
+
+- The custom selection toolbar used `PopupProperties(focusable = true)`: a separate
+  modal window owned input instead of allowing underlying selection-handle windows
+  and the reading surface to operate normally. Outside dismissal completed only the
+  menu session, leaving the actual `SelectionState` selected. The deterministic
+  `oneOutsideTapClosesMenuAndClearsRealSelection` pointer trace failed before correction
+  and passes afterward. The real long-press/two-handle pointer trace also fails with the old focusable popup and passes with the correction. Android handle behavior requires physical re-acceptance;
+  Desktop pointer traces and public SelectionState checks are distinguished below.
+- The APK had **no** `assets/composeResources/.../strings.commonMain.cvr` files for
+  any of its three languages. AGP's Kotlin Multiplatform library has Android resource
+  support disabled by default; `app` had not enabled it. Desktop tests read their
+  classpath copies and could not detect the installed-artifact defect. The new
+  `:androidApp:verifyDebugLanguageResources` task failed against the old configuration
+  with Missing packaged language resource, and passes after enabling
+  `androidResources { enable = true }` on the existing KMP Android target. It checks
+  English/Spanish/Catalan APK assets against the generated resources byte for byte.
+  No hand-copied resources, native locale override or permanent English fallback
+  replaces Compose's supported packaging pipeline.
+
+### Selection ownership and interaction
+
+The same public provider is retained, but its toolbar is non-focusable and does not
+intercept/dismiss on touches outside its buttons. This is essential: a toolbar
+outside-click listener must not clear selection when a handle is touched. Compose's
+SelectionContainer retains real handles, drag recognition, Unicode/styled fragments,
+Copy and Select all. The toolbar follows the selection/menu session and closes when
+the actual selection is cleared; explicit dismissal/Copy/Translate also clear it.
+The existing final-pass tap observer remembers whether selection was active at
+pointer down: a valid unconsumed dismissal tap clears selection instead of also
+turning a viewport or opening chrome. It does not globally consume events; links,
+scrolls, long presses and handle gestures retain their normal priority.
+
+Back/Escape clears active selection first. Typography changes, source/window
+replacement and reader disposal retire selection and menu ownership. Translation
+captures exactly public `selectedTexts` before clearing, without clipboard reads.
+Alt+T provides a keyboard equivalent while the reading surface keeps focus; Ctrl/Cmd+A selects currently composed text;
+Copy/Select all retain standard selection behavior. Select all with LazyColumn
+covers currently composed selectable nodes, **not the whole book**. Selection and
+long-press/drag capability remain subject to Compose's real composed-text/window
+limits; no fake cross-chapter or unloaded-text selection is introduced.
+
+### Language loading and Settings layout
+
+A public ResourceEnvironment snapshot is captured once per request. The finite
+resource table is loaded off the main thread and committed atomically; stale or
+cancelled loads cannot replace newer strings or their loading state. A real failure
+keeps the last successfully applied table/language, exposes Retry, and emits only
+`INFINILECT.Locale stage=load-interface-resources language=<code> exception=<class>`.
+It never logs exception messages, resource/filesystem paths, profile or publication
+text. Language preferences and reading-language overrides retain their prior format
+and owner. The localization scope remains **partial**: PR #33 completes the
+application; broad performance work remains PR #32.
+
+Language and translation and Edit profile are full-width settings rows with a
+leading glyph, title, short description, disclosure chevron, native click/ripple,
+keyboard focus and button semantics. The language modal measures within its own
+safe/IME-constrained viewport; only the body scrolls, while title/close and Done
+reserve their own space. It uses existing Compose components/dependencies and
+application-resolved colors. Model downloads/storage/retention and native inference
+remain unchanged.
+
+### Verification and physical checklist
+
+Final verification (JDK 21, Gradle 9.7.1, managed Linux environment):
+
+| Check | Result |
+| --- | --- |
+| Focused Desktop / Android-host | 223 / 129 passed; zero failures/errors/skips |
+| Complete Desktop application | 1,521 passed; zero failures/errors/skips |
+| Complete Android-host application | 1,284 passed; zero failures/errors/skips |
+| Android debug / Desktop compilation | Passed |
+| Packaged en/es/ca resource bytes / Compose context provider | Verified |
+| Source/build/resource fingerprint during final verification | Unchanged (350 paths) |
+
+An initial complete Desktop run passed 1,520 tests and failed one unchanged CBZ
+fixture's initial page-presentation wait (`Spread 0 must be fully presented`),
+before its edge gesture began. That exact test passed isolated, then all 1,521
+passed in the complete rerun with one Gradle worker. The intermittent startup cause
+is not established; no CBZ code/test or assertion was changed. The complete
+Android-host run passed all 1,284. No tests were disabled or skipped. Core is
+unchanged and unrelated core suites were not rerun.
+
+Before/after regression receipts and generated diagnostic artifacts remain outside
+Git. Full Android-host/Desktop tests cover the original EPUB and other readers,
+model/progress/persistence/security contracts. The APK resource assertion complements
+JVM resource/key/placeholder and runtime locale tests; it is not Android execution.
+
+On realme C55:
+
+1. Upgrade the development APK; verify existing Library/History/profile/country,
+   installed/pinned models, appearance and deep EPUB saved positions.
+2. Settings → Language and translation: en/es/ca/System, without relaunch; localized
+   Settings/EPUB must follow the choice. Restart and verify the independent reading
+   target. Other not-yet-localized screens remain explicitly out of scope.
+3. Large font/long Unicode paragraph: long-press a word, drag both handles in both
+   directions and across visible lines/paragraphs. One outside tap clears handles
+   and menu without turning the viewport or opening controls; select another word.
+4. Translate selected styled/Unicode text, Copy, Select all; return from the result
+   without moving the logical position. Back first cancels selection, then follows
+   normal reader behavior. Test hyperlinks, scrolling and center controls.
+5. Change chapter/font/margins and close/reopen with selection active: no stale
+   handles/menu/text capture, no progress loss. Check long-window boundaries.
+6. Light/dark, portrait/landscape, small viewport and large accessibility fonts:
+   settings rows visibly respond; scroll all language/model options and confirm Done
+   remains reachable. Check Escape/keyboard equivalents on Desktop.
+7. If a genuine resource error appears, collect the targeted diagnostic with
+   `adb logcat -v threadtime INFINILECT.Locale:W '*:S'`; no book text is included.
+
+Native Android touch/handle behavior, TalkBack, IME/system-inset integration and
+native Desktop graphical acceptance require real-platform testing. Automated
+headless scenes/builds are not represented as physical acceptance.

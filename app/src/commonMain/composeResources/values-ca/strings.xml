@@ -139,7 +139,7 @@
     <string name="back_library">Torna a la biblioteca</string>
     <string name="back_history">Torna a l’historial</string>
     <string name="back_results">Torna als resultats</string>
-    <string name="localization_error">No s’han pogut carregar els recursos d’idioma. L’anglès continua disponible.</string>
+    <string name="localization_error">No s’han pogut carregar els recursos d’idioma. Es manté l’últim idioma disponible.</string>
     <string name="close_panel">Tanca %1$s</string>
     <string name="genre_history">Història</string>
     <string name="toggle_controls">Mostra o amaga els controls</string>
@@ -165,4 +165,5 @@
     <string name="philosophy">Filosofia</string>
     <string name="adventure">Aventura</string>
     <string name="romance">Romàntica</string>
+    <string name="language_translation_description">Idioma de l’aplicació, lectura i models descarregats</string>
 </resources>

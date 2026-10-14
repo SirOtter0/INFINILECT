@@ -58,11 +58,14 @@ internal class EpubReaderTap(
     }
 }
 
-internal fun Modifier.epubReaderTap(onTap: (EpubTapAction) -> Unit): Modifier = composed {
+internal fun Modifier.epubReaderTap(selectionActive: () -> Boolean = { false }, clearSelection: () -> Unit = {}, onTap: (EpubTapAction) -> Unit): Modifier = composed {
     val latestTap by rememberUpdatedState(onTap)
+    val hasSelection by rememberUpdatedState(selectionActive)
+    val cancelSelection by rememberUpdatedState(clearSelection)
     pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+            val selectedAtDown = hasSelection()
             val tap = EpubReaderTap(down.position.x, down.position.y, size.width.toFloat(), size.height.toFloat(),
                 down.uptimeMillis, viewConfiguration.touchSlop, viewConfiguration.longPressTimeoutMillis)
             tap.observe(down.position.x, down.position.y, down.uptimeMillis, down.isConsumed, 1)
@@ -71,7 +74,10 @@ internal fun Modifier.epubReaderTap(onTap: (EpubTapAction) -> Unit): Modifier = 
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                 val eligible = tap.observe(change.position.x, change.position.y, change.uptimeMillis,
                     event.changes.any { it.isConsumed }, event.changes.size)
-                if (!change.pressed && eligible) tap.action?.let(latestTap)
+                if (!change.pressed && eligible) {
+                    // The dismissal tap must not also toggle chrome or turn a viewport.
+                    if (selectedAtDown) cancelSelection() else tap.action?.let(latestTap)
+                }
             } while (event.changes.any { it.pressed })
         }
     }

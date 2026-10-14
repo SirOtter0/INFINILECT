@@ -11,6 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import org.infinilect.app.reader.epub.*
@@ -23,22 +28,50 @@ internal fun LocalizedStrings.language(code: String?): String = this[when(code) 
 internal fun LanguageTranslationPanel(preferences: ApplicationAppearancePreferences, service: EpubTranslationService?, close: () -> Unit) {
     val strings = LocalAppStrings.current
     val state by preferences.state.collectAsState()
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        EpubControlPanel(strings[UiText.LANGUAGE_TRANSLATION], maxHeight, close) {
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(strings[UiText.INTERFACE_LANGUAGE], style = MaterialTheme.typography.subtitle2)
-                if (strings.failed) Text(strings[UiText.LOCALIZATION_ERROR], color = MaterialTheme.colors.error)
-                LanguageChoices(state.profile.interfaceLanguage, true) { preferences.changeProfile(state.profile.copy(interfaceLanguage = it)) }
-                Text(strings[UiText.LANGUAGE_SCOPE], style = MaterialTheme.typography.caption)
-                Text(strings[UiText.DEFAULT_READING_LANGUAGE], style = MaterialTheme.typography.subtitle2)
-                LanguageChoices(state.readingLanguage, true, strings[UiText.FOLLOW_INTERFACE], preferences::changeReadingLanguage)
-                val destination = state.readingLanguage ?: resolveInterfaceLanguage(state.profile.interfaceLanguage, deviceInterfaceLanguage())
-                if (service?.engine?.models?.none { it.pair.target == destination } != false) Text(strings[UiText.NO_PAIR], style = MaterialTheme.typography.caption)
-                Divider()
-                if (service == null || service.engine.unavailable != null) Text(strings.message(service?.engine?.unavailable ?: UnavailableTranslation.unavailable))
-                else TranslationModelList(service.models)
+    LanguageTranslationDialog(close) {
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(strings[UiText.INTERFACE_LANGUAGE], style = MaterialTheme.typography.subtitle2)
+            val retryLanguage = LocalRetryInterfaceLanguage.current
+            if (LocalInterfaceLanguageLoading.current) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (strings.failed) {
+                Text(strings[UiText.LOCALIZATION_ERROR], color = MaterialTheme.colors.error)
+                TextButton(retryLanguage) { Text(strings[UiText.RETRY]) }
+            }
+            LanguageChoices(state.profile.interfaceLanguage, true) { preferences.changeProfile(state.profile.copy(interfaceLanguage = it)) }
+            Text(strings[UiText.LANGUAGE_SCOPE], style = MaterialTheme.typography.caption)
+            Text(strings[UiText.DEFAULT_READING_LANGUAGE], style = MaterialTheme.typography.subtitle2)
+            LanguageChoices(state.readingLanguage, true, strings[UiText.FOLLOW_INTERFACE], preferences::changeReadingLanguage)
+            val destination = state.readingLanguage ?: resolveInterfaceLanguage(state.profile.interfaceLanguage, deviceInterfaceLanguage())
+            if (service?.engine?.models?.none { it.pair.target == destination } != false) Text(strings[UiText.NO_PAIR], style = MaterialTheme.typography.caption)
+            Divider()
+            if (service == null || service.engine.unavailable != null) Text(strings.message(service?.engine?.unavailable ?: UnavailableTranslation.unavailable))
+            else TranslationModelList(service.models)
+        }
+    }
+}
+
+/** The scroll viewport is measured inside the modal's actual safe/IME-constrained window. */
+@Composable
+private fun LanguageTranslationDialog(close: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val strings = LocalAppStrings.current
+    val title = strings[UiText.LANGUAGE_TRANSLATION]
+    val closeFocus = remember { FocusRequester() }
+    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(12.dp), contentAlignment = Alignment.Center) {
+            Surface(Modifier.widthIn(max = 480.dp).fillMaxWidth().heightIn(max = maxHeight).semantics { paneTitle = title }
+                .onPreviewKeyEvent { if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { close(); true } else false },
+                shape = MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.h6)
+                        EpubIconButton(strings.format(UiText.CLOSE_PANEL, title), EpubControlIcon.CLOSE, close, Modifier.focusRequester(closeFocus))
+                    }
+                    content()
+                    TextButton(close, Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text(strings[UiText.DONE]) }
+                }
             }
         }
+        LaunchedEffect(Unit) { closeFocus.requestFocus() }
     }
 }
 

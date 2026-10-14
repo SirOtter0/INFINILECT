@@ -139,7 +139,7 @@
     <string name="back_library">Volver a Biblioteca</string>
     <string name="back_history">Volver a Historial</string>
     <string name="back_results">Volver a resultados</string>
-    <string name="localization_error">No se pudieron cargar los recursos de idioma. Inglés sigue disponible.</string>
+    <string name="localization_error">No se pudieron cargar los recursos de idioma. Se mantiene el último idioma disponible.</string>
     <string name="close_panel">Cerrar %1$s</string>
     <string name="genre_history">Historia</string>
     <string name="toggle_controls">Mostrar u ocultar controles</string>
@@ -165,4 +165,5 @@
     <string name="philosophy">Filosofía</string>
     <string name="adventure">Aventura</string>
     <string name="romance">Romance</string>
+    <string name="language_translation_description">Idioma de la aplicación, lectura y modelos descargados</string>
 </resources>

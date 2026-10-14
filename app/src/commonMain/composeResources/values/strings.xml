@@ -139,7 +139,7 @@
     <string name="back_library">Back to Library</string>
     <string name="back_history">Back to History</string>
     <string name="back_results">Back to results</string>
-    <string name="localization_error">Language resources could not load. English remains available.</string>
+    <string name="localization_error">Language resources could not load. The last available language is still shown.</string>
     <string name="close_panel">Close %1$s</string>
     <string name="genre_history">History</string>
     <string name="toggle_controls">Toggle reading controls</string>
@@ -165,4 +165,5 @@
     <string name="philosophy">Philosophy</string>
     <string name="adventure">Adventure</string>
     <string name="romance">Romance</string>
+    <string name="language_translation_description">App language, reading language and downloaded models</string>
 </resources>

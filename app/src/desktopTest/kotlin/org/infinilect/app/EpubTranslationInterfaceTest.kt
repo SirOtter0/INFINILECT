@@ -15,7 +15,7 @@ import org.infinilect.core.*
 import kotlin.test.*
 
 /** Real reader UI + deterministic engine; headless Desktop, never device/native acceptance. */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, androidx.compose.ui.InternalComposeUiApi::class)
 class EpubTranslationInterfaceTest {
     private val path = EpubEntryPath("OPS/chapter.xhtml")
     private val id = PublicationId(SourceId("fixture"), "translation-ui")
@@ -98,4 +98,56 @@ class EpubTranslationInterfaceTest {
             assertTrue(visible(scene, "Hello 🌍")); assertFalse(visible(scene, "Hola 🌍")); assertEquals(1, parser.calls)
         } finally { scene.close(); reader.close(); service.close() }
     }
+    @Test fun activeSelectionConsumesBackEscapeAndTypographyReplacementBeforeReaderNavigation() = runTest {
+        val reader = EpubReaderController(Document(), ReadingProgressId(id, "book", PublicationFormat.EPUB), backgroundScope, Parser())
+        val selection = SelectionState(); var exited = 0; var backEnabled = false; var backAction: () -> Unit = {}
+        val scene = ImageComposeScene(400, 700, Density(1f, 1.8f), coroutineContext = StandardTestDispatcher(testScheduler))
+        try {
+            reader.initialize(null)
+            scene.setContent { EpubReader(reader, false, { exited++ }, "Back", selectionState = selection,
+                backHandler = { enabled, action -> SideEffect { backEnabled = enabled; backAction = action } }) }
+            pump(scene); val initial = assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition
+            selection.select(TextRange(0,5)); pump(scene); assertTrue(backEnabled)
+            backAction(); pump(scene); assertTrue(selection.selectedTexts.isEmpty()); assertEquals(0,exited)
+            selection.select(TextRange(0,5)); pump(scene)
+            scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(key=androidx.compose.ui.input.key.Key.Escape,type=androidx.compose.ui.input.key.KeyEventType.KeyDown))
+            pump(scene); assertTrue(selection.selectedTexts.isEmpty()); assertEquals(0,exited)
+            selection.select(TextRange(0,5)); pump(scene)
+            reader.presentationChanged(reader.settings.value.copy(fontSize=30)); pump(scene)
+            assertTrue(selection.selectedTexts.isEmpty()); assertEquals(initial,assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+            selection.select(TextRange(0,5)); pump(scene); assertEquals("Hello",selection.selectedTexts.single().text)
+            scene.setContent {}; pump(scene); assertTrue(selection.selectedTexts.isEmpty())
+            scene.setContent { EpubReader(reader,false,{},"Back",selectionState=selection) }; pump(scene)
+            assertTrue(selection.selectedTexts.isEmpty()); assertEquals(initial,assertIs<EpubReaderState.Ready>(reader.state.value).initialPosition)
+        } finally { scene.close(); reader.close() }
+    }
+
+    @Test fun dismissalTapDoesNotToggleControlsAndNewChapterHasNoPreviousSelection() = runTest {
+        val second=EpubEntryPath("OPS/second.xhtml")
+        val document=object: EpubDocument by Document() {
+            override val manifest=listOf(EpubManifestItem("chapter",path,"application/xhtml+xml"),EpubManifestItem("second",second,"application/xhtml+xml"))
+            override val spine=listOf(EpubSpineItem("chapter"),EpubSpineItem("second"))
+        }
+        val reader=EpubReaderController(document,ReadingProgressId(id,"book",PublicationFormat.EPUB),backgroundScope,Parser())
+        val selection=SelectionState(); val scene=ImageComposeScene(400,700,coroutineContext=StandardTestDispatcher(testScheduler))
+        try {
+            reader.initialize(null); scene.setContent { EpubReader(reader,false,{},"Back",selectionState=selection) }; pump(scene)
+            val ticket=assertIs<EpubReaderState.Ready>(reader.state.value).ticket
+            selection.select(TextRange(0,5)); pump(scene)
+            fun tap() {
+                val at=androidx.compose.ui.geometry.Offset(200f,650f)
+                scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press,at,timeMillis=testScheduler.currentTime,type=androidx.compose.ui.input.pointer.PointerType.Touch)
+                testScheduler.advanceTimeBy(30)
+                scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release,at,timeMillis=testScheduler.currentTime,type=androidx.compose.ui.input.pointer.PointerType.Touch); pump(scene)
+            }
+            tap(); assertTrue(selection.selectedTexts.isEmpty()); assertEquals(ticket,assertIs<EpubReaderState.Ready>(reader.state.value).ticket)
+            assertFalse(nodes(scene).any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Hide reading controls")==true })
+            tap(); assertTrue(nodes(scene).any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Hide reading controls")==true })
+            scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(key=androidx.compose.ui.input.key.Key.A,type=androidx.compose.ui.input.key.KeyEventType.KeyDown,isCtrlPressed=true)); pump(scene)
+            assertEquals("Hello 🌍",selection.selectedTexts.single().text)
+            reader.next(); pump(scene); assertEquals(1,assertIs<EpubReaderState.Ready>(reader.state.value).spineIndex)
+            assertTrue(selection.selectedTexts.isEmpty())
+        } finally { scene.close(); reader.close() }
+    }
+
 }

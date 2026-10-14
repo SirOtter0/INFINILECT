@@ -57,6 +57,8 @@ kotlin {
         namespace = "org.infinilect.shared"
         compileSdk = 37
         minSdk = 26
+        // AGP KMP libraries default to no Android resources/assets.
+        androidResources { enable = true }
         compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         withHostTest {}
     }
