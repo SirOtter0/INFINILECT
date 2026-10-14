@@ -16,11 +16,13 @@ internal data class PageSpreadFit(val pages: List<Size>, val gutter: Float) {
     val size = Size(pages.sumOf { it.width.toDouble() }.toFloat() + gutter, pages.maxOf { it.height })
 }
 
-internal fun fitPageSpread(pages: List<PageDimensions>, viewport: Size, gutterPixels: Float): PageSpreadFit {
+internal fun fitPageSpread(pages: List<PageDimensions>, viewport: Size, gutterPixels: Float, fit: PageFit = PageFit.SCREEN): PageSpreadFit {
     require(pages.size in 1..2 && viewport.width >= 0 && viewport.height >= 0)
     if (viewport.width == 0f || viewport.height == 0f) return PageSpreadFit(pages.map { Size.Zero }, 0f)
     val gutter = if (pages.size == 2) gutterPixels.coerceIn(0f, viewport.width / 10) else 0f
-    val scale = minOf((viewport.width - gutter) / pages.sumOf { it.width }, viewport.height / pages.maxOf { it.height })
+    val widthScale = (viewport.width - gutter) / pages.sumOf { it.width }
+    val heightScale = viewport.height / pages.maxOf { it.height }
+    val scale = when (fit) { PageFit.SCREEN -> minOf(widthScale, heightScale); PageFit.WIDTH -> widthScale; PageFit.HEIGHT -> heightScale }
     return PageSpreadFit(pages.map { Size(it.width * scale, it.height * scale) }, gutter)
 }
 

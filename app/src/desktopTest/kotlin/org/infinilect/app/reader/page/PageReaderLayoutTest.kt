@@ -31,10 +31,10 @@ class PageReaderLayoutTest {
         }
         fun draw(count: Int = 4) { repeat(count) { scene.render(++frame * 16_666_667L).close() } }
         fun nodes(): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
-            fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::walk)
+            fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + (if(node.config.isClearingSemantics)emptyList()else node.children.flatMap(::walk))
             walk(owner.unmergedRootSemanticsNode)
         }
-        fun text(label: String) = nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true }
+        fun text(label: String) = nodes().lastOrNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true && it.config.getOrNull(SemanticsActions.OnClick) != null } ?: nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true }
         fun artwork(index: Int) = nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Page ${index + 1} of 8") == true }
         fun canvas() = nodes().first { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Toggle reader controls" }
         fun reachable(node: SemanticsNode) {
@@ -46,8 +46,21 @@ class PageReaderLayoutTest {
             scene.sendPointerEvent(PointerEventType.Release, point)
             draw()
         }
-        fun tapZone(fraction: Float) = tap(Offset(width * fraction, height / 2f))
-        fun click(label: String) { val node = text(label); reachable(node); tap(node.boundsInRoot.center) }
+        fun tapZone(fraction: Float) { tap(Offset(width * fraction, height / 2f)); if (fraction in .3f.. .7f) draw(24) }
+        fun click(label: String) {
+            // Artwork navigation now dismisses chrome; reveal it before an explicit control action.
+            if (!reader.state.value.controlsVisible) tapZone(.5f)
+            val panel = when(label) { "Right-to-left (manga)","Left-to-right","Vertical","Webtoon","Single page","Double page" -> "Reading mode"; "Zoom in","Zoom out","Reset zoom","Fit screen","Fit width","Fit height" -> "Page fitting"; else -> null }
+            if (panel != null && nodes().none { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true || it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true }) click(panel)
+            var node = text(label)
+            if(node.boundsInRoot.top>=height || node.boundsInRoot.bottom<=0) {
+                nodes().firstOrNull{it.config.getOrNull(SemanticsActions.Expand)!=null}?.config?.getOrNull(SemanticsActions.Expand)?.action?.invoke();draw(24);node=text(label)
+            }
+            repeat(5) { if(node.boundsInRoot.height<=0 || node.boundsInRoot.top>=height || node.boundsInRoot.bottom<=0) {
+                nodes().lastOrNull{it.config.getOrNull(SemanticsActions.ScrollBy)!=null}?.config?.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f,180f);draw(24);node=text(label)
+            } }
+            reachable(node); tap(node.boundsInRoot.center)
+        }
         fun awaitArtwork(index: Int) {
             repeat(200) { draw(); if (reader.state.value.transition == null && reader.state.value.position.index == index && artwork(index) != null) return; Thread.sleep(5) }
             fail("Current page must be presented: $index")
@@ -93,9 +106,9 @@ class PageReaderLayoutTest {
         for ((width, height, scale) in listOf(Triple(320, 280, 1f), Triple(640, 180, 1f), Triple(360, 240, 1.6f), Triple(1280, 800, 1f))) {
             Fixture(width, height, scale).use { f ->
                 f.tapZone(.5f)
-                for (label in listOf("Back", "Hide", "Previous", "Settings", "Next", "1 / 8")) f.reachable(f.text(label))
+                for (label in listOf("Back", "Previous", "Settings", "Next", "1 / 8")) f.reachable(f.text(label))
                 f.click("Next"); f.awaitArtwork(1); assertEquals(1, f.reader.state.value.position.index)
-                f.click("Hide"); assertFalse(f.reader.state.value.controlsVisible)
+                f.tapZone(.5f); assertFalse(f.reader.state.value.controlsVisible)
                 f.tapZone(.5f); assertTrue(f.reader.state.value.controlsVisible)
             }
         }
@@ -178,11 +191,11 @@ class PageReaderLayoutTest {
         Fixture(360, 420).use { f ->
             f.reader.navigate(2); f.reader.navigate(4); f.reader.navigate(6)
             f.awaitArtwork(6); f.draw(12)
-            val descriptions = f.nodes().mapNotNull { it.config.getOrNull(SemanticsProperties.ContentDescription) }.flatten().filter { it.startsWith("Page ") }
+            val descriptions = f.nodes().mapNotNull { it.config.getOrNull(SemanticsProperties.ContentDescription) }.flatten().filter { it.matches(Regex("Page [0-9]+ of [0-9]+")) }
             assertEquals(listOf("Page 7 of 8"), descriptions)
             assertTrue(f.reader.retainedPages <= 3)
             f.reader.close(); f.draw()
-            assertFalse(f.nodes().any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { d -> d.startsWith("Page ") } == true })
+            assertFalse(f.nodes().any { it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { d -> d.matches(Regex("Page [0-9]+ of [0-9]+")) } == true })
         }
     }
 }

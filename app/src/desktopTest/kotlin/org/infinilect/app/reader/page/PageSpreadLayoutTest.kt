@@ -83,10 +83,24 @@ class PageSpreadLayoutTest {
         }
         fun tap(fraction: Float) {
             val at = Offset(width * fraction, height / 2f)
-            scene.sendPointerEvent(PointerEventType.Press, at); scene.sendPointerEvent(PointerEventType.Release, at); draw()
+            scene.sendPointerEvent(PointerEventType.Press, at); scene.sendPointerEvent(PointerEventType.Release, at); draw(if (fraction in .3f.. .7f) 24 else 4)
         }
         fun click(label: String) {
-            val n = nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true }
+            // PR30 dismisses chrome on artwork navigation; gesture traces/assertions stay unchanged.
+            if (!reader.state.value.controlsVisible) tap(.5f)
+            val panel = when(label) { "Right-to-left (manga)","Left-to-right","Vertical","Webtoon","Single page","Double page" -> "Reading mode"; "Zoom in","Zoom out","Reset zoom","Fit screen","Fit width","Fit height" -> "Page fitting"; else -> null }
+            if (panel != null && nodes().none { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true || it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true }) click(panel)
+            var n = nodes().lastOrNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true && it.config.getOrNull(SemanticsActions.OnClick) != null } ?: nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true }
+            if(n.boundsInRoot.top>=height || n.boundsInRoot.bottom<=0) {
+                nodes().firstOrNull{it.config.getOrNull(SemanticsActions.Expand)!=null}?.config?.getOrNull(SemanticsActions.Expand)?.action?.invoke();draw(24)
+                n=nodes().lastOrNull{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label)==true&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
+                    ?:nodes().first{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true}
+            }
+            repeat(5) { if(n.boundsInRoot.height<=0 || n.boundsInRoot.top>=height || n.boundsInRoot.bottom<=0) {
+                nodes().lastOrNull{it.config.getOrNull(SemanticsActions.ScrollBy)!=null}?.config?.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f,180f);draw(24)
+                n=nodes().lastOrNull{it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label)==true&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
+                    ?:nodes().first{it.config.getOrNull(SemanticsProperties.Text)?.any{t->t.text==label}==true}
+            } }
             scene.sendPointerEvent(PointerEventType.Press, n.boundsInRoot.center)
             scene.sendPointerEvent(PointerEventType.Release, n.boundsInRoot.center)
             repeat(30) { draw() } // retire the exiting Material popup before canvas events

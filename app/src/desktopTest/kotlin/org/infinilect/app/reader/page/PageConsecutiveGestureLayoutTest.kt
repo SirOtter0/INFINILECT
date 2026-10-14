@@ -145,6 +145,8 @@ class PageConsecutiveGestureLayoutTest {
             f.touch(PointerEventType.Release, start - Offset(192f, 0f)); f.advance(48)
             val visible = f.reader.state.value.controlsVisible
             f.touch(PointerEventType.Press, start); f.advance(8); f.touch(PointerEventType.Release, start)
+            // Central singles are confirmed after the double-tap interval, across settlement.
+            f.advance(336)
             assertEquals(!visible, f.reader.state.value.controlsVisible)
             f.settle(5)
         }
