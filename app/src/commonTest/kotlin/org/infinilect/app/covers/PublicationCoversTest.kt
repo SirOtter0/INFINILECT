@@ -14,6 +14,16 @@ import kotlin.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class PublicationCoversTest {
     private fun id(number: Int, source: String = "original") = PublicationId(SourceId(source), "book-$number")
+    @Test fun residentIndexSharesEntriesAndForgetsInvalidatedEvictedAndClosedArtwork() = runTest {
+        val cache = PublicationCovers({ CoverArtwork(PublicationFormat.EPUB) }, StandardTestDispatcher(testScheduler))
+        assertNull(cache.peek(id(0)).format)
+        suspend fun visit(i: Int) { val lease = cache.acquire(id(i)); runCurrent(); assertSame(lease.state.value, cache.peek(id(i))); cache.release(lease) }
+        repeat(24) { visit(it) }; visit(24)
+        assertNull(cache.peek(id(0)).format, "Evicted entries cannot survive in the read index")
+        cache.invalidate(id(1)); assertNull(cache.peek(id(1)).format)
+        assertEquals(PublicationFormat.EPUB, cache.peek(id(24)).format)
+        cache.close(); cache.awaitClosed(); assertNull(cache.peek(id(24)).format)
+    }
     @Test fun phonesUseTwoColumnsAndDesktopColumnsGrowWithoutHugeCovers() {
         assertEquals(1, libraryColumns(280f)); assertEquals(2, libraryColumns(360f)); assertEquals(2, libraryColumns(420f))
         assertEquals(4, libraryColumns(800f)); assertEquals(6, libraryColumns(1120f))

@@ -27,6 +27,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     val strings = LocalAppStrings.current
     val library by application.collections.library.collectAsState()
     val history by application.collections.history.collectAsState()
+    val progressById = remember(progress) { indexPublicationProgress(progress) }
     val continued = remember(history.entries, progress) { homeContinue(history.entries,progress) }
     val added = remember(library.entries) { homeRecentLibrary(library.entries) }
     val online by application.homeDiscovery.state.collectAsState()
@@ -81,7 +82,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
             HomeSection(strings[UiText.CONTINUE_READING],strings[UiText.VIEW_HISTORY],{application.navigate(Destination.HISTORY)}) {
                 LazyRow(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     items(continued,key={it.id.resultKey()},contentType={"publication"}) { publication ->
-                        HomeCover(publication.displayPublication(),application.covers,publicationProgress(progress,publication.id),resume=true) { application.openSaved(publication) }
+                        HomeCover(remember(publication) { publication.displayPublication() },application.covers,progressById[publication.id],resume=true) { application.openSaved(publication) }
                     }
                 }
             }
@@ -98,7 +99,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
             HomeSection(strings[UiText.RECENTLY_ADDED],strings[UiText.VIEW_LIBRARY],{application.navigate(Destination.LIBRARY)}) {
                 LazyRow(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     items(added,key={it.id.resultKey()},contentType={"publication"}) { publication ->
-                        HomeCover(publication.displayPublication(),application.covers,publicationProgress(progress,publication.id),resume=false) { detail=publication;format=it }
+                        HomeCover(remember(publication) { publication.displayPublication() },application.covers,progressById[publication.id],resume=false) { detail=publication;format=it }
                     }
                 }
             }

@@ -21,6 +21,51 @@ import kotlin.test.*
  * This is UI/semantics evidence, not physical Android or native Desktop acceptance. */
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class ApplicationInterfaceTest {
+    @Test fun readerProgressDoesNotRecomposeTheApplicationShell() = runTest {
+        Fixture(this).use { f ->
+            f.app.openSaved(PublicationSnapshot.from(f.source.books[0])); f.pump()
+            val reading = assertNotNull(assertIs<OpenPublicationState.Ready>(f.app.opening.value).reading)
+            val before = f.appearanceReports
+            repeat(20) { reading.report(it + 1); f.app.flushProgress(); f.pump() }
+            val reports = f.appearanceReports - before
+            System.getenv("INFINILECT_PERFORMANCE_DIRECTORY")?.let { directory ->
+                val path = java.nio.file.Path.of(directory); java.nio.file.Files.createDirectories(path)
+                java.nio.file.Files.writeString(path.resolve("reader-root-compositions.txt"), "20 valid reader reports/flushes; App side effects=$reports\n")
+            }
+            assertEquals(20L, (f.saved.last().locator as ReadingLocator.Text).codePointOffset)
+            assertEquals(0, reports, "Progress belongs to the reader, not a disposed Library/Home presentation")
+            f.app.back(); f.pump()
+            assertEquals(20L, (f.saved.last().locator as ReadingLocator.Text).codePointOffset)
+            assertTrue(f.visible("Continue reading"))
+        }
+    }
+    @Test fun thousandPublicationLibraryRemainsLazyAndReusesLoadedArtOnReturn() = runTest {
+        Fixture(this, count = 1000, artwork = true).use { f ->
+            f.nav(Destination.LIBRARY); f.reach(990)
+            assertTrue(f.visible("Original publication 990"))
+            assertTrue(f.coverLoads < 100, "Do not decode a whole Library to display a viewport")
+            assertTrue(f.covers.retainedEntries() <= 24)
+            val loads = f.coverLoads
+            f.nav(Destination.SETTINGS); f.nav(Destination.LIBRARY)
+            assertTrue(f.visible("Original publication 990"))
+            assertEquals(loads, f.coverLoads)
+            assertEquals(0, f.source.metadataCalls); assertEquals(0, f.source.acquisitions)
+        }
+    }
+    @Test fun homeCarouselPositionSurvivesTabSwitchAndNoNewCoverLoads() = runTest {
+        Fixture(this, count = 20, artwork = true).use { f ->
+            f.reach(2)
+            // Recently added is the last local carousel; Continue has only two saved locators.
+            fun carousel() = f.nodes().last { it.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange) != null && it.config.getOrNull(SemanticsActions.ScrollToIndex) != null }
+            assertTrue(carousel().config[SemanticsActions.ScrollToIndex].action!!.invoke(4)); f.pump()
+            val before = carousel().config[SemanticsProperties.HorizontalScrollAxisRange].value()
+            assertTrue(before > 0)
+            val loads = f.coverLoads
+            f.nav(Destination.SETTINGS); f.nav(Destination.HOME)
+            assertEquals(before, carousel().config[SemanticsProperties.HorizontalScrollAxisRange].value())
+            assertEquals(loads, f.coverLoads)
+        }
+    }
     private class Source(count: Int = 30) : PublicationSource {
         override val id = SourceId("original-ui-fixture")
         val books = List(count) { i ->
@@ -103,6 +148,7 @@ class ApplicationInterfaceTest {
         val app = owner.applicationSession()
         var back: (() -> Unit)? = null
         var appAppearance: ReaderAppearance? = null
+        var appearanceReports = 0
         var readerAppearance: ReaderAppearance? = null
         val scene = ImageComposeScene(width,height,Density(1f,fontScale),coroutineContext=dispatcher)
         init {
@@ -113,7 +159,7 @@ class ApplicationInterfaceTest {
             app.collections.refreshLibrary()
             scene.setContent { App(owner, backHandler={ enabled, callback ->
                 DisposableEffect(enabled, callback) { back=if(enabled)callback else null;onDispose {} }
-            }, localFilePicker=picker, applicationAppearance={appAppearance=it}, readerAppearance={readerAppearance=it}) }
+            }, localFilePicker=picker, applicationAppearance={appearanceReports++;appAppearance=it}, readerAppearance={readerAppearance=it}) }
             pump()
         }
         fun pump() { repeat(12) { scope.runCurrent(); scene.render(scope.testScheduler.currentTime*1_000_000).close() }; scope.runCurrent() }
@@ -366,6 +412,7 @@ class ApplicationInterfaceTest {
                 val days=(7-i)/2L
                 f.data.opened[id]=entry.copy(lastOpenedAtEpochMillis=today.minusDays(days).atTime(12,0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()+i)
             }
+            f.collections.changed() // Direct fixture edit represents a committed repository change.
             f.nav(Destination.HISTORY)
             System.getenv("INFINILECT_UI_PREVIEW_DIRECTORY")?.let { path ->
                 val directory=java.nio.file.Path.of(path);require(directory.isAbsolute&&!directory.startsWith(java.nio.file.Path.of("/workspace/INFINILECT")))
@@ -465,6 +512,7 @@ class ApplicationInterfaceTest {
             listOf(0L,1L,4L).forEachIndexed { i,days ->
                 val p=PublicationSnapshot.from(f.source.books[i]);f.data.opened[p.id]=HistoryEntry(p,today.minusDays(days).atTime(12,0).atZone(zone).toInstant().toEpochMilli())
             }
+            f.collections.changed() // Production writes already notify this application owner.
             f.nav(Destination.HISTORY);assertTrue(f.visible("Today"));assertTrue(f.visible("Yesterday"))
             assertEquals(f.source.books.map {it.id}.take(3),f.app.collections.history.value.entries.map {it.publication.id})
             assertFalse(f.nodes().any {it.config.getOrNull(SemanticsProperties.Text).orEmpty().any {t->t.text.startsWith("Page ") || t.text.startsWith("Chapter ")}})
@@ -726,6 +774,7 @@ class ApplicationInterfaceTest {
             val title="Original long title about reading under changing skies ".repeat(8)
             val book=f.source.books[0].copy(title=title,authors=listOf("An original very long author name ".repeat(10)))
             f.source.books[0]=book;f.data.saved[book.id]=LibraryEntry(PublicationSnapshot.from(book),1)
+            f.collections.changed() // A direct test-map edit must emit the same commit notification.
             f.nav(Destination.LIBRARY);f.click(title)
             assertTrue(f.visible(title));assertTrue(f.visible(book.authors.single()));assertTrue(f.visible("Start reading"))
             val titleNode=f.nodes().first{f.has(it,title)};assertTrue(titleNode.boundsInRoot.left>=0&&titleNode.boundsInRoot.right<=320)
