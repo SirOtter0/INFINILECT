@@ -514,3 +514,13 @@ No change to cache size, worker concurrency or image resolution is justified yet
 Attach the sanitized crash/exit log and one warm/one loading trace before claiming
 the closure fixed or the phone smooth. Preserve the user's accepted translation,
 selection, locales, model ownership and reader behavior during that comparison.
+
+## Mihon comparison and architecture decision
+
+[MIHON_PERFORMANCE_COMPARISON.md](MIHON_PERFORMANCE_COMPARISON.md) compares pinned
+Mihon and INFINILECT revisions, actual Android/Desktop dependencies, lists, image
+ownership, navigation and readers. It evaluates three UI architectures, inventories
+migration effort and proposes a controlled device experiment. This research changes
+no runtime code and supplies no new physical-device measurements. Android already
+uses Jetpack Compose artifacts; an independent Android UI is not a demonstrated
+remedy for the unresolved Home closure or warm-scroll jank.
