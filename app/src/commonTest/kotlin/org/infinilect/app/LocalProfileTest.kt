@@ -23,7 +23,9 @@ class LocalProfileTest {
     @Test fun namesAndLanguageRemainBoundedAndReflectImplementedInterface() {
         assertEquals("en",LocalProfile(interfaceLanguage="en").interfaceLanguage)
         for(name in listOf(""," "," Ana ","x".repeat(81),"a\nb","a\u2028b")) assertFailsWith<IllegalArgumentException>{LocalProfile(displayName=name)}
-        assertFailsWith<IllegalArgumentException>{LocalProfile(interfaceLanguage="es")}
+        assertEquals("es", LocalProfile(interfaceLanguage="es").interfaceLanguage)
+        assertEquals("ca", LocalProfile(interfaceLanguage="ca").interfaceLanguage)
+        assertFailsWith<IllegalArgumentException>{LocalProfile(interfaceLanguage="xx")}
         assertEquals(80,LocalProfile(displayName="a".repeat(80)).displayName!!.length)
     }
     private fun publication(i:Int,source:String="local")=PublicationSnapshot(PublicationId(SourceId(source),i.toString()),"Original $i",PublicationType.BOOK)

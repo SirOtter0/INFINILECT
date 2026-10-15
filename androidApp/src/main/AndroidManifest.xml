@@ -4,6 +4,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Foxlet is loaded only on API 28+ ARM64; original readers retain API 26+. -->
+    <uses-sdk tools:overrideLibrary="io.github.yinvoker.foxlet" />
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

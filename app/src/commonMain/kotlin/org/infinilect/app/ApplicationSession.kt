@@ -39,7 +39,7 @@ internal class ApplicationSession(
         ?.filter { it.id.publicationId == id }?.maxByOrNull { it.updatedAtEpochMillis }
     val collections=CollectionsController(sources.collections,this.scope,clock) { sources.covers?.invalidate(it) }
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
-        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer) { publication ->
+        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer,sources.translation) { publication ->
         collections.enteredReader(publication)
         sources.collections?.recordOpened(publication,clock())
     }
@@ -72,6 +72,10 @@ internal class ApplicationSession(
     init {
         observe(searchSession.value); collections.refreshHistory()
         this.scope.launch { collections.history.collect { if (destination.value == Destination.HOME && !it.loading) refreshHomeProgress() } }
+        sources.appearance?.let { preferences -> this.scope.launch { preferences.state.collect { current ->
+            if (current.loaded) sources.translation?.defaultLanguage?.value = current.readingLanguage
+                ?: org.infinilect.app.ui.resolveInterfaceLanguage(current.profile.interfaceLanguage, org.infinilect.app.ui.deviceInterfaceLanguage())
+        } } }
     }
     private fun observe(session: ReadingSession) {
         observer?.cancel(); mutableOpening.value=session.opening.state.value

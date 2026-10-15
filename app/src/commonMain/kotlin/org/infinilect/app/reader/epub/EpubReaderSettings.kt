@@ -9,6 +9,9 @@ internal data class EpubReaderSettings(
     val lineSpacingPercent: Int = 150,
     val margin: Int = 16,
     val theme: EpubReadingTheme = EpubReadingTheme.SYSTEM,
+    val translationSource: String = "metadata",
+    val translationTarget: String = "default",
+    val translated: Boolean = false,
 ) {
-    init { require(fontSize in 14..30 && lineSpacingPercent in 120..200 && margin in 8..40) }
+    init { require(translationSource in setOf("metadata", "en", "es", "ca") && translationTarget in setOf("default", "en", "es", "ca")); require(fontSize in 14..30 && lineSpacingPercent in 120..200 && margin in 8..40) }
 }

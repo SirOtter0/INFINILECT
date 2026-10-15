@@ -71,16 +71,18 @@ internal fun ApplicationShell(destination: Destination, busy: Boolean, navigate:
 
 @Composable
 private fun NavigationItem(target: Destination, selected: Boolean, enabled: Boolean, click: () -> Unit, modifier: Modifier, wide: Boolean = false) {
+    val strings = LocalAppStrings.current
+    val label = strings[when(target) { org.infinilect.app.Destination.HOME -> UiText.HOME; org.infinilect.app.Destination.LIBRARY -> UiText.LIBRARY; org.infinilect.app.Destination.HISTORY -> UiText.HISTORY; org.infinilect.app.Destination.SEARCH -> UiText.SEARCH; org.infinilect.app.Destination.SETTINGS -> UiText.SETTINGS }]
     val color = if (selected) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = if (enabled) .75f else .38f)
     Surface(modifier, shape = MaterialTheme.shapes.small,
         color = if (selected) MaterialTheme.colors.primary.copy(alpha = .12f) else MaterialTheme.colors.surface.copy(alpha = 0f)) {
         Box(Modifier.heightIn(min = 64.dp).selectable(selected, enabled = enabled, role = Role.Tab, onClick = click)
-            .semantics { contentDescription = "Navigate to ${target.label()}" }.padding(horizontal = 4.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            .semantics { contentDescription = strings.format(UiText.NAVIGATE_TO, label) }.padding(horizontal = 4.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
             if (wide) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DestinationIcon(target,color);Text(target.label(), style = MaterialTheme.typography.button)
+                DestinationIcon(target,color);Text(label, style = MaterialTheme.typography.button)
             } else Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 DestinationIcon(target,color)
-                Text(target.label(), color=color, fontSize=12.sp, lineHeight=16.sp, textAlign=TextAlign.Center, maxLines=2)
+                Text(label, color=color, fontSize=12.sp, lineHeight=16.sp, textAlign=TextAlign.Center, maxLines=2)
             }
         }
     }
