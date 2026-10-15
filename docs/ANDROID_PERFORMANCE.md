@@ -149,14 +149,17 @@ were added to models with mutable/list contracts. Generated reports are not trac
 The existing debug APK accepts an explicit `infinilect.performance` intent extra.
 Only a debuggable app enables this. Normal launches create no listener, histogram
 or diagnostic worker. No remote telemetry, book text, query, history, identity or
-private path is recorded. A fixed 1001-bucket histogram is collected on a dedicated
-diagnostic callback thread, released at Activity stop. There is no per-frame log.
-PSS/Java heap and aggregate ART GC counters are sampled on that thread at stop.
-Rotations/restarts create separate sessions. First-draw frames are counted apart.
+private path is recorded. Five fixed 1001-bucket histograms (total, layout/measure, draw, sync and GPU where
+available) are collected on a dedicated diagnostic callback thread, released at
+Activity stop. There is no per-frame log. Summaries and PSS/Java heap/aggregate ART
+GC samples are emitted every five seconds and at stop, so a hard kill does not
+necessarily discard the entire interval. Histograms are cumulative per session;
+GC counters are cumulative per process. Rotations/restarts create separate sessions.
+First-draw frames are counted apart. Unsupported GPU metrics have zero samples,
+which must not be interpreted as zero GPU work.
 
 ```sh
 adb shell am force-stop org.infinilect.app
-adb logcat -c
 adb shell am start -W -n org.infinilect.app/.MainActivity \
   --ez infinilect.performance true
 # Perform ONE scenario below. Press Home to finish that interval and report it.
@@ -217,7 +220,7 @@ model retention and explicit download semantics unchanged. A perceptible,
 repeatable warm-Home improvement on this phone is the acceptance criterion;
 automated tests alone do not meet it.
 
-## Regression verification
+## Phase 1 regression verification
 
 New cases cover initial cached presentation, repeated warm Home scrolling,
 cache index eviction/invalidation/close, one in-flight collection read, failed-read
@@ -262,3 +265,252 @@ comparison was performed. The headless Compose scenes and JVM counters must not 
 reported as those checks. Normal debug signing is unchanged; this verification
 does not establish whether an APK shares the certificate of the user's installed
 development build.
+
+## Phase 2 — rapid-loading Home closure and frame-cost investigation
+
+Starting HEAD: `ab0db6add527f3b824a180ed999161e46c9be376`. The user's physical
+C55 test reports a small improvement, persistent warm-Home jank and a process
+closure while rapidly scrolling during loading. **No device crash trace, exit
+reason, memory profile or frame trace was supplied. There is no attached Android
+target. The physical closure is not reproduced or established as fixed.** This
+Draft remains blocked on that evidence and repeat physical acceptance.
+
+### Findings and narrow correction
+
+The resident cover index publishes immutable map snapshots under the same mutex
+as its 24-entry LRU. It references the existing entries/images, not copied bitmaps.
+Borrowers collect immutable `CoverState` values. Invalidation/eviction/close drop
+references; they do not recycle images already handed to Compose. Android recycles
+only the temporary decoder bitmap after copying its pixels into the bounded
+raster. The converter creates a separate presentation bitmap. No unsynchronized
+snapshot iteration or use-after-recycle was found in these paths. This is an audit
+and regression finding, not proof against a device-specific image/driver failure.
+
+A non-cooperative cancelled load is awaited before another starts. Ticket/entry
+identity prevents its late result from filling an evicted/recreated entry. Tests
+exercise that ordering, simultaneous viewport churn/invalidation, conversion
+failures, oversized results and an old image still drawn after cache eviction.
+There is still one worker, no additional prefetch or cache, and no catch for
+`OutOfMemoryError`/other VM errors. Recoverable load/conversion exceptions continue
+to produce the existing typographic fallback. No broad recovery catch was added.
+
+**Reproduced layout defect:** `DiscoveryTile` conditionally omitted author and
+language lines and allowed unbounded source-label wrapping. LazyRow measures its
+currently composed children; a different metadata shape can change its height
+and displace later Home sections even when every image is cached. A real Compose
+layout at density 1/font scale 1.5 measured **292 vs 348 px** for otherwise identical
+cards without/with author and language. The stable-height assertion failed before
+the correction. It now measures **300 vs 300 px**. This is a layout measurement,
+not an Android frame-time speedup or the crash's cause.
+
+Each tile now reserves one line each for author, source attribution and language. Missing fields remain empty; no metadata is invented. Font-scaled line slots
+keep the row height stable, including long source names. Visual source attribution
+can ellipsize at one line; its full text remains in semantics/details. This spends
+some blank metadata space to avoid vertical rebasing; artwork dimensions and image
+quality are unchanged. No reader engine, progress schema, discovery algorithm,
+network limit, signing configuration or dependency changed.
+
+### Stress coverage and limits
+
+`HomeLoadingStressTest` drives the actual shared App at 360×640 with two controlled
+sources, 120 original synthetic entries per source, duplicates, missing metadata,
+100 persisted Library/History entries, gated thumbnail loading, conversion failures
+and a recoverable source failure. Touch drags reverse both axes while responses
+arrive; deterministic lazy-index traversal guarantees distant cards and cache
+pressure, independently of platform fling physics. It leaves/returns to Home and
+Search, retries, disposes the screen during loading, checks finite scroll offsets,
+unique row IDs, <=24 entries, one active cover load and unchanged Library/History.
+Cold and warmed portions are in the same controlled scenario. Tests do not invoke
+real HTTP, simulate a kernel low-memory kill, or measure Android's GPU.
+
+Additional cache tests cover 1,200 real-dispatcher acquire/release operations from
+eight coroutines with invalidation, plus deterministic non-cooperative late loads,
+negative conversion results, oversized artwork and drawable evicted images. These
+increase coverage; passing them cannot establish the original device crash cause.
+No fake OOM recovery, storage deletion or reduction of security assertions is used.
+The complete reader/progress/collection regressions remain enabled.
+
+### Opt-in crash and stage diagnostics
+
+Only an explicit debuggable Activity session enables the following additions:
+
+* `InfinilectCrash`: bounded exception classes and code locations (three causes,
+  sixteen frames each), without exception messages, filenames or thread names.
+  The original uncaught handler always receives the same failure, even if the
+  diagnostic sink fails. This does not swallow crashes or restart the app.
+* `InfinilectExit`: at the next diagnostic launch, up to five **own-package**
+  `ApplicationExitInfo` records on Android 11+, with reason/status, importance,
+  PSS/RSS and age. No description, trace stream or process name is read. Older
+  Android versions report that historical exit reasons are unavailable.
+* `InfinilectPerf`: five-second/final aggregate total/layout/draw/sync/GPU timing
+  histograms plus heap/PSS/GC samples, on the existing diagnostic thread. No
+  unbounded frame history or per-frame logging. Percentile fields use upper bucket
+  edges, not exact durations; GPU samples require API 31+ and platform support.
+* Public Android trace sections around cover preflight, bounds decode, bitmap
+  decode, pixel copy and presentation-bitmap creation. Static names only; begin/end
+  stay on the same worker thread. Disabled sessions perform only an enabled check
+  per image stage, not per frame. No book/query/path identifiers enter traces.
+
+Five histogram arrays use about 40 KiB of bucket payload in a diagnostic session.
+Periodic PSS sampling/logging has a cost: compare diagnostics-on/off and use
+independent gfxinfo/Perfetto. No models are loaded or translated for diagnostics.
+Crash/exit, memory and image-stage diagnostics remain enabled if an OEM rejects
+FrameMetrics registration; `framesAvailable=false` identifies the missing frame
+samples. These Android additions compile but require physical verification; JVM tests
+verify histogram arithmetic and sanitized exception forwarding/privacy only.
+
+### C55 capture instructions (ready to copy; device execution pending)
+
+Do not uninstall, clear app data, delete publications or replace the signing key.
+Keep the same font scale, refresh rate, battery/thermal conditions and dataset.
+Record the installed build SHA and Android version separately. First, connect USB
+and authorize debugging. Start one diagnostic session (the initial force-stop is
+intentional and will itself appear as a user-requested exit):
+
+```sh
+adb devices
+adb shell am force-stop org.infinilect.app
+adb shell am start -W -n org.infinilect.app/.MainActivity --ez infinilect.performance true
+```
+
+In a second terminal, **before reproducing the closure**, record only sanitized app
+logs. Leave this running while testing; stop with Ctrl-C after reopening the app:
+
+```sh
+adb logcat -v monotonic -s InfinilectPerf:I InfinilectCrash:E InfinilectExit:I '*:S' > infinilect-home-diagnostics.txt
+```
+
+If it closes, **do not force-stop again first**. Reopen with the same command so
+Android's previous reason is reported. Note approximately when it closed:
+
+```sh
+adb shell am start -W -n org.infinilect.app/.MainActivity --ez infinilect.performance true
+```
+
+Reason examples: 3 = low memory, 4 = Java crash, 5 = native crash, 6 = ANR,
+10 = user requested (including force-stop). A missing Java trace is not evidence
+that no crash occurred. Native crashes, hard kills or allocation failure in the
+logger may produce no `InfinilectCrash` lines; rely on the historical reason/system
+trace. OEM Android may provide incomplete reasons. Do not classify an OOM from
+PSS alone. A Java `OutOfMemoryError` class and a system low-memory kill are distinct.
+
+For a 30-second warm-Home comparison, wait for thumbnails and requests to finish,
+then capture independent frame and memory snapshots. Repeat three times. Stop
+scrolling and press Android Home to emit the session's final summary:
+
+```sh
+adb shell dumpsys gfxinfo org.infinilect.app reset
+adb shell dumpsys meminfo org.infinilect.app > infinilect-memory-before.txt
+# Scroll vertically and horizontally for 30 seconds, reversing direction.
+adb shell dumpsys gfxinfo org.infinilect.app framestats > infinilect-warm-frames.txt
+adb shell dumpsys meminfo org.infinilect.app > infinilect-memory-after.txt
+```
+
+Use the difference in cumulative `gcCount`/`gcTimeMs` across samples, not their
+absolute totals, to compare GC activity. PSS snapshots are not peak memory.
+For cache-cold browsing use a **fresh process** while keeping app data/models, then
+refresh discovery explicitly. Private HTTP metadata/disk caches may still be warm;
+label that distinction rather than describing an app-data wipe as a cold cache.
+Test once online while rows arrive, once after loading, once offline and once with
+slow/unavailable networking. Switch Home → Search → Home during loading; reverse
+both scroll axes repeatedly. Confirm Library/History and reopened reader positions.
+
+If timing histograms do not isolate the cost, capture a public Perfetto system
+trace for scheduling, rendering, GC and the static image-stage sections. The
+following text config is intentionally bounded to 16 MiB/30 seconds; device/OEM
+support must be verified. Run while the diagnostic Activity is foreground:
+
+```sh
+adb shell perfetto --txt -c - -o /data/misc/perfetto-traces/infinilect-home.perfetto-trace <<'CONFIG'
+buffers { size_kb: 16384 fill_policy: RING_BUFFER }
+duration_ms: 30000
+data_sources { config { name: "linux.ftrace" ftrace_config {
+  ftrace_events: "sched/sched_switch"
+  ftrace_events: "sched/sched_waking"
+  ftrace_events: "power/cpu_frequency"
+  atrace_categories: "gfx"
+  atrace_categories: "view"
+  atrace_categories: "dalvik"
+  atrace_apps: "org.infinilect.app"
+} } }
+data_sources { config { name: "android.surfaceflinger.frametimeline" } }
+CONFIG
+adb pull /data/misc/perfetto-traces/infinilect-home.perfetto-trace .
+```
+
+Inspect locally in Android Studio System Trace/Perfetto: correlate slow frames with
+main/render-thread scheduling, layout/draw, GPU, GC and `Infinilect.cover.*`/
+`Infinilect.bitmap.create`. FrameTimeline needs Android 12+; unsupported sources
+may be absent. Atrace view sections do not guarantee per-composable traces; use
+Android Studio's supported Compose tools if finer attribution is needed. Traces
+can contain system process/thread names: inspect/redact before sharing. Neither
+this command nor the app records screen pixels, book text or search queries.
+Prefer the sanitized app log for initial triage; do not post broad Logcat dumps.
+
+### Phase 2 verification and host comparison
+
+Final matrix: JDK 21, offline dependencies, one Gradle worker. The last complete
+Desktop rerun passed in a successful 8m 32s matrix. Android-host and build tasks
+with unchanged inputs reused their successful preceding results in that rerun.
+
+| Check | Final result |
+| --- | --- |
+| Complete App Desktop | 1,542 passed; 0 failures/errors/skips |
+| Complete App Android-host | 1,297 passed; 0 failures/errors/skips |
+| Core JVM / Android-host | 59 / 59 successful results; unchanged code/tasks UP-TO-DATE |
+| Android debug APK / Desktop compilation | Passed; no configuration or signing changes |
+| Packaged en/es/ca bytes | Verified against generated resources |
+| Diagnostic code in APK DEX | Verified, including crash/exit tags, availability flag and image-stage traces |
+| Hygiene | 442 tracked/nonignored files inspected; no secrets/binaries added; headers, scope and diff whitespace checks passed |
+
+
+One complete run on the final compact UI passed **1,541 Desktop tests and failed
+one** (`PageSpreadLayoutTest.settingsPairsPagesFitsBothHalvesAndShowsLogicalRangeInEitherDirection`);
+Android-host passed all 1,297. The failure was `Spread 0 must be fully presented`
+in `Fixture.<init>` → `await(0)`, before the mode/pairing assertions. The same
+initial-presentation failure pattern predates this PR and is documented in
+[EPUB_TRANSLATION.md](EPUB_TRANSLATION.md) and [DISCOVERY.md](DISCOVERY.md).
+That exact test then passed isolated without changing CBZ code, its fixture,
+timeout or assertions. All 1,542 Desktop tests then passed in the complete rerun, with the same code and assertions. The intermittent fixture startup cause
+remains unestablished; do not confuse this host assertion with the user's Home
+process closure. No test was skipped or disabled. The earlier two-source-line
+variant also passed a complete matrix; its results do not substitute for final-UI
+verification.
+
+Nine new test methods: four shared cache regressions, two shared crash-privacy/
+forwarding tests, plus Desktop layout, drawable-eviction and Home stress scenes.
+The selected cover/Home/crash/lifecycle classes total 38 Desktop and 33 Android-host
+cases, included in the complete suites, not additional physical-device tests.
+
+A contemporaneous control restored only `DiscoveryUi.kt` from starting `ab0db6a`
+for the existing cached-Home benchmark, then restored the final source before all
+final tests/builds. Both variants ran the same method alone in fresh JVMs without
+another build/test running. Same JDK 21/Linux/2-CPU/8 GiB/software-Skia fixture as
+above, five warmed samples of 60 scroll/render steps; no live network or models.
+The fixture contains author/language metadata, so its purpose is to check warmed
+render cost rather than reproduce missing-field height changes.
+
+| Host measurement | Starting tile | Final tile |
+| --- | ---: | ---: |
+| Median / 60 steps | 375.07 ms | 399.88 ms |
+| Range / 60 steps | 357.41–429.78 ms | 370.26–414.39 ms |
+| Median calling-thread allocated bytes | 1,160,128 | 1,165,448 |
+| Additional cover/catalog loads while scrolling | 0 / 0 | 0 / 0 |
+
+Ranges overlap; **no rendering-time or allocation improvement is demonstrated**.
+The final median is higher in this host run; this must not be reported as an
+Android speedup. Historical phase-1 times were 363.20/366.22 ms; different runs
+must not be substituted for this control to claim a gain. The verified benefit is
+eliminating the metadata-dependent height change. Real frame-time improvement and
+its dominant bottleneck still need the C55 trace. No further concurrency/cache/
+engine changes are justified by these host timings alone.
+
+### Remaining blocker and next evidence
+
+The C55 closure may still be a Java/native error, OEM/driver issue or system kill;
+none is established by the host tests. Warm-Home frame percentiles, peak memory,
+CPU saturation, GPU costs and translation contention remain unmeasured on Android.
+No change to cache size, worker concurrency or image resolution is justified yet.
+Attach the sanitized crash/exit log and one warm/one loading trace before claiming
+the closure fixed or the phone smooth. Preserve the user's accepted translation,
+selection, locales, model ownership and reader behavior during that comparison.

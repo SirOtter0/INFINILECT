@@ -2,6 +2,9 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.MaterialTheme
@@ -25,6 +28,55 @@ import kotlin.test.*
  * Software Skia on a Linux host is NOT an Android frame-time benchmark. Timing has no pass threshold. */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class HomeResponsivenessTest {
+    @Test fun discoveryMetadataCannotRebaseRowsWhenDifferentCardsEnterTheViewport() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val source = object : PublicationSource {
+            override val id = SourceId("original-layout-fixture")
+            override suspend fun search(query: String, pageToken: String?) = error("No network")
+            override suspend fun getPublication(publicationId: PublicationId): Publication? = error("No details")
+            override suspend fun loadResource(resource: PublicationResource): ResourceContent = error("No acquisition")
+        }
+        val owner = ApplicationSources(listOf(SourceOption("Original source with a long attribution", source)), sessionDispatcher = dispatcher) {}
+        val app = owner.applicationSession()
+        val heights = mutableMapOf<Int, Int>()
+        val scene = ImageComposeScene(360, 720, Density(1f, 1.5f), coroutineContext = dispatcher)
+        try {
+            scene.setContent { MaterialTheme {
+                Row {
+                    repeat(2) { index ->
+                        val publication = Publication(PublicationId(source.id, "$index"), "Original title", PublicationType.BOOK,
+                            authors = if (index == 0) emptyList() else listOf("A long original author"),
+                            languages = if (index == 0) emptyList() else listOf("ca", "es"))
+                        DiscoveryTile(DiscoveryEntry(publication), app, Modifier.width(144.dp).onSizeChanged { heights[index] = it.height }) {}
+                    }
+                }
+            } }
+            repeat(4) { runCurrent(); scene.render(it * 16_666_667L).close() }
+            assertEquals(2, heights.size)
+            println("Discovery tile heights at fontScale=1.5: $heights")
+            assertEquals(heights[0], heights[1], "Missing author/language must not change carousel and following-row height")
+        } finally { scene.close(); owner.close(); runCurrent() }
+    }
+
+    @Test fun evictedArtworkRemainsDrawableByAnAlreadyPresentedFrame() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cache = PublicationCovers({ CoverArtwork(null, Raster(32, 48, IntArray(32 * 48))) }, dispatcher,
+            convert = { ImageBitmap(it.width, it.height) })
+        val id = PublicationId(SourceId("original"), "old")
+        val old = cache.acquire(id); runCurrent(); val presented = old.state.value
+        cache.release(old)
+        repeat(24) { number ->
+            val lease = cache.acquire(PublicationId(id.sourceId, "$number")); runCurrent(); cache.release(lease)
+        }
+        assertNull(cache.peek(id).image); assertNotNull(presented.image)
+        val scene = ImageComposeScene(100, 100, Density(1f), coroutineContext = dispatcher)
+        try {
+            scene.setContent { androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) { drawImage(presented.image) } }
+            runCurrent(); scene.render(0).close()
+            assertEquals(32, presented.image.width)
+        } finally { scene.close(); cache.close(); runCurrent(); cache.awaitClosed() }
+    }
+
     @Test fun readyCacheHitPresentsArtworkInTheFirstComposition() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val image = ImageBitmap(32, 48)
