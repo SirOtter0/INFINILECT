@@ -7,7 +7,7 @@
 
 **La inspección no justifica migrar ahora a dos interfaces independientes.** En Android, INFINILECT ya ejecuta los artefactos Android de Jetpack Compose. Mover los mismos composables a un módulo Android no elimina por sí mismo su coste de composición, medida o dibujo. La recomendación es conservar la interfaz compartida, medir el Inicio real y evaluar componentes Android específicos únicamente cuando exista una ventaja demostrable.
 
-Esta intervención de la PR #32 es **documental**: no cambia código ejecutable, dependencias, cachés, concurrencia, lectores, traducción, firma ni distribución. No implementa el prototipo propuesto. No copia código ni recursos de Mihon.
+La investigación original del 15 de octubre fue **documental**: no cambió código ejecutable ni implementó el prototipo propuesto. La fase 3 posterior sí aplica mejoras pequeñas de estado, layout y solicitudes de portadas, documentadas en [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md#phase-3--visible-cover-scheduling-and-render-work-reduction-2026-10-16). No copia código ni recursos de Mihon y no cambia arquitectura, lectores, traducción, firma ni distribución.
 
 El cierre observado en el realme C55 **sigue sin causa confirmada y sin reproducirse en Android**. La comparación revela hipótesis y formas de comprobarlas; no constituye una corrección del cierre ni una demostración de fluidez física.
 
@@ -209,7 +209,7 @@ Umbral de decisión **propuesto**, no resultado: mejora reproducible, por ejempl
 
 ## 8. Cinco optimizaciones candidatas, por prioridad
 
-No se implementan aquí: ninguna tiene todavía beneficio físico causal demostrado. Las garantías ya incorporadas (keys, residentes, un worker, tamaño de miniatura, slots y altura estable) no se vuelven a presentar como novedades.
+Estado de estas propuestas al 15 de octubre: ninguna tenía beneficio físico causal demostrado. La fase 3 posterior implementa proyección de metadatos, elimina un contenedor de layout y limita solicitudes a tarjetas geométricamente visibles. Sus regresiones y costes medidos están en el informe enlazado arriba; no equivalen a validación física. Las garantías ya incorporadas (keys, residentes, un worker, tamaño de miniatura, slots y altura estable) no se vuelven a presentar como novedades.
 
 | Prioridad y evidencia | Causa que pretende resolver / cambio mínimo | Riesgo y regresión | Cómo decidir/medir |
 | --- | --- | --- | --- |

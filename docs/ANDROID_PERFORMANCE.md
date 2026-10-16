@@ -524,3 +524,250 @@ migration effort and proposes a controlled device experiment. This research chan
 no runtime code and supplies no new physical-device measurements. Android already
 uses Jetpack Compose artifacts; an independent Android UI is not a demonstrated
 remedy for the unresolved Home closure or warm-scroll jank.
+
+## Phase 3 — Visible-cover scheduling and render-work reduction (2026-10-16)
+
+### Diagnóstico e implementación
+
+Control de aplicación: `b1237576efcba0d6fabab5e2db53dc4d3e33b343`.
+Se conserva la arquitectura compartida, las dimensiones y la apariencia. No se
+modifican lectores, traducción, localización, fuentes, seguridad, firma ni presupuestos.
+
+Los reports del compilador ya mostraban `HomeScreen`, `DiscoveryTile` y `HomeCover`
+como skippable con StrongSkipping. No se añadieron anotaciones de estabilidad.
+Las pruebas nuevas sí encontraron trabajo evitable en ejecución:
+
+- **Estado:** Inicio observaba `DiscoveryState` completo para utilizar únicamente
+  `entries`. Cuarenta ediciones de consulta sin cambiar publicaciones provocaban
+  **80 entradas en scopes de composición**. `HomeScreen` ahora recuerda una
+  proyección `map { entries }.distinctUntilChanged()`: el mismo caso registra **0**.
+  Las publicaciones realmente nuevas siguen llegando por ese flujo; no hay una
+  copia congelada, otro cliente de fuentes ni estado global adicional. Es una
+  prueba controlada de granularidad, no una atribución del jank del C55 a ediciones
+  de consulta que normalmente se realizan en otra pestaña.
+- **Visibilidad:** entrar en composición lazy no implica estar colocado ni visible.
+  Una tarjeta recortada pero aún compuesta conservaba su lease y podía retener el
+  único trabajador hasta completar/cancelar el request o llegar al timeout de 10 s.
+  `CoverViewport` usa APIs públicas `Modifier.Node`, `GlobalPositionAwareModifierNode`
+  y `UnplacedAwareModifierNode`; intersecta límites recortados de ancestros con el
+  root. No basta con estar dentro de la ventana cuando un carrusel o contenedor
+  interior recorta el elemento.
+- **Suscripción:** `coverState` mantiene como máximo una suscripción hija para una
+  tarjeta visible; cancela y espera su liberación antes de readquirir. Las tarjetas
+  totalmente recortadas/no colocadas no solicitan trabajo. `peek` sigue mostrando
+  inmediatamente una imagen residente. La liberación no recicla la imagen que
+  un frame ya recibió. La caché conserva su deduplicación y rechazo Entry/job.
+- **Layout:** se elimina el `Box(fillMaxWidth)` que solo centraba `HomeCover` en
+  `DiscoveryTile`; se utiliza alineación del `ColumnScope`. La cadena de layouts
+  desde el título al root pasa de **5 a 4** en el fixture. Los cuatro PNG de control
+  y final son **idénticos byte a byte**: claro/oscuro y fuente 100/150 %, portada
+  cargada, título largo Unicode y metadatos. No es una afirmación sobre todos los
+  dispositivos/fuentes. Se mantienen caption slots escalables y accesibilidad.
+
+La geometría publica solamente cambios booleanos de visibilidad, no posiciones
+por píxel en estado Compose. No retiene `LayoutCoordinates`, bitmaps ni un scope.
+La variante final evita convertir cuatro esquinas a coordenadas de ventana cuando
+solo necesita comprobar una intersección, y no utiliza un canal `transformLatest`
+ni crea jobs para estados invisibles. Sin repositorio de portadas no instala el
+observador. Se mantienen gradiente recordado, clip único de Surface, ripple y
+metadatos: no se encontró evidencia para quitar efectos visuales. La visibilidad
+es geométrica; no detecta oclusión por otra ventana/diálogo ni transparencia.
+
+### Trabajo, cancelación y límites
+
+Una prueba mantiene tres tarjetas compuestas dentro de un contenedor recortado
+más pequeño que la ventana, con fuente al 150 %. Tras desplazar el contenedor,
+antes la primera carga no se cancelaba y la segunda no empezaba; después se
+cancela la primera y arranca la segunda sin esperar al timeout. Otra prueba deja
+un hijo compuesto pero sin colocarlo: ahora cancela y puede volver a activarse.
+Dos tarjetas visibles del mismo ID comparten carga/conversión; retirar una no
+cancela el trabajo que la otra utiliza. Las tres regresiones fallan con el control
+y pasan con el final; la prueba de duplicados pasa en ambos.
+
+El límite de entradas es del repositorio, no un máximo global de RAM: la UI puede
+retener un estado ya presentado y existen buffers temporales del decoder/framework.
+No se ha medido el pico nativo/GPU de Android.
+
+No se aumentó concurrencia: **un trabajador**, **24 entradas** (incluidos activos,
+pendientes y negativos), miniaturas **192×288**, dos peticiones de catálogo y ocho
+páginas de caché. Los lectores mantienen sus presupuestos. Cancelar la suscripción
+Kotlin no interrumpe necesariamente un decode nativo: el repositorio sigue esperando
+que termine antes de comenzar otro. El resultado obsoleto no puede publicarse en
+una entrada nueva. Las pruebas existentes de cancelación no cooperativa, conversión
+fallida, invalidación y dibujo tras evicción permanecen intactas.
+
+Se compara la política anterior con visibilidad usando la misma concurrencia.
+No se introduce un segundo trabajador: el bloqueo reproducido era trabajo que ya
+no se necesitaba, no falta demostrada de paralelismo; más workers elevarían el pico
+transitorio y la competencia por CPU sin una medición Android que lo justifique.
+No se captura `Throwable`/OOM para ocultar un cierre.
+
+### Recorrido de imagen y decisión sobre disco
+
+La ruta sigue siendo fuente/ownership → bytes acotados → preflight/CRC y bounds →
+subsampling → raster → ImageBitmap → lease/presentación. En Android,
+`CoverThumbnailDecoder` crea el Bitmap reducido, copia a IntArray y recicla ese
+Bitmap temporal; `rasterImageBitmap` crea el Bitmap de presentación. Son tres
+asignaciones de payload a lo largo de la ruta y dos copias de píxeles, **no tres
+bitmaps simultáneos**: el temporal se recicla antes de la conversión. Como estimación
+de datos, un ARGB 192×288 contiene 221.184 bytes; el solapamiento de dos payloads
+serían 442.368 bytes, excluyendo bytes codificados, stride, codec, objetos y memoria
+nativa/GPU. No es un pico medido en Android.
+
+No se cambia este contrato ni se añade Coil. El caso caliente no hace nuevas
+cargas/conversiones; optimizar esa copia no explica por sí solo los tirones con
+todas las portadas residentes. Un camino Android directo podría ahorrar copias,
+pero faltan mediciones de `Infinilect.cover.*`/`Infinilect.bitmap.create` en el C55
+para justificar su riesgo de ownership. Los stages de diagnóstico se conservan.
+
+La biblioteca sintética demuestra misses de capacidad: 82 cargas,
+54 repetidas tras evicción en el control; 82 y
+54 en el final. Ese fixture usa raster sintético, sin ZIP, HTTP ni
+codec real: **no demuestra un beneficio de una nueva caché de disco**. En Inicio
+caliente hay cero cargas adicionales. Se difiere el cache de thumbnails derivados;
+no se crea almacenamiento persistente adicional ni se elude el hash del payload
+local. Si se mide un coste relevante de misses reales, deberá usar digest/revisión,
+versión de decoder/tamaño, namespace privado, cuota/LRU, escritura atómica, validación
+y eliminación de corruptos; no solo título, URL o mtime como autoridad.
+
+### Protocolo comparable y resultados host
+
+Linux x64, JDK 21.0.12.1, Gradle 9.7.1, dos CPU de cuota y 8 GiB; software Skia,
+mismo harness, fixtures, dimensiones, flags de compilador y límites en control/final.
+Los controles definitivos y el final se ejecutaron en esta sesión del 16 de octubre,
+sin compilar otra variante simultáneamente. Tres JVM frescas por caso y variante.
+La compilación/configuración Gradle queda fuera de las duraciones de los tests.
+Se restauraron únicamente los tres archivos de producción modificados a la revisión
+de control, manteniendo el mismo harness; luego se restauró el final. No se mezclan
+estos números con el protocolo anterior de 60 pasos exclusivamente verticales.
+
+- **A:** Home 390×720, tres filas con los mismos 12 IDs y portadas residentes.
+  Cada muestra realiza 60 pasos verticales y cuatro drags horizontales reales
+  (20 pasos render adicionales); un recorrido mixto previo se excluye.
+  Cinco muestras/JVM, **15 muestras por variante**. Cero carga de red real;
+  los contadores de catálogo/portadas no aumentan al desplazar.
+- **B:** Home 360×640 con fuentes sintéticas lentas/fallidas, resultados duplicados,
+  llegadas durante gestos, desplazamiento de ambos ejes/inversiones, presión de
+  caché y salida/regreso entre pestañas. Tres recorridos completos por variante.
+  La duración es del escenario entero, **no de un frame aislado**.
+- **C:** biblioteca de 1.000 publicaciones originales sintéticas, cinco travesías
+  por JVM entre índices 0/200/600/998/600/200/0, errores de imagen y remount.
+  Se comprueban scroll y datos persistidos. Quince muestras por variante;
+  no se compone simultáneamente el catálogo completo ni se afirma visitar cada libro.
+- **D:** ocho coroutines/1.200 leases con churn e invalidación. Tres ejecuciones;
+  límites y cleanup comprobados. Es presión de slots simulada, no OOM/LMKD Android.
+
+| Escenario host | Antes | Después | Lectura |
+| --- | --- | --- | --- |
+| A, mediana de recorrido / rango | 575,29 ms / 510,14–670,14 ms | 556,92 ms / 521,42–688,02 ms | Mediana 3,2 % menor; rangos solapados, no demuestra una mejora Android |
+| A, bytes asignados en hilo llamante, mediana | 3.353.528 | 3.602.664 | Excluye otros hilos/native/GPU; incluye harness |
+| A, P95/P99 de pasos scheduler+render | 10,01 / 12,82 ms | 9,51 / 11,86 ms | No son FrameTimeline, FPS ni jank Android |
+| A, máximo Java observado entre pasos | 27,28 MiB | 27,40 MiB | Muestras del heap del test, no PSS ni pico nativo |
+| B, mediana / rango del test completo | 4,106 s / 3,825–4,227 s | 4,110 s / 3,827–4,120 s | Sin mejora de duración demostrada; menos trabajo sintético iniciado |
+| B, cargas / intentos de conversión de raster sintético | 35 / 29 | 34 / 27 | No son mediciones de codec Android |
+| C, mediana de travesía / rango | 267,90 ms / 237,03–456,46 ms | 260,54 ms / 228,68–438,83 ms | Mediana 2,7 % menor; rangos solapados, no demuestra una mejora Android |
+| C, bytes asignados en hilo llamante, mediana | 5.362.472 | 6.170.944 | Incluye asignación de raster sintético y composición |
+| D, mediana / rango del test completo | 0,310 s / 0,300–0,345 s | 0,294 s / 0,241–0,304 s | Variabilidad de concurrencia host; no se atribuye una mejora de frames |
+
+La primera variante (`collectLatest` y `boundsInWindow`) aumentaba asignaciones un 18,7 % en A y un 31,5 % en C frente a su control de la sesión anterior; se sustituyó. El final todavía asigna un 7,4 % más en A y un 15,1 % más en C frente al control definitivo. **No se afirma una reducción de asignaciones ni de RAM.** Se conserva el seguimiento de visibilidad por el beneficio funcional reproducido: no dejar al lector esperando por una portada abandonada y liberar solicitudes no colocadas. Los presupuestos no aumentan; este coste adicional debe evaluarse físicamente antes de aceptar la PR. Las medianas de tiempo y sus rangos no demuestran una gran mejora de render ni significación estadística. Las muestras de una misma JVM están agrupadas, no son 15 dispositivos independientes.
+
+| Optimización | Antes | Después | Resultado | Decisión |
+| --- | --- | --- | --- | --- |
+| Renderizado de tarjetas | 5 ancestros de layout del título en fixture | 4; cuatro PNG idénticos | Menos estructura, sin pérdida visual en controles; tiempos globales arriba | Mantener el cambio mínimo; no quitar efectos |
+| Carga visible | Una carga recortada seguía ocupando worker | Cancelación al recortar/no colocar; siguiente visible puede empezar | Regresiones reproducidas y corregidas; máximo un worker | Mantener sin aumentar concurrencia |
+| Conversión de imágenes | Ruta Bitmap → IntArray → Bitmap | Sin cambios | No hay medida de copia/GC Android que justifique sustituirla | Diferir camino Android directo |
+| Caché de miniaturas | 24 slots; misses repetidos en C, cero en A caliente | Mismos límites; sin nuevo cache de disco | El fixture no mide I/O/codec real ni demuestra beneficio de disco | Diferir hasta perfilar misses reales |
+| Estado de Inicio | 80 entradas en scopes / 40 ediciones de query | 0 con las mismas publicaciones | Trabajo ajeno al contenido eliminado | Mantener proyección deduplicada |
+
+### Reproducción y regresión
+
+Reports: `-Pinfinilect.composeReports=true`. El harness no tiene umbrales de tiempo
+que puedan fallar por ruido; sus aserciones comprueban ownership, datos, contadores,
+límites, cancelación y layout. Para repetir con un JDK21/SDK configurado:
+
+```sh
+INFINILECT_PERFORMANCE_DIRECTORY=/absolute/path/outside/repository \
+  ./gradlew :app:desktopTest --rerun-tasks \
+  --tests '*HomeResponsivenessTest.cachedArtworkScrollingDoesNotReloadOrAccumulateCoverResources' \
+  -Pinfinilect.composeReports=true
+# Ejecutar cada clase por separado en JVM fresca, tres veces por variante:
+./gradlew :app:desktopTest --rerun-tasks --tests '*HomeLoadingStressTest'
+./gradlew :app:desktopTest --rerun-tasks --tests '*LargeLibraryResponsivenessTest'
+./gradlew :app:desktopTest --rerun-tasks --tests '*PublicationCoversTest.concurrentViewportChurnAndInvalidationRespectOwnershipAndTheHardLimit'
+./gradlew :app:desktopTest --tests '*HomeRenderWorkTest' --tests '*DiscoveryLayoutFootprintTest'
+```
+
+Los logs/raw XML, muestras y PNG sintéticos de esta ejecución están fuera del
+repositorio; no se publican binarios ni publicaciones. Las seis pruebas Desktop
+nuevas cubren estado, clips internos/fuente grande, unplaced/reentrada, duplicados
+visibles, layout/semántica/temas y biblioteca grande. Se ampliaron los gestos y
+mediciones del benchmark existente sin quitar aserciones. El stress anterior y
+las regresiones comunes Android-host de cache, lifecycle y lectores se conservan.
+
+Verificación final, misma variante que las mediciones, sin desactivar tests:
+
+| Comprobación | Resultado |
+| --- | --- |
+| `:app:desktopTest` completo | **1.548/1.548**, 0 fallos, 0 errores, 0 omitidos |
+| `:app:testAndroidHostTest` completo | **1.297/1.297**, 0 fallos, 0 errores, 0 omitidos |
+| `:core:jvmTest` / `:core:testAndroidHostTest` | **59/59 en cada uno**, 0 fallos/errores/omitidos |
+| `:androidApp:assembleDebug` | **PASS**, APK debug compilado con JDK 21 |
+| `:androidApp:verifyDebugLanguageResources` | **PASS**, recursos en APK comprobados |
+| `:desktopApp:compileKotlin` | **PASS** |
+| Reports Compose opt-in | Generados para Android/Desktop; no dependencia nueva |
+| 24 ejecuciones comparables A/B/C/D | **PASS**, tres JVM por variante y caso |
+| Control de regresiones nuevas | Tres fallos esperados con código anterior; final verde |
+| Paridad visual de tiles | Cuatro PNG sintéticos antes/después idénticos |
+
+La verificación completa terminó con `BUILD SUCCESSFUL in 10m 12s`. Se forzó la
+ejecución de los cuatro tasks de tests para evitar presentar resultados `UP-TO-DATE`
+como pruebas nuevas. Los tasks Gradle auxiliares sin fuentes/recursos pueden estar
+marcados `SKIPPED`; los XML de tests registran **cero tests omitidos**. Las suites
+incluyen EPUB2/EPUB3, ventanas/localizadores, selección/traducción, CBZ, PDF, TEXT,
+seguridad, preferencias, Library/History y búsqueda. Se ejecutaron en el host;
+no son instrumentación ni gestos en un dispositivo Android real.
+
+Comando de verificación (equivalente con el wrapper del proyecto y JDK21/SDK):
+
+```sh
+./gradlew :core:jvmTest :core:testAndroidHostTest \
+  :app:desktopTest :app:testAndroidHostTest \
+  :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources \
+  :desktopApp:compileKotlin -Pinfinilect.composeReports=true
+```
+
+No se modifican dependencias, manifests, bases de datos, adquisición, firma ni
+configuración de release. Los fixtures son originales sintéticos; no se añaden
+libros, APK, PNG, thumbnails, reports generados ni credenciales al repositorio.
+`git diff --check` y la revisión de artefactos/secretos del árbol versionable pasan.
+
+
+### Validación física pendiente y cierre
+
+El cierre del realme C55 sigue sin causa confirmada: ninguna de estas pruebas
+reproduce un proceso Android ni demuestra solucionar un OOM, un driver o LMKD.
+Las nuevas correcciones resuelven patologías identificables del trabajo observado;
+no se presenta el cambio como una corrección verificada del crash del teléfono.
+Se mantienen los diagnósticos opt-in y comandos de la segunda fase, sin telemetría
+ni texto de libros/queries/perfil en logs.
+
+Checklist C55, comparando el mismo tipo de build/configuración:
+
+1. Inicio completamente cargado: deslizar vertical/horizontal, invertir dirección
+   y regresar; comprobar contenido estable y si se percibe una mejora reproducible.
+2. Caché fría/red lenta: desplazarse mientras llegan recomendaciones; las portadas
+   visibles deben poder avanzar sin esperar por una tarjeta abandonada. Verificar
+   fallback/reintento existente al fallar fuente o imagen, sin cierres.
+3. Alternar cinco pestañas y volver desde lector, confirmando scroll y ausencia de
+   recarga de catálogo innecesaria; biblioteca grande y datos intactos.
+4. EPUB largo/fuente grande/selección y Original/Traducido; CBZ rápido/RTL/dobles/zoom;
+   PDF y TXT; posiciones al cerrar/reabrir y preferencias/idiomas intactos.
+5. Repetir al volver de traducción pendiente, sin cargar modelos desde Inicio.
+   Observar memoria/cierres cuando sea medible, sin borrar datos ni desinstalar.
+6. Cuando haya PC, capturar sesión `infinilect.performance` antes del fallo y guardar
+   Logcat/exit-info + trazas caliente/cargando. Sin PC, anotar build, escenario y
+   momento del cierre; no inferir su causa de una grabación de pantalla.
+
+**PR #32 sigue Draft, sin merge ni release.** No se promete fluidez del C55 hasta
+la comparación física; la prioridad restante es capturar su perfil caliente y el
+motivo del cierre.

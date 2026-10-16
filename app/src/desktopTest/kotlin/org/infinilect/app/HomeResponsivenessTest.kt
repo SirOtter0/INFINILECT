@@ -11,6 +11,9 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
@@ -26,7 +29,7 @@ import kotlin.test.*
 
 /** Actual Home composables, synthetic metadata/art only, no network/native translation.
  * Software Skia on a Linux host is NOT an Android frame-time benchmark. Timing has no pass threshold. */
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class HomeResponsivenessTest {
     @Test fun discoveryMetadataCannotRebaseRowsWhenDifferentCardsEnterTheViewport() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -118,9 +121,39 @@ class HomeResponsivenessTest {
         val position = LazyListState()
         val scene = ImageComposeScene(390, 720, Density(1f), coroutineContext = dispatcher)
         var frame = 0L
-        fun draw() { runCurrent(); scene.render(++frame * 16_666_667L).close(); runCurrent() }
+        var measureFrames = false
+        val frameSteps = mutableListOf<Long>()
+        var peakObservedJava = 0L
+        fun draw() {
+            val start = System.nanoTime()
+            runCurrent(); scene.render(++frame * 16_666_667L).close(); runCurrent()
+            if (measureFrames) {
+                frameSteps += System.nanoTime() - start
+                val runtime = Runtime.getRuntime()
+                peakObservedJava = maxOf(peakObservedJava, runtime.totalMemory() - runtime.freeMemory())
+            }
+        }
+        fun horizontalDrag(right: Boolean) {
+            fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::walk)
+            val row = scene.semanticsOwners.flatMap { walk(it.unmergedRootSemanticsNode) }.firstOrNull {
+                it.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange) != null &&
+                    it.boundsInRoot.bottom > 100f && it.boundsInRoot.top < 600f
+            } ?: error("A real horizontal carousel must remain visible")
+            val y = (row.boundsInRoot.top + 60f).coerceIn(100f, 600f)
+            val from = Offset(if (right) 60f else 330f, y); val to = Offset(if (right) 330f else 60f, y)
+            fun event(type: PointerEventType, at: Offset) = scene.sendPointerEvent(type, at,
+                timeMillis = testScheduler.currentTime, type = PointerType.Touch)
+            event(PointerEventType.Press, from)
+            repeat(4) { step ->
+                advanceTimeBy(16); event(PointerEventType.Move, from + (to - from) * ((step + 1) / 4f)); draw()
+            }
+            advanceTimeBy(16); event(PointerEventType.Release, to); draw()
+        }
         suspend fun scroll() {
-            repeat(60) { step -> position.scrollBy(if (step < 30) 30f else -30f); draw() }
+            repeat(60) { step ->
+                position.scrollBy(if (step < 30) 30f else -30f); draw()
+                if (step % 15 == 0) horizontalDrag(right = step >= 30)
+            }
         }
         try {
             // Warm every thumbnail, retaining exactly the same 12 IDs across three real Home rows.
@@ -133,12 +166,14 @@ class HomeResponsivenessTest {
             val bean = (ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean)
                 ?.takeIf { it.isThreadAllocatedMemorySupported && it.isThreadAllocatedMemoryEnabled }
             val tid = Thread.currentThread().threadId()
+            measureFrames = true
             val samples = List(5) {
                 val bytes = bean?.getThreadAllocatedBytes(tid)
                 val start = System.nanoTime()
                 scroll()
                 (System.nanoTime() - start) to bytes?.let { bean.getThreadAllocatedBytes(tid) - it }
             }
+            measureFrames = false
             assertEquals(calls, requests, "Scrolling cannot restart catalog requests")
             assertEquals(12, loads, "Cached scrolling cannot decode again")
             assertEquals(12, covers.retainedEntries())
@@ -148,9 +183,11 @@ class HomeResponsivenessTest {
                 Files.writeString(path.resolve("home-scroll.txt"),
                     "JDK=${System.getProperty("java.version")}; OS=${System.getProperty("os.name")}; arch=${System.getProperty("os.arch")}\n" +
                     "390x720, density=1, 3 rows x 12 repeated IDs; all 12 covers warm; no network; software Skia\n" +
-                    "5 samples, each 60 scrollBy(30px)/render steps (30 down/30 up); first warm traversal excluded\n" +
+                    "5 samples, each 60 vertical scroll/render steps + 4 horizontal touch drags (20 render steps); first mixed warm traversal excluded\n" +
                     samples.joinToString("\n") { "ns=${it.first}; current-thread allocated bytes=${it.second}" } +
-                    "\nrequests=$requests; cover loads=$loads; retained=${covers.retainedEntries()}\nNot Android FPS/jank evidence.\n")
+                    "\nrequests=$requests; cover loads=$loads; retained=${covers.retainedEntries()}\n" +
+                    "hostFrameStepsNs=" + frameSteps.joinToString(",") + "\npeakObservedJavaBytes=$peakObservedJava\n" +
+                    "Host frame steps include scheduler/render; Java samples are neither PSS nor native/GPU peaks. Not Android FPS/jank evidence.\n")
             }
         } finally { scene.close(); owner.close(); covers.close(); runCurrent(); covers.awaitClosed() }
         assertEquals(0, covers.retainedEntries())

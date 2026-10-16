@@ -9,6 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.infinilect.app.*
 import org.infinilect.core.*
 import org.infinilect.app.discovery.*
@@ -31,13 +33,16 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     val continued = remember(history.entries, progress) { homeContinue(history.entries,progress) }
     val added = remember(library.entries) { homeRecentLibrary(library.entries) }
     val online by application.homeDiscovery.state.collectAsState()
-    val search by application.discovery.state.collectAsState()
+    // Home uses publication metadata, not Search's query/filter/loading state.
+    val searchEntries by remember(application) {
+        application.discovery.state.map { it.entries }.distinctUntilChanged()
+    }.collectAsState(application.discovery.state.value.entries)
     var onlineDetail by remember { mutableStateOf<DiscoveryEntry?>(null) }
     LaunchedEffect(preferences.loaded, preferences.discovery) {
         if (preferences.loaded) application.homeDiscovery.refresh(preferences.discovery)
     }
     DisposableEffect(application) { onDispose { application.homeDiscovery.pause() } }
-    val known = remember(online.rows, search.entries) { (online.rows.flatMap { it.entries } + search.entries).associateBy { it.publication.id } }
+    val known = remember(online.rows, searchEntries) { (online.rows.flatMap { it.entries } + searchEntries).associateBy { it.publication.id } }
     val inferred = remember(preferences.discovery.personalized, preferences.discovery.inferenceAfter, history.entries, known) { if (preferences.discovery.personalized) history.entries
         .filter { it.lastOpenedAtEpochMillis > preferences.discovery.inferenceAfter }.take(20)
         .flatMap { known[it.publication.id]?.genres.orEmpty() }.groupingBy { it }.eachCount() else emptyMap() }
