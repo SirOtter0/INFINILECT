@@ -34,7 +34,10 @@ internal fun CollectionScreen(destination: Destination, application: Application
     val selected by controller.selection.collectAsState()
     val isLibrary = destination == Destination.LIBRARY
     val selecting = isLibrary && selected.isNotEmpty()
-    val entries = if (isLibrary) library.entries.map { it.publication } else history.entries.map { it.publication }
+    val entries = remember(isLibrary, library.entries, history.entries) {
+        if (isLibrary) library.entries.map { it.publication } else history.entries.map { it.publication }
+    }
+    val progress = remember(progressRecords) { indexPublicationProgress(progressRecords) }
     val loading = if (isLibrary) library.loading else history.loading
     val failed = if (isLibrary) library.failed else history.failed
     var detail by remember(destination) { mutableStateOf<PublicationSnapshot?>(null) }
@@ -66,7 +69,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
             }
             LazyVerticalGrid(GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = position,
                 contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(if (isLibrary) 12.dp else 4.dp)) {
-                if (loading) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Loading…", "Reading your saved publications.", busy = true) }
+                if (loading && entries.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Loading…", "Reading your saved publications.", busy = true) }
                 if (failed) item(span = { GridItemSpan(maxLineSpan) }) {
                     FeedbackCard("Local storage is unavailable", "Your saved publications have not been removed. Please try again.", error = true,
                         action = "Try again", onAction = { if (isLibrary) controller.refreshLibrary() else controller.refreshHistory() })
@@ -78,7 +81,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
                         action = "Browse Search", onAction = { application.navigate(Destination.SEARCH) })
                 }
                 if (isLibrary) items(entries, key = { it.id.resultKey() }) { publication ->
-                    LibraryCover(publication.displayPublication(), application.covers, publicationProgress(progressRecords, publication.id),
+                    LibraryCover(remember(publication) { publication.displayPublication() }, application.covers, progress[publication.id],
                         selected = publication.id in selected, selecting = selecting, enabled = membership.forPublication(publication.id).enabled && !busy,
                         open = { application.openSaved(publication) }, details = { detail = publication; detailFormat = it },
                         select = { controller.select(publication.id) }, toggle = { controller.toggleSelection(publication.id) },
@@ -88,7 +91,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp).semantics { heading() }) }
                     items(group, key = { it.publication.id.resultKey() }) { entry ->
                         val publication = entry.publication
-                        HistoryPublication(publication.displayPublication(), application.covers, publicationProgress(progressRecords, publication.id), !busy,
+                        HistoryPublication(remember(publication) { publication.displayPublication() }, application.covers, progress[publication.id], !busy,
                             open = { application.openSaved(publication) }, details = { detail = publication; detailFormat = it },
                             remove = { remove = CollectionRemoval(publication, history = true) })
                     }
@@ -100,7 +103,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
         }
     }
     detail?.let { publication ->
-        val progress = detailsProgress(application, publication.id, publicationProgress(progressRecords, publication.id))
+        val progress = detailsProgress(application, publication.id, progress[publication.id])
         val action = membership.forPublication(publication.id)
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),

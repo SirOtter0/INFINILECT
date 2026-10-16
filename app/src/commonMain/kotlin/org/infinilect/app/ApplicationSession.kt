@@ -88,13 +88,14 @@ internal class ApplicationSession(
     }
     fun navigate(destination: Destination) {
         if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
+        if (destination == mutableDestination.value) return
         if (destination != mutableDestination.value) collections.clearSelection()
         if (destination != Destination.SEARCH) discovery.pause()
         if (destination != Destination.HOME) homeDiscovery.pause()
         mutableDestination.value=destination
         if (destination == Destination.SEARCH) discovery.resume()
         if (destination == Destination.HOME) refreshHomeProgress() else { homeGeneration++; homeLookup?.cancel() }
-        when(destination) { Destination.LIBRARY -> collections.refreshLibrary(); Destination.HISTORY -> collections.refreshHistory(); Destination.HOME -> { collections.refreshLibrary(); collections.refreshHistory() }; else -> Unit }
+        when(destination) { Destination.LIBRARY -> collections.ensureLibrary(); Destination.HISTORY -> collections.ensureHistory(); Destination.HOME -> { collections.ensureLibrary(); collections.ensureHistory() }; else -> Unit }
     }
     /** Platform backgrounding retires requests without disposing retained readers or source clients. */
     fun pauseDiscovery() { discovery.pause(); homeDiscovery.pause() }

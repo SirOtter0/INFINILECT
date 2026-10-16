@@ -67,6 +67,7 @@ fun App(
     val appearanceState by (applicationSources.appearance?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(ApplicationAppearanceState()) }).collectAsState()
     var profileEditor by remember { mutableStateOf(false) }
     val homePosition = rememberLazyListState()
+    val screenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val discoveryPosition = rememberLazyGridState()
     val discoveryViewport = remember(application) { org.infinilect.app.discovery.DiscoverySearchViewport() }
     val homeProgress by application.homeProgress.collectAsState()
@@ -77,7 +78,14 @@ fun App(
     SideEffect { applicationAppearance(ReaderAppearance(appDark, applicationColors(appDark).background)) }
     val libraryPosition = rememberLazyGridState()
     val historyPosition = rememberLazyGridState()
-    val progressRecords by (applicationSources.progress?.recentProgress ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyMap<org.infinilect.core.ReadingProgressId, org.infinilect.core.ReadingProgress>()) }).collectAsState()
+    val opening by application.opening.collectAsState()
+    // Collection summaries are a shell concern. The active reader already owns its
+    // locator flows; its saves must not recompose the entire application root.
+    val collectionProgress = if (opening is OpenPublicationState.Idle) {
+        val records by (applicationSources.progress?.recentProgress ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyMap<org.infinilect.core.ReadingProgressId, org.infinilect.core.ReadingProgress>()) }).collectAsState()
+        remember(records) { records.values.toList() }
+    } else emptyList()
+    val homeRecords = remember(collectionProgress, homeProgress) { collectionProgress + homeProgress }
     // Save only owned identity for Android recreation; never an external acquisition URI.
     var savedPdfId by rememberSaveable { mutableStateOf<String?>(null) }
     var savedPdfPage by rememberSaveable { mutableStateOf(0) }
@@ -91,7 +99,6 @@ fun App(
         onDispose { application.flushProgress() }
     }
     val destination by application.destination.collectAsState()
-    val opening by application.opening.collectAsState()
     val importing by application.importing.collectAsState()
     SideEffect {
         when(val current=opening) {
@@ -137,16 +144,16 @@ fun App(
                                     importing.message?.let { FeedbackCard("Import could not finish", it, error = true, modifier = Modifier.padding(horizontal = 24.dp)) }
                                 }
                                 androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
-                                    when (destination) {
-                                        Destination.HOME -> HomeScreen(application, appearanceState, progressRecords.values.toList() + homeProgress,
+                                    screenState.SaveableStateProvider(destination.name) { when (destination) {
+                                        Destination.HOME -> HomeScreen(application, appearanceState, homeRecords,
                                             applicationSources.appearance, homePosition,
                                             importAction = if (localFilePicker != null && applicationSources.localImports != null && !importing.busy) ({ application.importLocal(localFilePicker) }) else null,
                                             editProfile = { profileEditor = true }, settingsFailed = appearanceFailed)
                                         Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
-                                            if (destination == Destination.LIBRARY) libraryPosition else historyPosition, progressRecords.values.toList())
+                                            if (destination == Destination.LIBRARY) libraryPosition else historyPosition, collectionProgress)
                                         Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation)
-                                    }
+                                    } }
                                 }
                             }
                         }

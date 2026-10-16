@@ -112,6 +112,8 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
     private var libraryGeneration = 0L
     private val libraryMutations = mutableMapOf<PublicationId, Job>()
     private var readerMutationFailed = false
+    private var libraryLoaded = false
+    private var historyLoaded = false
     private var closed = false
     init {
         refreshLibrary()
@@ -132,6 +134,14 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
     catch (error: CancellationException) { throw error }
     catch (_: Exception) { LocalStoreResult.Unavailable }
 
+    /** Tab visits reuse a valid snapshot and an in-flight read. Commits and Retry
+     * still force refreshes through the existing repository/generation path. */
+    fun ensureLibrary() {
+        if (!closed && libraryRequest?.isActive != true && (!libraryLoaded || library.value.failed)) refreshLibrary()
+    }
+    fun ensureHistory() {
+        if (!closed && historyRequest?.isActive != true && (!historyLoaded || history.value.failed)) refreshHistory()
+    }
     fun refreshLibrary() {
         if (closed) return
         val generation = ++libraryGeneration
@@ -144,6 +154,7 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
                 if (generation != libraryGeneration) return@launch
                 mutableLibrary.value = when (result) {
                     is LocalStoreResult.Success -> {
+                        libraryLoaded = true
                         mutableSelection.value = selection.value.intersect(result.value.map { it.publication.id }.toSet())
                         CollectionList(result.value)
                     }
@@ -173,7 +184,7 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
             val result = safe { owner?.flushHistory(); owner?.history?.listRecent(50) ?: LocalStoreResult.Unavailable }
             currentCoroutineContext().ensureActive()
             mutableHistory.value = when (result) {
-                is LocalStoreResult.Success -> CollectionList(result.value)
+                is LocalStoreResult.Success -> { historyLoaded = true; CollectionList(result.value) }
                 else -> mutableHistory.value.copy(loading=false,failed=true)
             }
         }

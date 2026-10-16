@@ -24,8 +24,20 @@ import kotlinx.coroutines.CancellationException
 
 internal fun PublicationSnapshot.displayPublication() = Publication(id, title, type, authors, languages = languages, sourceUrl = sourceUrl, rights = rights)
 
-internal fun publicationProgress(records: Collection<ReadingProgress>, id: PublicationId): ReadingProgress? =
-    records.filter { it.id.publicationId == id }.maxByOrNull { it.updatedAtEpochMillis }
+internal fun publicationProgress(records: Collection<ReadingProgress>, id: PublicationId): ReadingProgress? {
+    var newest: ReadingProgress? = null
+    for (record in records) if (record.id.publicationId == id &&
+        (newest == null || record.updatedAtEpochMillis > newest.updatedAtEpochMillis)) newest = record
+    return newest
+}
+
+/** One index per immutable progress snapshot, rather than scanning it in every lazy item. */
+internal fun indexPublicationProgress(records: Collection<ReadingProgress>): Map<PublicationId, ReadingProgress> = buildMap {
+    for (record in records) {
+        val id = record.id.publicationId
+        if (get(id)?.let { it.updatedAtEpochMillis >= record.updatedAtEpochMillis } != true) put(id, record)
+    }
+}
 internal fun publicationFormat(formats: List<PublicationFormat>) = formats.distinct().joinToString(" · ") { it.name }.ifEmpty { "Format checked when opening" }
 
 /** Live records win. A bounded, cancellable read-only lookup fills the restart-only gap. */

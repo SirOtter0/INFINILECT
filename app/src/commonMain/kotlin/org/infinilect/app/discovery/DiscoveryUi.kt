@@ -152,12 +152,17 @@ private fun FilterChoice(label: String, selected: Boolean, click: () -> Unit) {
 internal fun DiscoveryTile(entry: DiscoveryEntry, application: ApplicationSession, modifier: Modifier = Modifier, open: () -> Unit) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // Reuse owned local art or a source-advertised bounded thumbnail; never acquire book bytes.
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            HomeCover(entry.publication, if (entry.thumbnail != null || entry.publication.id.sourceId.value == "local-imports") application.covers else null, null, false) { open() }
-        }
-        if (entry.publication.authors.isNotEmpty()) Text(entry.publication.authors.joinToString("; "), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
-        Text(application.sourceName(entry.publication.id.sourceId), style = MaterialTheme.typography.caption)
-        if (entry.publication.languages.isNotEmpty()) Text(entry.publication.languages.joinToString(", "), style = MaterialTheme.typography.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        HomeCover(entry.publication, if (entry.thumbnail != null || entry.publication.id.sourceId.value == "local-imports") application.covers else null,
+            null, false, Modifier.align(Alignment.CenterHorizontally)) { open() }
+        // LazyRow measures only its active children. Reserve the same scalable text slots
+        // so missing metadata or a wrapped attribution cannot rebase the vertical Home list
+        // as different cards enter the horizontal viewport. Empty slots invent no metadata.
+        Text(entry.publication.authors.joinToString("; "), minLines = 1, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
+        Text(application.sourceName(entry.publication.id.sourceId), minLines = 1, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
+        Text(entry.publication.languages.joinToString(", "), minLines = 1, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
     }
 }
 
