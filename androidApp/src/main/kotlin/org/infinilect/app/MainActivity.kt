@@ -22,6 +22,7 @@ import androidx.lifecycle.ViewModelProvider
 class MainActivity : ComponentActivity() {
     private lateinit var sources: ApplicationSources
     private lateinit var picker: AndroidDocumentPicker
+    private var frameDiagnostics: AutoCloseable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,10 +65,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0 &&
+            intent.getBooleanExtra("infinilect.performance", false)) {
+            @Suppress("DEPRECATION")
+            val refreshRate = if (android.os.Build.VERSION.SDK_INT >= 30) display?.refreshRate ?: 60f else windowManager.defaultDisplay.refreshRate
+            frameDiagnostics = org.infinilect.app.diagnostics.startFrameDiagnostics(window, refreshRate)
+        }
         if (::sources.isInitialized) sources.resumeDiscovery()
     }
 
     override fun onStop() {
+        frameDiagnostics?.close(); frameDiagnostics = null
         if (::sources.isInitialized) { sources.pauseDiscovery(); sources.flushProgress() }
         super.onStop()
     }

@@ -47,6 +47,10 @@ internal class PublicationCovers(
     }
     private val lock = Mutex()
     private val entries = linkedMapOf<PublicationId, Entry>()
+    // Read-only identity index for the first UI composition. Same entries/bitmaps as
+    // the LRU, never a second image cache. StateFlow safely publishes worker changes.
+    private val resident = MutableStateFlow<Map<PublicationId, Entry>>(emptyMap())
+    fun peek(id: PublicationId): CoverState = resident.value[id]?.state?.value ?: CoverState()
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val signal = Channel<Unit>(Channel.CONFLATED)
     private val worker = scope.launch {
@@ -86,7 +90,7 @@ internal class PublicationCovers(
                     }
                 }
             }
-        } finally { withContext(NonCancellable) { lock.withLock { entries.values.forEach { it.state.value = CoverState() }; entries.clear() } } }
+        } finally { withContext(NonCancellable) { lock.withLock { entries.values.forEach { it.state.value = CoverState() }; entries.clear(); resident.value = emptyMap() } } }
     }
     suspend fun acquire(id: PublicationId): Lease = lock.withLock {
         if (!worker.isActive) return@withLock Lease(id, null)
@@ -100,6 +104,7 @@ internal class PublicationCovers(
             Entry()
         }
         entries[id] = entry
+        if (old == null) resident.value = entries.toMap()
         entry.references++
         signal.trySend(Unit)
         Lease(id, entry)
@@ -112,6 +117,7 @@ internal class PublicationCovers(
     }
     suspend fun invalidate(id: PublicationId) = lock.withLock {
         entries.remove(id)?.let { it.active?.cancel(); it.state.value = CoverState() }
+        resident.value = entries.toMap()
     }
     internal suspend fun retainedEntries() = lock.withLock { entries.size }
     fun close() { scope.cancel(); signal.close() }

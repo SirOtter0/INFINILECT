@@ -14,6 +14,75 @@ import kotlin.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class PublicationCoversTest {
     private fun id(number: Int, source: String = "original") = PublicationId(SourceId(source), "book-$number")
+    @Test fun residentIndexSharesEntriesAndForgetsInvalidatedEvictedAndClosedArtwork() = runTest {
+        val cache = PublicationCovers({ CoverArtwork(PublicationFormat.EPUB) }, StandardTestDispatcher(testScheduler))
+        assertNull(cache.peek(id(0)).format)
+        suspend fun visit(i: Int) { val lease = cache.acquire(id(i)); runCurrent(); assertSame(lease.state.value, cache.peek(id(i))); cache.release(lease) }
+        repeat(24) { visit(it) }; visit(24)
+        assertNull(cache.peek(id(0)).format, "Evicted entries cannot survive in the read index")
+        cache.invalidate(id(1)); assertNull(cache.peek(id(1)).format)
+        assertEquals(PublicationFormat.EPUB, cache.peek(id(24)).format)
+        cache.close(); cache.awaitClosed(); assertNull(cache.peek(id(24)).format)
+    }
+    @Test fun lateNonCooperativeLoadCannotPublishIntoAnEvictedOrRecreatedEntry() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0; var active = 0; var maximum = 0
+        val cache = PublicationCovers({
+            calls++; active++; maximum = maxOf(maximum, active)
+            try { if (calls == 1) withContext(NonCancellable) { gate.await() }; CoverArtwork(PublicationFormat.EPUB) }
+            finally { active-- }
+        }, dispatcher)
+        val retired = cache.acquire(id(0)); runCurrent()
+        cache.release(retired); cache.invalidate(id(0))
+        val current = cache.acquire(id(0)); runCurrent()
+        assertEquals(1, calls, "A non-cooperative decode must finish before starting another")
+        assertNull(current.state.value.format); assertNull(retired.state.value.format)
+        gate.complete(Unit); runCurrent()
+        assertEquals(2, calls); assertEquals(1, maximum)
+        assertNull(retired.state.value.format); assertEquals(PublicationFormat.EPUB, current.state.value.format)
+        cache.release(current); cache.close(); cache.awaitClosed(); assertEquals(0, active)
+    }
+    @Test fun invalidationClearsTheLeaseWithoutMutatingAPreviouslyPresentedState() = runTest {
+        // A UI frame may retain the old immutable state after eviction. Clearing cache ownership
+        // must not recycle that image. Actual bitmap validity is also covered by Desktop scenes.
+        val cache = PublicationCovers({ CoverArtwork(PublicationFormat.EPUB) }, StandardTestDispatcher(testScheduler))
+        val lease = cache.acquire(id(0)); runCurrent(); val presented = lease.state.value
+        cache.invalidate(id(0)); runCurrent()
+        assertEquals(PublicationFormat.EPUB, presented.format); assertNull(lease.state.value.format)
+        cache.release(lease); cache.close(); cache.awaitClosed()
+    }
+    @Test fun conversionFailuresAndOversizedArtworkAreIsolatedAndDoNotStopTheWorker() = runTest {
+        var conversions = 0
+        val cache = PublicationCovers({ publication -> CoverArtwork(PublicationFormat.EPUB,
+            org.infinilect.app.media.Raster(if (publication == id(0)) 193 else 32, 48, IntArray((if (publication == id(0)) 193 else 32) * 48))) },
+            StandardTestDispatcher(testScheduler), convert = { conversions++; error("Controlled conversion failure") })
+        repeat(60) { i ->
+            val lease = cache.acquire(id(i)); runCurrent(); assertNull(lease.state.value.image)
+            cache.release(lease); assertTrue(cache.retainedEntries() <= 24)
+        }
+        assertEquals(59, conversions); cache.close(); cache.awaitClosed()
+    }
+    @Test fun concurrentViewportChurnAndInvalidationRespectOwnershipAndTheHardLimit() = runTest {
+        val cache = PublicationCovers({ yield(); CoverArtwork(PublicationFormat.TEXT) }, Dispatchers.Default)
+        try {
+            coroutineScope {
+                repeat(8) { worker -> launch(Dispatchers.Default) {
+                    repeat(150) { iteration ->
+                        val publication = id((iteration * 7 + worker) % 80)
+                        val lease = cache.acquire(publication)
+                        try {
+                            yield()
+                            if (iteration % 11 == 0) cache.invalidate(publication)
+                            assertTrue(cache.retainedEntries() <= 24)
+                            cache.peek(publication)
+                        } finally { withContext(NonCancellable) { cache.release(lease) } }
+                    }
+                } }
+            }
+        } finally { cache.close(); cache.awaitClosed() }
+        assertEquals(0, cache.retainedEntries())
+    }
     @Test fun phonesUseTwoColumnsAndDesktopColumnsGrowWithoutHugeCovers() {
         assertEquals(1, libraryColumns(280f)); assertEquals(2, libraryColumns(360f)); assertEquals(2, libraryColumns(420f))
         assertEquals(4, libraryColumns(800f)); assertEquals(6, libraryColumns(1120f))

@@ -14,6 +14,32 @@ class CollectionsControllerTest {
     private fun TestScope.owner(fake: FakeCollections,release: suspend () -> Unit = {})=
         ApplicationCollections(fake.library,fake.history,StandardTestDispatcher(testScheduler),release)
     private fun TestScope.controller(owner: ApplicationCollections?)=CollectionsController(owner,this){1L}
+    @Test fun repeatedEnsureSharesActiveReadsAndCompletedSnapshots() = runTest {
+        val fake = FakeCollections(); val gate = CompletableDeferred<Unit>(); var cancelled = 0
+        fake.beforeRead = { try { gate.await() } catch (e: CancellationException) { cancelled++; throw e } }
+        val owner = owner(fake); val c = controller(owner)
+        try {
+            c.ensureHistory(); runCurrent()
+            repeat(100) { c.ensureLibrary(); c.ensureHistory(); runCurrent() }
+            assertEquals(1, fake.libraryReads); assertEquals(1, fake.historyReads); assertEquals(0, cancelled)
+            gate.complete(Unit); advanceUntilIdle()
+            repeat(100) { c.ensureLibrary(); c.ensureHistory() }; advanceUntilIdle()
+            assertEquals(1, fake.libraryReads); assertEquals(1, fake.historyReads)
+        } finally { c.close(); owner.close(); owner.awaitClosed() }
+    }
+    @Test fun failedSnapshotCanRetryAndCommittedHistoryStillRefreshes() = runTest {
+        val fake = FakeCollections(); fake.fail = true
+        val owner = owner(fake); val c = controller(owner)
+        try {
+            c.ensureHistory(); advanceUntilIdle()
+            assertTrue(c.library.value.failed); assertTrue(c.history.value.failed)
+            fake.fail = false; c.ensureLibrary(); c.ensureHistory(); advanceUntilIdle()
+            assertFalse(c.library.value.failed); assertFalse(c.history.value.failed)
+            owner.recordOpened(publication(), 2); advanceUntilIdle()
+            assertEquals(id, c.history.value.entries.single().publication.id)
+            assertEquals(3, fake.libraryReads); assertEquals(3, fake.historyReads)
+        } finally { c.close(); owner.close(); owner.awaitClosed() }
+    }
     @Test fun initialEmptyStatesAndAddRemoveAreRepositoryDriven()=runTest {
         val fake=FakeCollections();val owner=owner(fake);val c=controller(owner)
         c.refreshLibrary();c.refreshHistory();advanceUntilIdle();assertTrue(c.library.value.entries.isEmpty());assertFalse(c.library.value.failed)

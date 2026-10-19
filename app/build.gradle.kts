@@ -12,6 +12,14 @@ plugins {
     id("app.cash.sqldelight")
 }
 
+// Compiler diagnostics only: no runtime counters or dependency in normal builds.
+composeCompiler {
+    if (providers.gradleProperty("infinilect.composeReports").orNull == "true") {
+        reportsDestination.set(layout.buildDirectory.dir("compose-diagnostics"))
+        metricsDestination.set(layout.buildDirectory.dir("compose-diagnostics"))
+    }
+}
+
 // Pinned, checksummed upstream SDK; generated AAR stays under build/ and is never tracked.
 // Corresponding MPL-covered source: Foxlet commit 0eff2a15032362115848a496ce1df8ed9fc68650.
 val foxletArtifact = layout.buildDirectory.file("translation-sdk/foxlet-v0.5.0.aar")

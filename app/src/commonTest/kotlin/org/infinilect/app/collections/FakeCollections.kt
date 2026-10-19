@@ -8,13 +8,16 @@ internal class FakeCollections {
     val saved=linkedMapOf<PublicationId,LibraryEntry>()
     val opened=linkedMapOf<PublicationId,HistoryEntry>()
     var fail=false
+    var libraryReads=0
+    var historyReads=0
+    var beforeRead: suspend () -> Unit = {}
     val failedLibraryRemovals = mutableSetOf<PublicationId>()
     val libraryRemovals = mutableListOf<PublicationId>()
     var beforeWrite: suspend () -> Unit = {}
     private fun <T> result(value: T): LocalStoreResult<T> = if(fail) LocalStoreResult.Unavailable else LocalStoreResult.Success(value)
     val library=object : LibraryRepository {
         override suspend fun get(id: PublicationId)=result(saved[id])
-        override suspend fun list()=result(saved.values.toList())
+        override suspend fun list(): LocalStoreResult<List<LibraryEntry>> { libraryReads++; beforeRead(); return result(saved.values.toList()) }
         override suspend fun contains(id: PublicationId)=result(id in saved)
         override suspend fun put(publication: PublicationSnapshot, atEpochMillis: Long): LocalStoreResult<LibraryEntry> {
             beforeWrite(); if(fail) return LocalStoreResult.Unavailable
@@ -32,7 +35,7 @@ internal class FakeCollections {
             beforeWrite();if(fail) return LocalStoreResult.Unavailable
             opened[publication.id]=HistoryEntry(publication,atEpochMillis);return LocalStoreResult.Success(Unit)
         }
-        override suspend fun listRecent(limit: Int)=result(opened.values.sortedByDescending {it.lastOpenedAtEpochMillis}.take(limit))
+        override suspend fun listRecent(limit: Int): LocalStoreResult<List<HistoryEntry>> { historyReads++; beforeRead(); return result(opened.values.sortedByDescending {it.lastOpenedAtEpochMillis}.take(limit)) }
         override suspend fun remove(id: PublicationId): LocalStoreResult<Unit> {
             beforeWrite();if(fail) return LocalStoreResult.Unavailable;opened.remove(id);return LocalStoreResult.Success(Unit)
         }

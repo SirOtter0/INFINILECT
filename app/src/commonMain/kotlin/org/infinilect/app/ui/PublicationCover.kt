@@ -21,8 +21,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.infinilect.app.covers.*
 import org.infinilect.core.*
 
@@ -35,23 +34,35 @@ internal fun coverInitial(title: String): String {
     return text.take(length).uppercase()
 }
 private fun PublicationId.resultCoverKey() = "${sourceId.value}\u0000$localId"
+private val coverColors = listOf(Color(0xff294d55), Color(0xff51466c), Color(0xff6b493d), Color(0xff40563e))
+private val coverTitleColors = listOf(Color.Black.copy(alpha = COVER_TITLE_MIN_SCRIM), Color.Black.copy(alpha = .94f))
 
 @Composable
-private fun coverState(id: PublicationId, covers: PublicationCovers?): CoverState {
-    val state by produceState(CoverState(), id, covers) {
+internal fun coverState(id: PublicationId, covers: PublicationCovers?, viewport: CoverViewport? = null): CoverState {
+    val state by key(id, covers) { produceState(covers?.peek(id) ?: CoverState(), id, covers, viewport) {
         if (covers == null) return@produceState
-        val lease = covers.acquire(id)
-        try { lease.state.collect { value = it } }
-        finally { withContext(NonCancellable) { covers.release(lease) } }
-    }
+        suspend fun present() {
+            val lease = covers.acquire(id)
+            try { lease.state.collect { value = it } }
+            finally { withContext(NonCancellable) { covers.release(lease) } }
+        }
+        if (viewport == null) present() else {
+            // One subscription, at most one child, no transformLatest channel or false-state job.
+            // Join releases before reacquiring; the cache itself joins non-cooperative decodes.
+            var presentation: Job? = null
+            try { viewport.visible.collect { visible ->
+                presentation?.cancelAndJoin()
+                presentation = if (visible) launch { present() } else null
+            } } finally { presentation?.cancel() }
+        }
+    } }
     return state
 }
 
 /** Portrait artwork surface shared by Library and History. Fit, never stretch or crop. */
 @Composable
 private fun CoverArtwork(publication: Publication, state: CoverState, modifier: Modifier = Modifier, compact: Boolean = false) {
-    val colors = listOf(Color(0xff294d55), Color(0xff51466c), Color(0xff6b493d), Color(0xff40563e))
-    Box(modifier.clearAndSetSemantics {}.background(colors[coverPaletteIndex(publication.id)])) {
+    Box(modifier.clearAndSetSemantics {}.background(coverColors[coverPaletteIndex(publication.id)])) {
         if (state.image != null) Image(state.image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         else Column(Modifier.fillMaxSize().padding(if (compact) 6.dp else 12.dp), verticalArrangement = Arrangement.Center) {
             Text(coverInitial(publication.title), color = Color.White, style = if (compact) MaterialTheme.typography.h5 else MaterialTheme.typography.h2,
@@ -66,7 +77,9 @@ private fun CoverArtwork(publication: Publication, state: CoverState, modifier: 
 internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
     selected: Boolean, selecting: Boolean, enabled: Boolean,
     open: () -> Unit, details: (PublicationFormat?) -> Unit, select: () -> Unit, toggle: () -> Unit, remove: () -> Unit) {
-    val cover = coverState(publication.id, covers)
+    val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
+    val cover = coverState(publication.id, covers, viewport)
+    val titleBrush = remember { Brush.verticalGradient(coverTitleColors) }
     val showDetails = { details(cover.format) }
     var menu by remember(publication.id) { mutableStateOf(false) }
     val interaction = Modifier.combinedClickable(
@@ -95,12 +108,12 @@ internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, 
                 CustomAccessibilityAction("Publication details") { showDetails(); true },
                 CustomAccessibilityAction("Continue reading") { open(); true })
         }
-    Surface(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).then(interaction), color = MaterialTheme.colors.surface) {
-        Box(Modifier.aspectRatio(2f / 3f)) {
+    Surface(Modifier.fillMaxWidth().then(viewport?.modifier ?: Modifier), shape = MaterialTheme.shapes.small, color = MaterialTheme.colors.surface) {
+        Box(Modifier.aspectRatio(2f / 3f).then(interaction)) {
             CoverArtwork(publication, cover, Modifier.fillMaxSize())
             Text(publication.title, color = Color.White, style = MaterialTheme.typography.subtitle2, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = COVER_TITLE_MIN_SCRIM), Color.Black.copy(alpha = .94f))))
+                    .background(titleBrush)
                     .padding(12.dp, 12.dp, 12.dp, 16.dp))
             progress?.let { LinearProgressIndicator(it.progression.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
                 color = Color(0xffa8e6d5), backgroundColor = Color.Black.copy(alpha = .5f)) }
@@ -130,11 +143,12 @@ internal fun historyPosition(progress: ReadingProgress?): String? = progress?.le
 @Composable
 internal fun HistoryPublication(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
     enabled: Boolean, open: () -> Unit, details: (PublicationFormat?) -> Unit, remove: () -> Unit) {
-    val cover = coverState(publication.id, covers)
+    val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
+    val cover = coverState(publication.id, covers, viewport)
     Row(Modifier.fillMaxWidth().heightIn(min = 88.dp).clickable(onClickLabel = "Continue reading", onClick = open)
         .semantics { contentDescription = "Resume ${publication.title}" }
         .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.width(48.dp).height(72.dp).clip(MaterialTheme.shapes.small)
+        Box(Modifier.width(48.dp).height(72.dp).then(viewport?.modifier ?: Modifier).clip(MaterialTheme.shapes.small)
             .clickable(onClickLabel = "Publication details", onClick = { details(cover.format) })
             .semantics { contentDescription = "Details for ${publication.title}" }) {
             CoverArtwork(publication, cover, Modifier.fillMaxSize(), compact = true)
@@ -178,19 +192,20 @@ private fun CoverContextMenu(expanded: Boolean, dismiss: () -> Unit, enabled: Bo
 
 @Composable
 internal fun HomeCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
-    resume: Boolean, action: (PublicationFormat?) -> Unit) {
-    val cover = coverState(publication.id, covers)
-    Surface(Modifier.width(144.dp).aspectRatio(2f/3f).clip(MaterialTheme.shapes.small)
-        .clickable(onClickLabel = if (resume) "Continue reading" else "Publication details", onClick = { action(cover.format) })
+    resume: Boolean, modifier: Modifier = Modifier, action: (PublicationFormat?) -> Unit) {
+    val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
+    val cover = coverState(publication.id, covers, viewport)
+    val titleBrush = remember { Brush.verticalGradient(coverTitleColors) }
+    Surface(modifier.width(144.dp).aspectRatio(2f/3f).then(viewport?.modifier ?: Modifier), shape = MaterialTheme.shapes.small) {
+        Box(Modifier.fillMaxSize().clickable(onClickLabel = if (resume) "Continue reading" else "Publication details", onClick = { action(cover.format) })
         .semantics {
             contentDescription = if (resume) "Continue ${publication.title}" else "Details for ${publication.title}"
             progress?.let { stateDescription = "${(it.progression*100).toInt()}% read" }
         }) {
-        Box {
             CoverArtwork(publication, cover, Modifier.fillMaxSize())
             Text(publication.title, color=Color.White, style=MaterialTheme.typography.subtitle2, maxLines=2, overflow=TextOverflow.Ellipsis,
                 modifier=Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha=COVER_TITLE_MIN_SCRIM),Color.Black.copy(alpha=.94f))))
+                    .background(titleBrush)
                     .padding(12.dp,12.dp,12.dp,16.dp))
             progress?.let { LinearProgressIndicator(it.progression.toFloat(),Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
                 color=Color(0xffa8e6d5),backgroundColor=Color.Black.copy(alpha=.5f)) }

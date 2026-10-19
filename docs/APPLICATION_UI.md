@@ -365,3 +365,13 @@ Home retains its offline local sections and adds explicitly enabled source-backe
 rows. Settings stores optional local genre interests, personalization opt-out and
 reset in the existing bounded appearance/profile record. Readers, Library/History
 identity and progress remain unchanged. [Contracts, capabilities and acceptance](DISCOVERY.md).
+
+## Responsiveness and collection refresh
+
+See [Android performance](ANDROID_PERFORMANCE.md) for host evidence, bounded cover
+reuse, diagnostic frame collection and the realme C55 comparison checklist.
+Successful local collection snapshots survive tab visits; committed mutations
+notify the existing application collection owner and refresh them. Failed reads
+and explicit Retry can query again. Destination saveable UI state includes nested
+Home carousel offsets; it retains no reader or decoded image. Collection progress
+is observed by the shell while visible, independently of reader locator ownership.
