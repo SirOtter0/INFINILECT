@@ -16,13 +16,16 @@ import org.infinilect.core.ResourceContent
 /** Native AWT selector; dialog lifetime belongs to the suspended picker request. */
 class DesktopLocalFilePicker : LocalFilePicker {
     override suspend fun pick(): LocalFileSelection? {
+        val title = withContext(Dispatchers.IO) {
+            org.jetbrains.compose.resources.getString(org.infinilect.app.ui.UiText.UI_IMPORT_TEXT_EPUB_CBZ_OR_PDF.resource)
+        }
         val selected = suspendCancellableCoroutine<Path?> { continuation ->
             val dialog = AtomicReference<FileDialog?>()
             continuation.invokeOnCancellation { EventQueue.invokeLater { dialog.getAndSet(null)?.dispose() } }
             EventQueue.invokeLater {
                 if(!continuation.isActive) return@invokeLater
                 try {
-                    val picker = FileDialog(null as Frame?, "Import TEXT, EPUB, CBZ or PDF", FileDialog.LOAD)
+                    val picker = FileDialog(null as Frame?, title, FileDialog.LOAD)
                     dialog.set(picker)
                     try {
                         picker.isVisible=true

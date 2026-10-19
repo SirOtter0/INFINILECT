@@ -150,4 +150,44 @@ class EpubTranslationInterfaceTest {
         } finally { scene.close(); reader.close() }
     }
 
+    @Test fun interfaceLanguageChangesKeepOriginalTextReaderSessionAndTranslationTarget() = runTest {
+        org.infinilect.app.ui.deviceInterfaceLanguage()
+        val previous = java.util.Locale.getDefault()
+        val resources = try {
+            org.infinilect.app.ui.interfaceLanguages.associateWith { language ->
+                org.infinilect.app.ui.applyInterfaceLanguage(language)
+                org.infinilect.app.ui.loadInterfaceStrings(org.jetbrains.compose.resources.getSystemResourceEnvironment())
+            }
+        } finally { java.util.Locale.setDefault(previous) }
+        val service = EpubTranslationService(Engine()).also { it.defaultLanguage.value = "es" }
+        val parser = Parser()
+        val reader = EpubReaderController(Document(), ReadingProgressId(id, "book", PublicationFormat.EPUB), backgroundScope, parser, translationService = service)
+        var language by mutableStateOf("en")
+        var mounts = 0
+        val scene = ImageComposeScene(400, 700, Density(1f, 1.5f), coroutineContext = StandardTestDispatcher(testScheduler))
+        try {
+            reader.initialize(null)
+            scene.setContent {
+                org.infinilect.app.ui.InterfaceLanguage(language, loader = { resources.getValue(java.util.Locale.getDefault().language) }) {
+                    DisposableEffect(reader) { mounts++; onDispose {} }
+                    EpubReader(reader, false, {}, org.infinilect.app.ui.LocalAppStrings.current[org.infinilect.app.ui.UiText.BACK_HOME])
+                }
+            }
+            pump(scene)
+            val before = assertIs<EpubReaderState.Ready>(reader.state.value)
+            for (code in listOf("es", "ca", "en")) {
+                language = code; pump(scene)
+                assertTrue(visible(scene, "Hello 🌍"))
+                val current = assertIs<EpubReaderState.Ready>(reader.state.value)
+                assertEquals(before.ticket, current.ticket); assertEquals(before.initialPosition, current.initialPosition)
+                assertEquals("es", service.defaultLanguage.value)
+                assertEquals(1, parser.calls)
+            }
+            reader.translatedReading(true); pump(scene); assertTrue(visible(scene, "Hola 🌍"))
+            language = "ca"; pump(scene); assertTrue(visible(scene, "Hola 🌍")); assertEquals("es", service.defaultLanguage.value)
+            reader.translatedReading(false); pump(scene); assertTrue(visible(scene, "Hello 🌍"))
+            assertEquals(1, mounts); assertEquals(1, parser.calls)
+        } finally { scene.close(); reader.close(); service.close(); java.util.Locale.setDefault(previous) }
+    }
+
 }

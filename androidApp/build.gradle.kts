@@ -45,10 +45,12 @@ tasks.register("verifyDebugLanguageResources") {
     doLast {
         ZipFile(apk.get().asFile).use { archive ->
             listOf("values", "values-es", "values-ca").forEach { locale ->
-                val path = "assets/composeResources/org.infinilect.app.generated.resources/$locale/strings.commonMain.cvr"
-                val entry = checkNotNull(archive.getEntry(path)) { "Missing packaged language resource: $path" }
-                val prepared = preparedResources.get().file("$locale/strings.commonMain.cvr").asFile
-                check(archive.getInputStream(entry).use { it.readBytes() }.contentEquals(prepared.readBytes())) { "Packaged language resource differs from generated resource: $locale" }
+                listOf("strings", "plurals").forEach { resource ->
+                    val path = "assets/composeResources/org.infinilect.app.generated.resources/$locale/$resource.commonMain.cvr"
+                    val entry = checkNotNull(archive.getEntry(path)) { "Missing packaged language resource: $path" }
+                    val prepared = preparedResources.get().file("$locale/$resource.commonMain.cvr").asFile
+                    check(archive.getInputStream(entry).use { it.readBytes() }.contentEquals(prepared.readBytes())) { "Packaged language resource differs from generated resource: $locale/$resource" }
+                }
             }
         }
     }

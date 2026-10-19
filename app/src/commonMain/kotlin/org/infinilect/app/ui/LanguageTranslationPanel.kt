@@ -38,7 +38,6 @@ internal fun LanguageTranslationPanel(preferences: ApplicationAppearancePreferen
                 TextButton(retryLanguage) { Text(strings[UiText.RETRY]) }
             }
             LanguageChoices(state.profile.interfaceLanguage, true) { preferences.changeProfile(state.profile.copy(interfaceLanguage = it)) }
-            Text(strings[UiText.LANGUAGE_SCOPE], style = MaterialTheme.typography.caption)
             Text(strings[UiText.DEFAULT_READING_LANGUAGE], style = MaterialTheme.typography.subtitle2)
             LanguageChoices(state.readingLanguage, true, strings[UiText.FOLLOW_INTERFACE], preferences::changeReadingLanguage)
             val destination = state.readingLanguage ?: resolveInterfaceLanguage(state.profile.interfaceLanguage, deviceInterfaceLanguage())

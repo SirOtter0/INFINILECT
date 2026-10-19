@@ -243,8 +243,11 @@ internal fun epubListPrefix(block: EpubBlock): String = if (block.kind != EpubBl
 private data class EpubScrollSample(val index: Int, val pixels: Int, val scrolling: Boolean, val key: Any?, val ticket: Long, val layout: TextLayoutResult?)
 
 @Composable
-private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Ready, settings: EpubReaderSettings, keyboard: EpubKeyboardScroll, selection: SelectionState, selectionTicket: Long, projection: List<EpubTranslatedBlock>?, modifier: Modifier) {
+private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Ready, settings: EpubReaderSettings, keyboard: EpubKeyboardScroll, selection: SelectionState, selectionTicket: Long, translatedProjection: List<EpubTranslatedBlock>?, modifier: Modifier) {
     val strings = LocalAppStrings.current
+    val projection = remember(ready.chapter, translatedProjection, strings) {
+        localizedEpubImages(ready.chapter.blocks, translatedProjection, strings)
+    }
     val latestReady by rememberUpdatedState(ready)
     val latestProjection by rememberUpdatedState(projection)
     val list = rememberLazyListState()
