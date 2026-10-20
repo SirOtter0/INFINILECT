@@ -18,7 +18,11 @@ internal val LocalInterfaceLanguageLoading = staticCompositionLocalOf { false }
 
 internal suspend fun loadInterfaceStrings(environment: ResourceEnvironment): LocalizedStrings = withContext(Dispatchers.IO) {
     // Snapshot the public resource environment once: a concurrent locale change cannot mix a table.
-    LocalizedStrings(UiText.entries.associateWith { getString(environment, it.resource) })
+    val values = UiText.entries.associateWith { getString(environment, it.resource) }
+    val language = values.getValue(UiText.INTERFACE_LOCALE_TAG)
+    check(language in interfaceLanguages) { "Unsupported interface resource locale" }
+    LocalizedStrings(values, localeTag = language,
+        plurals = UiPlural.entries.associateWith { listOf(getPluralString(environment, it.resource, 1), getPluralString(environment, it.resource, 2)) })
 }
 
 /** A resource table is applied atomically; a genuine load failure retains the last good language. */

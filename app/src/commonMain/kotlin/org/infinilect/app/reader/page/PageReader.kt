@@ -2,6 +2,8 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.reader.page
 
+import org.infinilect.app.ui.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
@@ -64,6 +66,7 @@ internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBac
     notices: (@Composable () -> Unit)? = null,
     controlsDark: Boolean = !MaterialTheme.colors.isLight,
 ) {
+    val strings = LocalAppStrings.current
     val state by reader.state.collectAsState()
     val settingsFailed by reader.settingsSaveFailed.collectAsState()
     val readyFrames = state.frames.filterValues { it is PageFrame.Ready }
@@ -117,7 +120,7 @@ internal fun PageReader(reader: PageReaderController, saveFailed: Boolean, onBac
         if (state.controlsVisible) ComicChrome(reader,state,transform,onBack,backLabel,saveFailed,settingsFailed,openSheet)
         // Failures stay visible even with hidden chrome, without reserving page height.
         else if (saveFailed || settingsFailed || state.navigationFailed) Surface(Modifier.align(Alignment.BottomCenter), color = MaterialTheme.colors.surface.copy(alpha = .94f)) {
-            Text(if (state.navigationFailed) "Requested page unavailable or unsupported" else if (saveFailed) "Reading position could not be saved on this device." else "Page reader preferences could not be saved on this device.", Modifier.padding(8.dp))
+            Text(if (state.navigationFailed) strings[UiText.UI_REQUESTED_PAGE_UNAVAILABLE_OR_UNSUPPORTED] else if (saveFailed) strings[UiText.POSITION_SAVE_ERROR] else strings[UiText.UI_PAGE_READER_PREFERENCES_COULD_NOT_BE_SAVED_ON_THIS_DEVICE], Modifier.padding(8.dp))
         }
     }
     }
@@ -137,6 +140,7 @@ internal fun modeLabel(mode: PageReadingMode) = when (mode) {
 
 @Composable
 internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, failedConversions: Set<Int>, transform: PageTransform, modifier: Modifier) {
+    val strings = LocalAppStrings.current
     var zoom by transform::zoom
     var pan by transform::pan
     val tapScope = rememberCoroutineScope()
@@ -205,10 +209,10 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                 }
             }
         }.semantics {
-            onClick(label = "Toggle reader controls") { reader.toggleControls(); true }
-            customActions = listOf(CustomAccessibilityAction("Previous page") { transform.reset(); reader.stepTap(-1); true },
-                CustomAccessibilityAction("Next page") { transform.reset(); reader.stepTap(1); true },
-                CustomAccessibilityAction("Zoom or reset") { reader.cancelTransition();transform.resetTap()
+            onClick(label = strings[UiText.UI_TOGGLE_READER_CONTROLS]) { reader.toggleControls(); true }
+            customActions = listOf(CustomAccessibilityAction(strings[UiText.UI_PREVIOUS_PAGE]) { transform.reset(); reader.stepTap(-1); true },
+                CustomAccessibilityAction(strings[UiText.UI_NEXT_PAGE]) { transform.reset(); reader.stepTap(1); true },
+                CustomAccessibilityAction(strings[UiText.UI_ZOOM_OR_RESET]) { reader.cancelTransition();transform.resetTap()
                     val next=comicDoubleTapZoom(zoom,pan,Offset(viewport.width/2,viewport.height/2),fit.size,viewport)
                     zoom=next.zoom;pan=next.pan;true })
         }.pointerInput(reader, transform, width, maxHeight, fit, scrub != null) {
@@ -342,7 +346,7 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
                 SpreadArtwork(target, state, bitmaps, failedConversions, reader.document.pages,
                     Modifier.fillMaxSize().graphicsLayer { translationX = size.width * (offset + side) })
                 if (transition.phase == PageTransitionPhase.WAITING && targetStamps == null && !targetFailed)
-                    Text("Loading ${target.indicator(reader.document.pages.size)}", Modifier.align(Alignment.BottomCenter), color=Color.White)
+                    Text(strings.format(UiText.UI_LOADING_1_S, target.indicator(reader.document.pages.size)), Modifier.align(Alignment.BottomCenter), color=Color.White)
             }
             if (transition == null) stamps(current)?.let { ready ->
                 if(scrub==null && state.tapIntent==null) SideEffect { reader.presented(state.ticket,current.anchor,ready) }
@@ -359,6 +363,7 @@ internal fun PagedCanvas(reader: PageReaderController, state: PageReaderState, b
  * A partial pair is never presented as a successful spread. */
 @Composable
 private fun SpreadArtwork(spread: PageSpread, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, failed: Set<Int>, pages: List<PageEntry>, modifier: Modifier) {
+    val strings = LocalAppStrings.current
     val count = pages.size
     if (spread.second == null && state.settings.fit == PageFit.SCREEN) {
         // Preserve the established Single fit-screen canvas/semantics and placeholder contract.
@@ -367,7 +372,7 @@ private fun SpreadArtwork(spread: PageSpread, state: PageReaderState, bitmaps: M
         return
     }
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
-        if (spread.indices.any { state.frames[it] is PageFrame.Unavailable || it in failed }) Text("Requested pages unavailable or unsupported")
+        if (spread.indices.any { state.frames[it] is PageFrame.Unavailable || it in failed }) Text(strings[UiText.UI_REQUESTED_PAGES_UNAVAILABLE_OR_UNSUPPORTED])
         else if (spread.indices.all { bitmaps[it] != null }) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             val density = LocalDensity.current
             val order = spread.visualOrder(state.settings.mode)
@@ -378,12 +383,13 @@ private fun SpreadArtwork(spread: PageSpread, state: PageReaderState, bitmaps: M
                 for ((slot, index) in order.withIndex()) PageArtwork(bitmaps[index], state.frames[index], index, count,
                     with(density) { Modifier.requiredSize(fit.pages[slot].width.toDp(), fit.pages[slot].height.toDp()) })
             }
-        } else Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text("Loading ${spread.indicator(count)}") }
+        } else Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text(strings.format(UiText.UI_LOADING_1_S, spread.indicator(count))) }
     }
 }
 
 @Composable
 internal fun ContinuousPages(reader: PageReaderController, state: PageReaderState, bitmaps: Map<Int, ImageBitmap>, modifier: Modifier) {
+    val strings = LocalAppStrings.current
     BoxWithConstraints(modifier) {
         val width = maxWidth
         val density = LocalDensity.current
@@ -411,7 +417,7 @@ internal fun ContinuousPages(reader: PageReaderController, state: PageReaderStat
         }
         LazyColumn(Modifier.fillMaxSize().pointerInput(reader) {
             detectTapGestures { if (size.width > 0) reader.tap(it.x / size.width) }
-        }.semantics { onClick(label = "Toggle reader controls") { reader.toggleControls(); true } }, state = list, userScrollEnabled = restored,
+        }.semantics { onClick(label = strings[UiText.UI_TOGGLE_READER_CONTROLS]) { reader.toggleControls(); true } }, state = list, userScrollEnabled = restored,
             verticalArrangement = Arrangement.spacedBy(if (state.settings.mode == PageReadingMode.WEBTOON) 0.dp else 8.dp)) {
             itemsIndexed(reader.document.pages, key = { _, page -> page.key }) { index, page ->
                 // Exact same geometry for loading, errors and decoded images: stable in both directions.
@@ -428,9 +434,10 @@ internal fun ContinuousPages(reader: PageReaderController, state: PageReaderStat
 
 @Composable
 private fun PageArtwork(bitmap: ImageBitmap?, frame: PageFrame?, index: Int, count: Int, modifier: Modifier) {
+    val strings = LocalAppStrings.current
     Box(modifier, contentAlignment = Alignment.Center) {
-        if (bitmap != null) Image(bitmap, "Page ${index + 1} of $count", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-        else if (frame is PageFrame.Unavailable || frame is PageFrame.Ready) Text("Page ${index + 1} unavailable or unsupported")
-        else Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text("Loading page ${index + 1}") }
+        if (bitmap != null) Image(bitmap, strings.format(UiText.UI_PAGE_1_S_OF_2_S, index+1, count), Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        else if (frame is PageFrame.Unavailable || frame is PageFrame.Ready) Text(strings.format(UiText.UI_PAGE_1_S_UNAVAILABLE_OR_UNSUPPORTED, index+1))
+        else Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text(strings.format(UiText.UI_LOADING_PAGE_1_S, index+1)) }
     }
 }

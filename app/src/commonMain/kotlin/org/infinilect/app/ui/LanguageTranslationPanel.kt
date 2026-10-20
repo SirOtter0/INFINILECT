@@ -38,7 +38,6 @@ internal fun LanguageTranslationPanel(preferences: ApplicationAppearancePreferen
                 TextButton(retryLanguage) { Text(strings[UiText.RETRY]) }
             }
             LanguageChoices(state.profile.interfaceLanguage, true) { preferences.changeProfile(state.profile.copy(interfaceLanguage = it)) }
-            Text(strings[UiText.LANGUAGE_SCOPE], style = MaterialTheme.typography.caption)
             Text(strings[UiText.DEFAULT_READING_LANGUAGE], style = MaterialTheme.typography.subtitle2)
             LanguageChoices(state.readingLanguage, true, strings[UiText.FOLLOW_INTERFACE], preferences::changeReadingLanguage)
             val destination = state.readingLanguage ?: resolveInterfaceLanguage(state.profile.interfaceLanguage, deviceInterfaceLanguage())
@@ -98,6 +97,8 @@ private fun TranslationModelList(manager: TranslationModels) {
     var clean by remember { mutableStateOf(false) }
     LaunchedEffect(manager, state.working) { if (!state.loaded && !state.working && state.error == null) manager.refresh() }
     Text(strings[UiText.MODELS_AVAILABLE], style = MaterialTheme.typography.subtitle2)
+    if (state.models.map { it.model }.toSet() == foxletVerifiedModels.toSet())
+        Text(strings[UiText.DIRECT_MODEL_LIMITS], style = MaterialTheme.typography.caption)
     state.storageBytes?.let { Text(strings.format(UiText.STORAGE, (it + 1_048_575) / 1_048_576), style = MaterialTheme.typography.caption) }
         ?: if (state.loaded) Text(strings[UiText.STORAGE_UNKNOWN], style = MaterialTheme.typography.caption) else Unit
     state.models.forEach { row ->

@@ -1,5 +1,41 @@
 # Third-party notices
 
+
+## Android HTTP body cancellation — PR #33
+
+The production Android engine changes from `ktor-client-android:3.6.0` to
+`ktor-client-okhttp:3.6.0` to avoid the Android HttpURLConnection/RawSourceChannel
+concurrent read/close failure captured on the C55. The former remains **host-test
+only** for its regressions. Desktop retains the Java engine; no reader/model
+engine or core dependency changes. This is a transport fix, not a new provider.
+
+The resolved Android runtime selects **OkHttp Android 5.5.0** and **Okio JVM
+3.18.2**. All three components declare **Apache-2.0**, compatible with this project's
+GPL-3.0-or-later; their upstream licenses remain unchanged. Verified primary sources:
+[Ktor POM](https://repo.maven.apache.org/maven2/io/ktor/ktor-client-okhttp-jvm/3.6.0/ktor-client-okhttp-jvm-3.6.0.pom),
+[OkHttp POM](https://repo.maven.apache.org/maven2/com/squareup/okhttp3/okhttp-android/5.5.0/okhttp-android-5.5.0.pom),
+[OkHttp license](https://github.com/square/okhttp/blob/parent-5.5.0/LICENSE.txt),
+[Okio POM](https://repo.maven.apache.org/maven2/com/squareup/okio/okio-jvm/3.18.2/okio-jvm-3.18.2.pom),
+[Okio license](https://github.com/square/okio/blob/parent-3.18.2/LICENSE.txt).
+
+The separate **Public Suffix List data** in OkHttp's Android asset is **MPL-2.0**,
+not Apache-licensed code. Its [upstream NOTICE](https://github.com/square/okhttp/blob/parent-5.5.0/okhttp/src/jvmTest/resources/okhttp3/internal/publicsuffix/NOTICE)
+and [editable source](https://github.com/square/okhttp/blob/parent-5.5.0/okhttp/src/jvmTest/resources/okhttp3/internal/publicsuffix/public_suffix_list.dat)
+are pinned to the same tag. The packaged binary matches that tag byte for byte,
+SHA-256 `c75ab827afd7ffff59a51b14729c25dbfc3b45237eb40ccf02bec7b7d44304a4`.
+Recompiling the tagged editable source (9,764 rules/eight exceptions) reproduces
+that exact binary hash. Its notice, source information and full MPL-2.0 text are
+included in the APK asset.
+Data terms remain MPL-2.0 in the GPLv3 larger work; no data is relabeled Apache.
+
+The Android debug APK ships [attributions and full Apache-2.0/MPL-2.0 texts](androidApp/src/main/assets/licenses/network-transport-NOTICE.txt).
+No upstream source code is copied into the implementation. The existing AndroidX
+Startup provider gains OkHttp's platform/context initializer from its AAR; no new
+runtime permission is needed (INTERNET already existed). See the
+[resolved-dependency update](docs/ANDROID_DEPENDENCIES.md) and
+[crash evidence and limitations](docs/ANDROID_PERFORMANCE.md#pr-33--causa-profunda-readclose-del-stream-android).
+
+
 ## Local EPUB translation — PR #31
 
 The language/model UX follow-up adds Compose Multiplatform

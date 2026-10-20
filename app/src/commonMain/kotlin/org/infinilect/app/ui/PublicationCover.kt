@@ -77,6 +77,7 @@ private fun CoverArtwork(publication: Publication, state: CoverState, modifier: 
 internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
     selected: Boolean, selecting: Boolean, enabled: Boolean,
     open: () -> Unit, details: (PublicationFormat?) -> Unit, select: () -> Unit, toggle: () -> Unit, remove: () -> Unit) {
+    val strings = LocalAppStrings.current
     val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
     val cover = coverState(publication.id, covers, viewport)
     val titleBrush = remember { Brush.verticalGradient(coverTitleColors) }
@@ -84,8 +85,8 @@ internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, 
     var menu by remember(publication.id) { mutableStateOf(false) }
     val interaction = Modifier.combinedClickable(
         onClick = { if (selecting) toggle() else showDetails() },
-        onLongClick = select, onClickLabel = if (selecting) "Toggle selection" else "Publication details",
-        onLongClickLabel = "Select publication")
+        onLongClick = select, onClickLabel = if (selecting) strings[UiText.UI_TOGGLE_SELECTION] else strings[UiText.UI_PUBLICATION_DETAILS],
+        onLongClickLabel = strings[UiText.UI_SELECT_PUBLICATION])
         .pointerInput(publication.id) {
             awaitPointerEventScope {
                 while (true) {
@@ -101,12 +102,12 @@ internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, 
             if (it.type == KeyEventType.KeyDown && (it.key == Key.Menu || it.key == Key.F10 && it.isShiftPressed)) { menu = true; true } else false
         }.semantics {
             this.selected = selected
-            contentDescription = "Cover for ${publication.title}"
-            stateDescription = listOfNotNull(if (selected) "Selected" else if (selecting) "Not selected" else null,
-                progress?.let { "${(it.progression * 100).toInt()}% read" }).joinToString(" · ")
-            customActions = listOf(CustomAccessibilityAction(if (selected) "Deselect publication" else "Select publication") { toggle(); true },
-                CustomAccessibilityAction("Publication details") { showDetails(); true },
-                CustomAccessibilityAction("Continue reading") { open(); true })
+            contentDescription = strings.format(UiText.UI_COVER_FOR_1_S, publication.title)
+            stateDescription = listOfNotNull(if (selected) strings[UiText.UI_SELECTED] else if (selecting) strings[UiText.UI_NOT_SELECTED] else null,
+                progress?.let { strings.format(UiText.UI_1_S_READ, (it.progression * 100).toInt()) }).joinToString(" · ")
+            customActions = listOf(CustomAccessibilityAction(if (selected) strings[UiText.UI_DESELECT_PUBLICATION] else strings[UiText.UI_SELECT_PUBLICATION]) { toggle(); true },
+                CustomAccessibilityAction(strings[UiText.UI_PUBLICATION_DETAILS]) { showDetails(); true },
+                CustomAccessibilityAction(strings[UiText.CONTINUE_READING]) { open(); true })
         }
     Surface(Modifier.fillMaxWidth().then(viewport?.modifier ?: Modifier), shape = MaterialTheme.shapes.small, color = MaterialTheme.colors.surface) {
         Box(Modifier.aspectRatio(2f / 3f).then(interaction)) {
@@ -131,34 +132,34 @@ internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, 
     }
 }
 
-internal fun historyPosition(progress: ReadingProgress?): String? = progress?.let {
-    val location = when (val locator = it.locator) {
-        is ReadingLocator.Page -> "Page ${locator.pageIndex + 1} · "
-        // No chapter label/ordinal is held in the persisted EPUB locator; never invent one.
-        else -> ""
+internal fun historyPosition(progress: ReadingProgress?, strings: LocalizedStrings = LocalizedStrings()): String? = progress?.let {
+    val read = strings.format(UiText.UI_1_S_READ, (it.progression * 100).toInt())
+    when (val locator = it.locator) {
+        is ReadingLocator.Page -> strings.format(UiText.UI_PAGE_1_S_2_S, locator.pageIndex + 1, read)
+        else -> read // The stored EPUB locator supplies no display chapter/page number.
     }
-    "$location${(it.progression * 100).toInt()}% read"
 }
 
 @Composable
 internal fun HistoryPublication(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
     enabled: Boolean, open: () -> Unit, details: (PublicationFormat?) -> Unit, remove: () -> Unit) {
+    val strings = LocalAppStrings.current
     val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
     val cover = coverState(publication.id, covers, viewport)
-    Row(Modifier.fillMaxWidth().heightIn(min = 88.dp).clickable(onClickLabel = "Continue reading", onClick = open)
-        .semantics { contentDescription = "Resume ${publication.title}" }
+    Row(Modifier.fillMaxWidth().heightIn(min = 88.dp).clickable(onClickLabel = strings[UiText.CONTINUE_READING], onClick = open)
+        .semantics { contentDescription = strings.format(UiText.UI_RESUME_1_S, publication.title) }
         .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.width(48.dp).height(72.dp).then(viewport?.modifier ?: Modifier).clip(MaterialTheme.shapes.small)
-            .clickable(onClickLabel = "Publication details", onClick = { details(cover.format) })
-            .semantics { contentDescription = "Details for ${publication.title}" }) {
+            .clickable(onClickLabel = strings[UiText.UI_PUBLICATION_DETAILS], onClick = { details(cover.format) })
+            .semantics { contentDescription = strings.format(UiText.UI_DETAILS_FOR_1_S, publication.title) }) {
             CoverArtwork(publication, cover, Modifier.fillMaxSize(), compact = true)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(publication.title, style = MaterialTheme.typography.subtitle2, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "), style = MaterialTheme.typography.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            historyPosition(progress)?.let { Text(it, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = .75f)) }
+            historyPosition(progress, strings)?.let { Text(it, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = .75f)) }
         }
-        IconButton(remove, Modifier.size(48.dp).semantics { contentDescription = "Remove ${publication.title} from History" }, enabled = enabled) {
+        IconButton(remove, Modifier.size(48.dp).semantics { contentDescription = strings.format(UiText.UI_REMOVE_1_S_FROM_HISTORY, publication.title) }, enabled = enabled) {
             val color = MaterialTheme.colors.onSurface.copy(alpha = .75f)
             Canvas(Modifier.size(22.dp).clearAndSetSemantics {}) {
                 val stroke = 1.5.dp.toPx()
@@ -178,29 +179,31 @@ internal fun DetailsCover(publication: Publication, covers: PublicationCovers?) 
 @Composable
 private fun CoverContextMenu(expanded: Boolean, dismiss: () -> Unit, enabled: Boolean,
     select: () -> Unit, open: () -> Unit, details: () -> Unit, remove: () -> Unit) {
+    val strings = LocalAppStrings.current
     val focus = remember { FocusRequester() }
     LaunchedEffect(expanded) { if (expanded) { withFrameNanos {}; focus.requestFocus() } }
     DropdownMenu(expanded, dismiss, modifier = Modifier.onPreviewKeyEvent {
         if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { dismiss(); true } else false
     }, properties = PopupProperties(focusable = true)) {
-        DropdownMenuItem({ dismiss(); select() }, Modifier.focusRequester(focus), enabled = enabled) { Text("Select publication") }
-        DropdownMenuItem({ dismiss(); details() }) { Text("Publication details") }
-        DropdownMenuItem({ dismiss(); open() }) { Text("Continue reading") }
-        DropdownMenuItem({ dismiss(); remove() }, enabled = enabled) { Text("Remove from Library") }
+        DropdownMenuItem({ dismiss(); select() }, Modifier.focusRequester(focus), enabled = enabled) { Text(strings[UiText.UI_SELECT_PUBLICATION]) }
+        DropdownMenuItem({ dismiss(); details() }) { Text(strings[UiText.UI_PUBLICATION_DETAILS]) }
+        DropdownMenuItem({ dismiss(); open() }) { Text(strings[UiText.CONTINUE_READING]) }
+        DropdownMenuItem({ dismiss(); remove() }, enabled = enabled) { Text(strings[UiText.UI_REMOVE_FROM_LIBRARY]) }
     }
 }
 
 @Composable
 internal fun HomeCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
     resume: Boolean, modifier: Modifier = Modifier, action: (PublicationFormat?) -> Unit) {
+    val strings = LocalAppStrings.current
     val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
     val cover = coverState(publication.id, covers, viewport)
     val titleBrush = remember { Brush.verticalGradient(coverTitleColors) }
     Surface(modifier.width(144.dp).aspectRatio(2f/3f).then(viewport?.modifier ?: Modifier), shape = MaterialTheme.shapes.small) {
-        Box(Modifier.fillMaxSize().clickable(onClickLabel = if (resume) "Continue reading" else "Publication details", onClick = { action(cover.format) })
+        Box(Modifier.fillMaxSize().clickable(onClickLabel = if (resume) strings[UiText.CONTINUE_READING] else strings[UiText.UI_PUBLICATION_DETAILS], onClick = { action(cover.format) })
         .semantics {
-            contentDescription = if (resume) "Continue ${publication.title}" else "Details for ${publication.title}"
-            progress?.let { stateDescription = "${(it.progression*100).toInt()}% read" }
+            contentDescription = if (resume) strings.format(UiText.UI_CONTINUE_1_S, publication.title) else strings.format(UiText.UI_DETAILS_FOR_1_S, publication.title)
+            progress?.let { stateDescription = strings.format(UiText.UI_1_S_READ, (it.progression*100).toInt()) }
         }) {
             CoverArtwork(publication, cover, Modifier.fillMaxSize())
             Text(publication.title, color=Color.White, style=MaterialTheme.typography.subtitle2, maxLines=2, overflow=TextOverflow.Ellipsis,

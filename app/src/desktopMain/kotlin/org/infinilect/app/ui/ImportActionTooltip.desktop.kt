@@ -14,6 +14,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal actual fun ImportActionTooltip(content: @Composable () -> Unit) {
     TooltipArea(tooltip = {
-        Surface(shape = MaterialTheme.shapes.small) { Text("Import local file", Modifier.padding(8.dp)) }
+        Surface(shape = MaterialTheme.shapes.small) { Text(LocalAppStrings.current[UiText.IMPORT_FILE], Modifier.padding(8.dp)) }
     }, content = content)
 }

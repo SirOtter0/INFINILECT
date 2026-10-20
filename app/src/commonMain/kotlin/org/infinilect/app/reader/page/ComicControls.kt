@@ -3,6 +3,8 @@
 @file:OptIn(androidx.compose.material.ExperimentalMaterialApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 package org.infinilect.app.reader.page
 
+import org.infinilect.app.ui.*
+
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -76,7 +78,7 @@ internal fun ComicAction(label: String, enabled: Boolean = true, onClick: () -> 
 }
 
 @Composable
-private fun PanelAction(panel: ComicPanel, open: (ComicPanel) -> Unit) = ComicAction(panel.label,onClick={open(panel)}) {
+private fun PanelAction(panel: ComicPanel, open: (ComicPanel) -> Unit) = ComicAction(LocalAppStrings.current.status(panel.label),onClick={open(panel)}) {
     if(panel==ComicPanel.GENERAL) DestinationIcon(Destination.SETTINGS,MaterialTheme.colors.onSurface)
     else ComicGlyph(if(panel==ComicPanel.READING)Glyph.READING else Glyph.FIT)
 }
@@ -86,6 +88,7 @@ private fun PanelAction(panel: ComicPanel, open: (ComicPanel) -> Unit) = ComicAc
 internal fun ComicSheetHost(reader: PageReaderController, state: PageReaderState, transform: PageTransform,
     backHandler: @Composable (Boolean,()->Unit)->Unit, publicationActions: (@Composable ()->Unit)?, notices: (@Composable ()->Unit)?,
     onDismissed:()->Unit = {}, content: @Composable (open:(ComicPanel)->Unit, sheetOpen:Boolean)->Unit) {
+    val strings = LocalAppStrings.current
     val sheet = rememberModalBottomSheetState(ModalBottomSheetValue.Hidden, animationSpec=tween(180), skipHalfExpanded=false)
     val scope = rememberCoroutineScope()
     var motion by remember(reader) { mutableStateOf<Job?>(null) }
@@ -107,8 +110,8 @@ internal fun ComicSheetHost(reader: PageReaderController, state: PageReaderState
                 } else false
             }, sheetContent={
                 Column(Modifier.fillMaxWidth().height(height).focusProperties{canFocus=open}.then(if(!open)Modifier.clearAndSetSemantics{} else Modifier.semantics {
-                    contentDescription="Reader settings sheet"
-                    stateDescription=if(sheet.currentValue==ModalBottomSheetValue.Expanded)"Expanded"else"Half expanded"
+                    contentDescription=strings[UiText.UI_READER_SETTINGS_SHEET]
+                    stateDescription=if(sheet.currentValue==ModalBottomSheetValue.Expanded)strings[UiText.UI_EXPANDED]else strings[UiText.UI_HALF_EXPANDED]
 
                 }), horizontalAlignment=Alignment.CenterHorizontally) {
                   if(open) {
@@ -116,8 +119,8 @@ internal fun ComicSheetHost(reader: PageReaderController, state: PageReaderState
                         Box(Modifier.width(32.dp).height(4.dp).background(MaterialTheme.colors.onSurface.copy(alpha=.3f),RoundedCornerShape(2.dp)))
                     }
                     Row(Modifier.widthIn(max=720.dp).fillMaxWidth().padding(start=16.dp),verticalAlignment=Alignment.CenterVertically) {
-                        Text(panel.label,Modifier.weight(1f),style=MaterialTheme.typography.h6,maxLines=1,overflow=TextOverflow.Ellipsis)
-                        IconButton(onClick={dismiss()},modifier=Modifier.size(48.dp).focusRequester(firstFocus).semantics { contentDescription="Close settings" }) {
+                        Text(strings.status(panel.label),Modifier.weight(1f),style=MaterialTheme.typography.h6,maxLines=1,overflow=TextOverflow.Ellipsis)
+                        IconButton(onClick={dismiss()},modifier=Modifier.size(48.dp).focusRequester(firstFocus).semantics { contentDescription=strings[UiText.UI_CLOSE_SETTINGS] }) {
                             ComicGlyph(Glyph.CLOSE)
                         }
                     }
@@ -128,22 +131,22 @@ internal fun ComicSheetHost(reader: PageReaderController, state: PageReaderState
                     Column(Modifier.weight(1f).widthIn(max=720.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=8.dp)) {
                         when(panel) {
                             ComicPanel.READING -> {
-                                PageReadingMode.entries.forEach {mode->Option(modeLabel(mode),state.settings.mode==mode) {reader.mode(mode);dismiss()} }
+                                PageReadingMode.entries.forEach {mode->Option(strings.status(modeLabel(mode)),state.settings.mode==mode) {reader.mode(mode);dismiss()} }
                                 if(pagedMode(state.settings.mode)) {
                                     Divider(Modifier.padding(vertical=8.dp))
-                                    Text("Page layout",style=MaterialTheme.typography.subtitle2)
-                                    PageLayout.entries.forEach { layout->Option(if(layout==PageLayout.SINGLE)"Single page"else"Double page",state.settings.layout==layout){reader.layout(layout);dismiss()} }
+                                    Text(strings[UiText.UI_PAGE_LAYOUT],style=MaterialTheme.typography.subtitle2)
+                                    PageLayout.entries.forEach { layout->Option(if(layout==PageLayout.SINGLE)strings[UiText.UI_SINGLE_PAGE]else strings[UiText.UI_DOUBLE_PAGE],state.settings.layout==layout){reader.layout(layout);dismiss()} }
                                 }
                             }
                             ComicPanel.PRESENTATION -> if(pagedMode(state.settings.mode)) {
-                                PageFit.entries.forEach {fit->Option(fitLabel(fit),state.settings.fit==fit){reader.fit(fit);dismiss()} }
+                                PageFit.entries.forEach {fit->Option(strings.status(fitLabel(fit)),state.settings.fit==fit){reader.fit(fit);dismiss()} }
                                 Divider(Modifier.padding(vertical=8.dp))
                                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly) {
-                                    ComicAction("Zoom out",onClick={reader.cancelTransition();transform.resetTap();transform.zoom=(transform.zoom-.5f).coerceAtLeast(1f);transform.pan=Offset.Zero;dismiss()}){ComicGlyph(Glyph.ZOOM_OUT)}
-                                    ComicAction("Zoom in",onClick={reader.cancelTransition();transform.resetTap();transform.zoom=(transform.zoom+.5f).coerceAtMost(4f);dismiss()}){ComicGlyph(Glyph.ZOOM_IN)}
-                                    ComicAction("Reset zoom",onClick={reader.cancelTransition();transform.reset();dismiss()}){ComicGlyph(Glyph.RESET)}
+                                    ComicAction(strings[UiText.UI_ZOOM_OUT],onClick={reader.cancelTransition();transform.resetTap();transform.zoom=(transform.zoom-.5f).coerceAtLeast(1f);transform.pan=Offset.Zero;dismiss()}){ComicGlyph(Glyph.ZOOM_OUT)}
+                                    ComicAction(strings[UiText.UI_ZOOM_IN],onClick={reader.cancelTransition();transform.resetTap();transform.zoom=(transform.zoom+.5f).coerceAtMost(4f);dismiss()}){ComicGlyph(Glyph.ZOOM_IN)}
+                                    ComicAction(strings[UiText.UI_RESET_ZOOM],onClick={reader.cancelTransition();transform.reset();dismiss()}){ComicGlyph(Glyph.RESET)}
                                 }
-                            } else Text("Continuous modes use their existing width-fit presentation.")
+                            } else Text(strings[UiText.UI_CONTINUOUS_MODES_USE_THEIR_EXISTING_WIDTH_FIT_PRESENTATION])
                             ComicPanel.GENERAL -> {
                                 publicationActions?.invoke();notices?.invoke()
                             }
@@ -165,12 +168,13 @@ private fun Option(label:String,chosen:Boolean,action:()->Unit) {
 @Composable
 internal fun BoxScope.ComicChrome(reader:PageReaderController,state:PageReaderState,transform:PageTransform,onBack:()->Unit,backLabel:String,
     saveFailed:Boolean,settingsFailed:Boolean,open:(ComicPanel)->Unit) {
+    val strings = LocalAppStrings.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact=maxHeight<240.dp
         val tiny=compact && LocalDensity.current.fontScale>1.5f
         val headerLimit=maxHeight/3
         val nav=state.transition?.takeIf{it.phase!=PageTransitionPhase.RETURNING}?.target?:state.position.index
-        val counter=state.scrub?.let{"Preview ${it.requested+1} / ${reader.document.pages.size}"}?:reader.spread().indicator(reader.document.pages.size)
+        val counter=state.scrub?.let{strings.format(UiText.UI_PREVIEW_1_S_2_S, it.requested+1, reader.document.pages.size)}?:reader.spread().indicator(reader.document.pages.size)
         Column(Modifier.fillMaxSize()) {
             Surface(Modifier.fillMaxWidth().heightIn(max=headerLimit).pointerInput(Unit){detectTapGestures{}},color=MaterialTheme.colors.surface.copy(alpha=.97f)) {
                 Row(verticalAlignment=Alignment.CenterVertically) {
@@ -185,24 +189,24 @@ internal fun BoxScope.ComicChrome(reader:PageReaderController,state:PageReaderSt
             Surface(Modifier.pointerInput(Unit){detectTapGestures{}},color=MaterialTheme.colors.surface.copy(alpha=.97f)) {
                 Column(Modifier.fillMaxWidth()) {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                        ComicAction("Previous",enabled=nav>0,onClick={transform.reset();reader.stepTap(-1)}){ComicGlyph(Glyph.PREVIOUS,state.settings.mode==PageReadingMode.PAGED_RTL)}
+                        ComicAction(strings[UiText.PREVIOUS],enabled=nav>0,onClick={transform.reset();reader.stepTap(-1)}){ComicGlyph(Glyph.PREVIOUS,state.settings.mode==PageReadingMode.PAGED_RTL)}
                         if(reader.document.pages.size>1)Slider((state.scrub?.requested?:state.position.index).plus(1).toFloat(),
                             onValueChange={ value->if(state.scrub==null)transform.reset();reader.previewPage(value.roundToInt()-1) },
                             modifier=Modifier.weight(1f).height(48.dp).semantics {
-                                contentDescription="Go to page";stateDescription=counter
+                                contentDescription=strings[UiText.UI_GO_TO_PAGE];stateDescription=counter
                                 setProgress {value->if(!value.isFinite())false else{transform.reset();reader.seek((value.roundToInt()-1).coerceIn(reader.document.pages.indices));true}}
                             }, valueRange=1f..reader.document.pages.size.toFloat(),onValueChangeFinished=reader::releasePreview)
                         else Spacer(Modifier.weight(1f))
-                        ComicAction("Next",enabled=reader.spread(nav).indices.last()<reader.document.pages.lastIndex,onClick={transform.reset();reader.stepTap(1)}){ComicGlyph(Glyph.NEXT,state.settings.mode==PageReadingMode.PAGED_RTL)}
+                        ComicAction(strings[UiText.NEXT],enabled=reader.spread(nav).indices.last()<reader.document.pages.lastIndex,onClick={transform.reset();reader.stepTap(1)}){ComicGlyph(Glyph.NEXT,state.settings.mode==PageReadingMode.PAGED_RTL)}
                         if(compact)PanelAction(ComicPanel.GENERAL,open)
                     }
                     if(!compact)Row(Modifier.fillMaxWidth().padding(start=16.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text(counter,Modifier.weight(1f),style=MaterialTheme.typography.caption,maxLines=2)
                         ComicPanel.entries.forEach{PanelAction(it,open)}
                     }
-                    if(saveFailed)Text("Reading position could not be saved on this device.")
-                    if(settingsFailed)Text("Page reader preferences could not be saved on this device.")
-                    if(state.navigationFailed)Text("Requested page unavailable or unsupported")
+                    if(saveFailed)Text(strings[UiText.POSITION_SAVE_ERROR])
+                    if(settingsFailed)Text(strings[UiText.UI_PAGE_READER_PREFERENCES_COULD_NOT_BE_SAVED_ON_THIS_DEVICE])
+                    if(state.navigationFailed)Text(strings[UiText.UI_REQUESTED_PAGE_UNAVAILABLE_OR_UNSUPPORTED])
                 }
             }
         }

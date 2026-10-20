@@ -15,6 +15,10 @@ Project Gutenberg's availability in the US does not establish public-domain stat
 
 ## Status
 
+The interface provides English, Spanish and Catalan on Android and Desktop.
+Choose Settings → Language and translation; publication text and metadata keep
+their original language. [Scope, verification and language contribution guide](docs/LOCALIZATION_COMPLETION.md).
+
 Very early development. Desktop and the first Android debug app share the same UI.
 Internet Archive (public CC0 subset) is the initial source for real TEXT reading.
 **Project Gutenberg (experimental)** searches the OPDS2 development catalog supplied

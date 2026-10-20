@@ -26,7 +26,7 @@ internal fun ProfileEditor(profile: LocalProfile, save: (LocalProfile) -> Unit, 
     var country by remember { mutableStateOf(profile.countryCode) }
     var language by remember { mutableStateOf(profile.interfaceLanguage) }
     var countriesVisible by remember { mutableStateOf(false) }
-    val countries = remember { residenceCountries() }
+    val countries = remember(LocalInterfaceLanguage.current) { residenceCountries() }
     val focus = remember { FocusRequester() }
     Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -45,7 +45,6 @@ internal fun ProfileEditor(profile: LocalProfile, save: (LocalProfile) -> Unit, 
                     Text(strings[UiText.COUNTRY_NOTICE], style = MaterialTheme.typography.caption)
                     Text(strings[UiText.INTERFACE_LANGUAGE], style = MaterialTheme.typography.subtitle2)
                     LanguageChoices(language, true) { language = it }
-                    Text(strings[UiText.LANGUAGE_SCOPE], style = MaterialTheme.typography.caption)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button({ save(LocalProfile(name.trim().ifEmpty { null }, country, language, setupHandled = true)); close() },
                             Modifier.heightIn(min = 48.dp), enabled = country != null) { Text(strings[UiText.SAVE_PROFILE]) }

@@ -771,3 +771,627 @@ Checklist C55, comparando el mismo tipo de build/configuración:
 **PR #32 sigue Draft, sin merge ni release.** No se promete fluidez del C55 hasta
 la comparación física; la prioridad restante es capturar su perfil caliente y el
 motivo del cierre.
+
+## PR #33 — Investigación del cierre al abandonar Inicio durante la carga inferior
+
+Informe físico posterior a `8614b9fa344a6059a389c3f71b74027a9f9676d7`:
+el usuario ya no observa el cierre al cambiar de pestaña inmediatamente al arrancar.
+Sí reproduce un cierre al desplazarse hasta la línea inferior de carga y abandonar
+Inicio mientras está activa. Ese informe acota el escenario; no identifica la
+excepción ni implica que los dos avisos de Android sean fallos distintos.
+
+### Indicador exacto y cadena de propiedad
+
+`ui/HomeScreen.kt`, item lazy **`discovery-loading`**, dibuja
+`LinearProgressIndicator` si `online.loading`. Su tag técnico es
+`home-discovery-loading`. La línea junto al aviso legal y bajo los carruseles
+representa **el conjunto de solicitudes de descubrimiento de Inicio**, no una
+paginación activada por scroll, un archivo, inferencia ni la carga de una portada.
+Hay otro indicador de colecciones locales (`loading`) que solo aparece si faltan
+las dos secciones locales y están cargándose; no es el indicador de descubrimiento.
+
+Cadena real (rutas bajo `app/src/commonMain/kotlin/org/infinilect/app/`):
+
+1. `HomeScreen` recoge `application.homeDiscovery.state`; su `LaunchedEffect`
+   llama a `HomeDiscovery.refresh` cuando las preferencias están preparadas.
+2. `discovery/HomeDiscovery.kt::refresh` activa `loading`, conserva las filas
+   existentes y lanza un job del scope de sesión. Consulta fuentes generales en un
+   lote y después hasta dos géneros reales (intereses/Philosophy/History).
+3. `discovery/DiscoveryCatalog.kt::load` comparte solicitudes del mismo key mediante
+   borrowers. Conserva dos permisos de red, ocho páginas, 25 entradas/página,
+   timeout de 20 s y TTL de cinco minutos. Los proveedores reales son
+   `jvmSharedMain/.../archive/InternetArchiveSource.kt::discover` y
+   `.../gutenberg/GutenbergSource.kt::discover`; se conserva la separación adquisición/catálogo.
+4. Las páginas validadas pasan por `ensureActive` y comprobación de generación antes
+   de publicar filas con `MutableStateFlow.update`. El job completa `loading=false`.
+   Errores recuperables de fuentes producen el estado de reintento existente.
+5. `ApplicationSession.navigate` pausa `homeDiscovery` **antes** de cambiar destino.
+   `pause` aumenta generación, cancela el job y desactiva `loading`; el
+   `DisposableEffect.onDispose` de Home también lo pausa de forma idempotente.
+   No cierra los clientes compartidos ni el repositorio de portadas.
+6. `DiscoveryCatalog.load` libera el borrower en `NonCancellable` bajo mutex. El
+   último borrower retira/cancela su task; un transporte no cooperativo puede tardar
+   en terminar, pero no obtiene permiso para publicar una generación anterior.
+7. Independientemente, cada `HomeCover` usa `CoverViewport` y `coverState`.
+   Al salir de composición se cancela la presentación y se libera su lease en
+   `NonCancellable`. `PublicationCovers` conserva un trabajador y 24 slots; no
+   recicla manualmente el bitmap que aún pueda dibujarse. Cambiar pestaña no cierra
+   ese cache. No se aumentan concurrencia ni presupuestos en esta intervención.
+8. Android retiene `ApplicationSources` en `MainActivity.ReaderRuntime` (ViewModel).
+   `onStop` pausa descubrimiento y solicita guardar progreso. Salir de Home no
+   destruye dicho runtime. La localización vive por encima de las pantallas y no
+   cancela solicitudes ni recrea el lector al actualizar una tabla.
+
+### Reproducción controlada y límites
+
+`desktopTest/.../HomeDepartureTest.kt` monta **App real**, su barra de cinco
+pestañas, Home y sus lazy lists. Crea 40 publicaciones locales originales, desplaza
+hasta el indicador y comprueba que está realmente en el viewport. No se sustituye
+Home por un controlador aislado. Barreras `CompletableDeferred` retienen catálogo
+y liberación de portadas; el scheduler controla las intercalaciones, sin esperas de
+red ni sleeps para decidir el resultado.
+
+Cuatro tests agrupan 28 recorridos: Biblioteca/Historial/Búsqueda/Ajustes × siete
+secuencias (éxito/error antes de salir, éxito/error después, cancelación cooperativa,
+salir/regresar con petición anterior y lote de géneros pendiente). Rotan en/es/ca;
+se conservan los tests de arranque en Sistema. Incluyen dos cambios rápidos,
+portadas lentas/fallidas, cleanup retenido, evicción, duplicados, metadatos escasos,
+regreso frío/caliente y comprobación de biblioteca/historial y límites. Los tests
+anteriores cubren drags táctiles reales de ambos ejes, fallos de conversión y
+visibilidad recortada. Son **shared Compose headless/JVM**, no Android físico.
+
+El mismo fixture de 28 recorridos se ejecutó contra los siete archivos de
+presentación/control de `8614b9f` (único añadido: tag del indicador) y también
+pasó: cuatro tests, cero fallos. Después se restauró la instrumentación y los
+tests específicos de eventos. **No hay una regresión roja/verde que demuestre
+corregir el crash.** El control evita atribuir a la instrumentación una solución
+que no se ha observado.
+
+**Estado del crash:** no se atribuye a una excepción concreta sin traza del C55.
+Los tests host no reproducen un proceso Android, RenderThread, driver GPU,
+fallo nativo, ANR ni LMKD. No se cambia la cancelación, el indicador, el contenido,
+la navegación ni la arquitectura para ocultar el síntoma. La mejora de diagnóstico
+no se presenta como una corrección demostrada del cierre.
+
+### Diagnóstico local sin PC (solo desarrollo, consentimiento explícito)
+
+En Android debuggable, Ajustes ofrece **Diagnóstico de desarrollo → Registrar
+diagnóstico local**. Empieza desactivado. Activarlo persiste un marcador privado;
+no inicia red, carga de modelos, inferencia ni muestreo de frames. Está ausente de
+la interfaz release y Desktop. La propiedad del servicio está en el ViewModel de
+runtime, sin retener Activity; rotar no instala múltiples propietarios.
+
+- `diagnostics/TechnicalDiagnostics.kt`: vocabulario cerrado de eventos y contadores,
+  sin parámetros de texto libre. Se registra Home visible/eliminado, destinos,
+  generación, lotes, cancelación/fallo/completado y etapas de portadas. No se registra
+  cada frame, ni ID de publicación/fuente, títulos, autores, consultas, perfil,
+  paths, URLs, contenidos o credenciales.
+- `jvmSharedMain/.../diagnostics/LocalDiagnosticJournal.kt`: ring de **128 líneas,
+  snapshot máximo 40.000 bytes**. Productores añaden solo en memoria bajo sección
+  corta; un canal conflado en IO agrupa escrituras cada 250 ms como máximo durante
+  actividad. No hay polling continuo, lista creciente ni nuevo cache de imágenes.
+  Snapshot temporal + reemplazo atómico (hasta 80.000 bytes transitorios para dos snapshots); entradas inválidas/corruptas se descartan. Dentro del mismo límite se conserva el último stack Java durante el churn del siguiente arranque, hasta otro crash o borrado explícito.
+- `androidMain/.../diagnostics/AndroidLocalDiagnostics.kt`: guarda exclusivamente en
+  `noBackupFilesDir/local-debug`, privado y excluido de copia de seguridad. Un
+  manejador optativo utiliza el formateador ya existente `SanitizedCrashDiagnostic`:
+  tres causas × hasta 16 frames, **sin Throwable.message/toString, nombres de hilo
+  ni nombres/rutas de archivos**. Hace un flush de emergencia y delega siempre en
+  el manejador anterior; no recupera ni oculta la excepción original. No promete
+  persistir durante un OOM, SIGKILL o fallo nativo. Un wrapper externo existente no
+  se desinstala a la fuerza; desactivado, el sink no registra nada.
+- Al reabrir con diagnóstico habilitado, Android 11+ consulta hasta tres registros
+  **del propio paquete** mediante `getHistoricalProcessExitReasons`: reason, status,
+  PSS/RSS numéricos. No lee description, processName ni traceInputStream. Android
+  puede no conservar una causa útil; Android 8–10 no ofrece esta API.
+- **Ver y copiar diagnóstico** carga el informe solo al pedirlo. El usuario puede
+  copiarlo explícitamente al portapapeles y pegarlo aquí. No se sube ni se comparte
+  automáticamente. Pantalla desplazable, controles accesibles y cadenas en/es/ca.
+  **Desactivar borra el marcador, el ring y los archivos de diagnóstico**; no toca
+  libros, traducciones, modelos, preferencias, biblioteca, historial ni progreso.
+- Un error de almacenamiento/permiso de esta función se muestra en Ajustes y no
+  intercepta errores de aplicación. Las pruebas del journal cubren persistencia,
+  corrupción, límites, IO fallido, concurrencia, desactivación y delegación.
+
+No se activan FrameMetrics ni trazas de rendimiento desde esta opción. El opt-in
+ADB de PR #32 se conserva independiente. Su handler y el local encadenan la misma
+excepción hasta Android; no instalan un capturador que convierta todos los errores
+en éxito.
+
+### Validación física C55 y discriminación del fallo
+
+1. Instalar la APK de esta revisión con la firma existente **sin desinstalar ni
+   borrar datos**. Abrir Ajustes, ir al final y activar Registrar diagnóstico local.
+2. Regresar a Inicio; si está caliente, cerrar/reabrir la app normalmente o usar el
+   reintento existente cuando corresponda. No borrar datos para forzar cargas.
+3. Desplazar hasta la línea de descubrimiento, cambiar de pestaña mientras aparece;
+   repetir Biblioteca, Historial, Búsqueda y Ajustes, incluyendo regreso inmediato.
+4. Si se cierra, reabrir y entrar en Ajustes → Diagnóstico de desarrollo → Ver y
+   copiar diagnóstico. Pulsar **Copiar** y pegar el texto junto al nombre de APK y
+   el destino pulsado. No enviar documentos, perfiles ni capturas de libros.
+5. Si no falla, copiar igualmente un recorrido; repetir con portadas pendientes,
+   caché caliente, offline/red lenta y restauración de scroll. No se promete que
+   todas esas variantes produzcan el mismo fallo.
+6. Desactivar el diagnóstico al terminar. Comprobar lectores EPUB/CBZ/PDF/TXT,
+   traducción y progreso, idiomas y Library/History intactos.
+
+Lectura de evidencia: `uncaught class=...` y frames identifican una excepción Java/
+Kotlin (sin su mensaje). `exit reason=4` señala crash Java, `5` nativo, `6` ANR,
+`3` low-memory; `2` es proceso señalado y necesita más contexto. No convertir un
+PSS alto por sí solo en diagnóstico de OOM. La ausencia de handler Java no descarta
+ninguna de las otras clases de terminación ni demuestra que la salida fuera normal.
+
+Hipótesis pendientes, ordenadas por utilidad de la próxima evidencia:
+
+| Hipótesis (no diagnóstico) | Evidencia para confirmar/descartar |
+| --- | --- |
+| Excepción al retirar nodos lazy/viewport o liberar leases | Clase y frames en `uncaught`, eventos HOME_PAUSED/NAV_*/HOME_DISPOSED/COVER_* |
+| Excepción de coroutine/callback tras cancelar transporte | Frames de proveedor/catalog/flow y generación REQUEST_CANCELLED/FAILED/STALE_RESPONSE |
+| Fallo nativo/RenderThread/GPU | reason 5 o señal + tombstone/Logcat/Perfetto; el journal Java no captura su stack nativo |
+| Presión transitoria de memoria/LMKD | reason 3 y PSS/RSS + lmkd/GC/Perfetto; no inferir de un cierre visual |
+| ANR o suspensión del sistema | reason 6, trazas de sistema cuando haya PC; no se deduce de pasar tests JVM |
+
+Cuando haya PC, siguen disponibles comandos de la segunda fase, con salida local:
+
+```sh
+adb shell am start -W -n org.infinilect.app/.MainActivity --ez infinilect.performance true
+adb logcat -v monotonic -s InfinilectPerf:I InfinilectCrash:E InfinilectExit:I '*:S' > infinilect-home-diagnostics.txt
+# Tras el cierre, antes de hacer muchas reaperturas:
+adb logcat -b crash -d > infinilect-crash.txt
+adb shell dumpsys activity exit-info org.infinilect.app > infinilect-exit.txt
+adb shell dumpsys meminfo org.infinilect.app > infinilect-memory.txt
+```
+
+Los buffers crash/exit-info del sistema pueden contener mensajes/rutas ajenos al
+journal sanitizado. Revisarlos localmente y compartir únicamente lo necesario;
+el informe copiable desde Ajustes evita esos campos de texto libre.
+
+### Verificación de esta intervención
+
+Matriz completa ejecutada en Linux x86_64, JDK 21.0.12.1 / Gradle 9.7.1 / SDK 37,
+el 20/10/2026, sin desactivar tests ni reutilizar resultados de los cuatro tasks:
+
+| Comprobación | Resultado |
+| --- | --- |
+| App Desktop completo | **1.581/1.581**, cero fallos/errores/omisiones |
+| App Android-host completo | **1.314/1.314**, cero fallos/errores/omisiones |
+| Core JVM / Core Android-host | **59/59 + 59/59**, cero fallos/errores/omisiones |
+| Total | **3.013 pruebas aprobadas** |
+| Android debug / compilación Desktop | **PASS** |
+| Recursos dentro del APK | **PASS**, seis CVR en/es/ca comparados con los generados |
+| Guardia de localización | **410 cadenas + 2 plurales** por idioma, 173 archivos Kotlin |
+| `git diff --check`, higiene y dependencias | **PASS**, sin binarios/secretos ni cambios de Gradle/manifest/firma |
+| Control de navegación contra `8614b9f` | Cuatro tests / **28 recorridos**, sin fallo reproducido |
+
+La matriz completa terminó `BUILD SUCCESSFUL in 13m 41s`; es duración del trabajo
+host, **no rendimiento del teléfono**. Las pruebas UI usan Skia software y las
+pruebas de gestos CBZ originales se conservan. En el primer intento el harness no
+pudo crear `/home/agent/.skiko` por el filesystem de solo lectura; se configuró
+externamente `skiko.library.path` hacia un cache escribible con el **mismo binario
+verificado contra el JAR fijado**. Ese fallo de entorno no es el crash C55.
+
+Se añaden cuatro tests de App real (28 secuencias), dos tests comunes de eventos/
+cancelación/reintento y siete de journal, ejecutados donde corresponde. El ajuste
+final que conserva el último stack durante 1.000 eventos posteriores de portadas
+y la resolución del directorio de diagnóstico solo en IO se comprueban de nuevo
+con las pruebas enfocadas y ambas compilaciones. Los XML/logs y APK permanecen
+fuera del repositorio; los fixtures son originales sintéticos.
+
+Verificación enfocada final: **13/13 Desktop + 9/9 Android-host**, cero fallos/errores/omisiones;
+Android debug, recursos empaquetados y Desktop recompilados correctamente
+(`BUILD SUCCESSFUL in 3m 34s`). Incluye retención del último stack después de
+1.000 eventos y su reemplazo por otro crash sintético, no por una terminación real.
+
+Comando de la matriz (con JDK21/SDK y cache Skiko escribible):
+
+```sh
+./gradlew :core:jvmTest :core:testAndroidHostTest \
+  :app:desktopTest :app:testAndroidHostTest \
+  :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources \
+  :desktopApp:compileKotlin
+```
+
+No se presenta un APK compilado, una excepción sintética del journal o un test
+host como una validación física del C55. **La PR #33 permanece Draft y bloqueada
+para fusión hasta que el usuario vuelva a comprobar el escenario.**
+
+## PR #33 — Traza del C55: cancelación de Gutenberg
+
+**Seguimiento histórico de `55d694d` → `f8cbaef`.** La traza posterior de `f8cbaef`
+y la corrección del adaptador de streams se documentan en el apartado siguiente;
+la transferencia a IO por sí sola no resolvió el crash físico.
+
+### Evidencia recibida y lo que todavía falta
+
+Tras instalar `55d694d`, el usuario copió el journal del realme C55. El informe
+contiene `HOME_PAUSED` → `REQUEST_CANCELLED` y una excepción no capturada:
+
+```text
+uncaught depth=0 class=kotlinx.coroutines.CompletionHandlerException
+at org.infinilect.app.gutenberg.GutenbergSource.operation:55
+uncaught depth=1 class=kotlinx.coroutines.CompletionHandlerException
+at io.ktor.client.engine.UtilsKt$attachToUserJob$cleanupHandler$1.invoke:110
+uncaught depth=2 class=kotlinx.coroutines.CompletionHandlerException
+```
+
+En el siguiente arranque aparecen salidas `reason=4` (crash Java/Kotlin). Otros
+registros `reason=10` indican salida solicitada por usuario y no prueban un segundo
+bug. El mismo informe termina con otro recorrido que sí llega a `NAV_SETTINGS` y
+`HOME_DISPOSED`: el fallo depende de la intercalación; no falla toda cancelación.
+
+**Confirmado físicamente:** la ruta de fallo incluye cancelación/limpieza de Ktor
+originada en `GutenbergSource.operation`, antes de terminar la navegación. No es ya
+una atribución genérica al scroll. **No confirmado:** la excepción terminal debajo
+de las tres `CompletionHandlerException`, porque el primer formateador truncaba
+la cadena a tres causas. No se afirma haber observado `NetworkOnMainThreadException`
+en el teléfono ni una causa nativa/OOM específica.
+
+### Defecto reproducible de afinidad de hilo
+
+Se contrastaron los sources oficiales del **mismo Ktor 3.6.0 que utiliza la app**:
+
+- [ktor-client-android-jvm 3.6.0 sources](https://repo.maven.apache.org/maven2/io/ktor/ktor-client-android-jvm/3.6.0/ktor-client-android-jvm-3.6.0-sources.jar),
+  `AndroidClientEngine.kt::execute` y
+  `AndroidURLConnectionUtils.kt::disconnectOnCancellation`.
+- [ktor-client-core-jvm 3.6.0 sources](https://repo.maven.apache.org/maven2/io/ktor/ktor-client-core-jvm/3.6.0/ktor-client-core-jvm-3.6.0-sources.jar),
+  `engine/Utils.kt::attachToUserJob`.
+
+El motor Android registra `disconnect()` en un handler de cancelación síncrono.
+Cambiar el dispatcher del motor no basta: el callback puede ejecutarse en el hilo
+que invoca `Job.cancel`, aunque el HTTP se ejecutase en IO. En `55d694d`, la
+operación Gutenberg heredaba el dispatcher del llamante y su `finally` hacía
+`request.cancel()` directamente; la salida desde Compose puede iniciar esto en
+Main. `close()` también cancelaba el lifetime y cerraba el transporte en el hilo
+llamante. El cierre de una conexión puede efectuar IO. Ese es un defecto real de
+hilo, compatible con la traza recibida, aun sin conocer su última causa física.
+
+El camino de producción conserva ese contexto: `ApplicationSources.applicationSession`
+crea el scope en `Dispatchers.Main.immediate` por defecto (Android no lo sustituye);
+`ApplicationSession` y `DiscoveryCatalog` heredan el dispatcher. La liberación del
+último borrower cancela su deferred; en la implementación anterior el `finally`
+de Gutenberg podía ejecutar entonces la desconexión síncrona en Main. Los scopes
+y límites del catálogo no necesitan cambiar para corregir esa frontera de la fuente.
+
+### Regresión roja/verde con el motor Android real
+
+`androidHostTest/.../gutenberg/GutenbergAndroidCancellationTest.kt` usa el motor
+Android **real**, sus jobs y sus handlers Ktor reales. La única parte sintética es
+la `HttpsURLConnection`: se mantiene pendiente mediante barreras y su guard falla
+si se desconecta en el hilo UI equivalente del test. Es un test JVM/host, **no
+StrictMode Android físico**. No utiliza `MockEngine` para esta ruta.
+
+El transporte del fixture reescribe internamente la petición hacia un protocolo
+JVM de prueba único, con una URLConnection original. Usa APIs públicas de Java;
+no registra handlers para HTTP/HTTPS ni hace solicitudes de Internet. La reescritura
+vive exclusivamente en test, después de la construcción normal de URLs de la fuente;
+ninguna política de URL/TLS de producción se modifica.
+
+Antes del cambio de producción:
+
+- Cancelar una petición activa desde UI: **FAIL**, la conexión se desconecta en UI.
+- Cerrar la fuente con petición activa desde UI: **FAIL**, mismo defecto.
+
+Después del cambio se conservan esas dos aserciones y se añaden:
+
+- Reintento explícito con Root OPDS2 + Search válidos tras cancelar.
+- Desconexión retenida: una tarea UI sigue respondiendo **antes** de liberar el
+  cierre; el job cancelado espera su cleanup sin bloquear navegación.
+- `ApplicationSession`/`HomeDiscovery` reales: cuatro destinos y regreso con retry,
+  resultados anteriores descartados, sin excepciones de completion handlers.
+- Cancelación de una miniatura realmente anunciada por el catálogo, sin decodificar
+  un JPEG ni adquirir libros para preparar el test.
+
+Los tests de App/scroll de la fase anterior usaban fuentes sintéticas y no
+recorrían esta implementación del transporte Android. Se conservan íntegros;
+los nuevos tests cubren ese hueco concreto. El guard sintético reproduce el defecto
+de hilo, pero no demuestra que su clase sea la última excepción del C55.
+
+### Corrección limitada a la fuente Gutenberg
+
+En `jvmSharedMain/.../gutenberg/GutenbergSource.kt`:
+
+1. El child de cada operación conserva propiedad del lifetime de la fuente, pero
+   ejecuta su control HTTP y sus fallos en `Dispatchers.IO`, no en Main heredado.
+2. Si el llamante deja de esperar y la tarea no ha terminado, su `finally` cancela
+   **y une** la tarea en `NonCancellable + Dispatchers.IO`. El resultado no puede
+   regresar a una generación de Home abandonada; se mantienen sus fences.
+3. `close()` rechaza nuevas operaciones inmediatamente con el CAS existente y
+   vacía sus referencias de miniaturas. Programa **un solo** cleanup independiente
+   en IO: cancelar lifetime, cerrar cliente/motor, unir los hijos. `awaitClosed`
+   permite verificar terminación y propagar errores en tests. No se tragan errores
+   fatales; no se convierte un fallo de cleanup en éxito.
+
+No hay espera fija, navegación deshabilitada, ocultación del indicador, reintento
+silencioso ni sustitución del proveedor. Se conservan el mutex del catálogo, el
+permiso único de miniaturas, límites de respuesta, timeouts, OPDS2, validación de
+URLs, ausencia de redirects y restricciones catalog-only. No cambian TLS, trust,
+permisos, firma, ID, adquisición, lectores, modelos, localización ni límites de caché.
+Esta corrección no se presenta como una auditoría de todos los motores/fuentes;
+si una nueva traza señala otra ruta, se investigará con esa evidencia.
+El cleanup sigue esperando la liberación del transporte, pero en IO. Al regresar,
+una petición nueva puede esperar el mutex mientras termina la anterior; no se
+elimina esa serialización ni se crea una cola adicional para aparentar rapidez.
+
+### La causa profunda ya no queda oculta por wrappers
+
+`SanitizedCrashDiagnostic` ahora inspecciona hasta **12 causas**, deteniéndose en
+ciclos de identidad. Mantiene **el máximo anterior de 51 líneas**: hasta ocho
+frames de la primera causa, dos por wrapper intermedio y hasta 16 para la última
+causa disponible, ajustados al presupuesto restante. El journal v1 acepta los
+nuevos índices 0–11 sin migrar datos ni crear otro almacenamiento.
+
+No se añaden mensajes de Throwable, filenames/rutas, nombres de hilo, texto de
+libros, búsquedas o datos del perfil. Continúa delegando el mismo error al handler
+anterior incluso si falla la salida de diagnóstico. Tests nuevos fallan con el
+formateador anterior (raíz profunda perdida y ciclo repetido), y comprueban la raíz,
+privacidad, persistencia después de reabrir y los mismos límites 51/128/40.000.
+
+### Verificación y aceptación física
+
+| Comprobación | Resultado actual |
+| --- | --- |
+| Desktop completo | 1.584 / 1.584 |
+| Android-host completo | 1.322 / 1.322 |
+| Core JVM / Core Android-host | 59 / 59 + 59 / 59 |
+| Total | **3.024 aprobadas, cero fallos, errores u omisiones** |
+| Enfocados Gutenberg + diagnósticos | 48 / 48 |
+| Enfocados finales catálogo + motor Android real | 22 / 22 (cinco compartidos con el grupo anterior) |
+| Android debug / Desktop / recursos empaquetados | PASS |
+
+Ejecución forzada de las cuatro suites, Linux/JDK21/Gradle9.7.1/SDK37, 20/10/2026:
+`BUILD SUCCESSFUL in 10m 25s`. El harness usa el mismo binario Skiko verificado
+en caché externa para evitar el home de solo lectura; no cambia el runtime de la app.
+Son pruebas JVM/host/headless, no StrictMode ni mediciones de fotogramas en Android.
+
+Tasks ejecutados:
+
+```text
+:core:jvmTest :core:testAndroidHostTest
+:app:desktopTest :app:testAndroidHostTest
+:androidApp:assembleDebug :androidApp:verifyDebugLanguageResources
+:desktopApp:compileKotlin
+```
+
+El primer pase completo reveló una prueba que mezclaba un reloj virtual de
+`HttpTimeout` con el worker IO real. Se corrige su planificación con dispatcher real
+y barreras; mantiene la comprobación de metadata independiente y añade comprobar
+que la portada sigue pendiente hasta después de completar el catálogo. No se
+cambian timeouts de producción ni se desactiva ninguna aserción. La suite completa
+se repitió después del ajuste. Recursos: 410 cadenas y dos plurales en cada idioma;
+los seis CVR empaquetados se verifican contra los generados. `git diff --check` e
+higiene del diff: PASS; sin dependencias, claves, firmas o binarios versionados.
+
+
+Checklist C55:
+
+1. Instalar la APK firmada de esta revisión sin desinstalar ni borrar datos.
+2. En Ajustes, **desactivar y volver a activar Registrar diagnóstico local** para
+   limpiar el stack anterior. El journal conserva intencionadamente el último
+   crash; sin este paso podría confundirse la traza antigua con una nueva.
+3. Inicio → final → línea activa → cada una de las cuatro pestañas; repetir diez
+   veces con regreso inmediato, caché caliente/fría y red lenta/offline cuando sea
+   posible. La navegación y la carga deben continuar disponibles.
+4. Si vuelve a cerrarse, reabrir → Ver y copiar diagnóstico → Copiar y pegar aquí,
+   incluyendo el nombre de APK y destino. La nueva cadena permite ver más allá
+   de los tres wrappers iniciales. No garantiza stack nativo ni diagnóstico OOM.
+5. Revisar fuentes IA/Gutenberg, búsqueda/retry, portadas, biblioteca/historial y
+   lectores/progreso/traducción. Desactivar el diagnóstico después.
+
+**Hay una corrección de hilo reproducida por regresión; la última causa del crash
+físico y la aceptación del C55 siguen pendientes. PR #33 permanece Draft, sin merge
+ni release.**
+
+## PR #33 — Causa profunda: read/close del stream Android
+
+### Lo que demuestra el nuevo journal
+
+El usuario reprodujo el cierre con la APK `f8cbaef`. Dos salidas a Historial
+completan; en la tercera, `HOME_PAUSED` → `REQUEST_CANCELLED` → `NAV_HISTORY`
+precede el crash. Ahora el formateador conserva una cuarta causa:
+
+```text
+uncaught depth=0 class=kotlinx.coroutines.CompletionHandlerException
+at kotlinx.coroutines.JobKt__JobKt.cancelAndJoin:510
+uncaught depth=3 class=java.lang.IllegalStateException
+at com.android.okhttp.okio.AsyncTimeout.enter:64
+at com.android.okhttp.okio.AsyncTimeout$2.read:211
+at com.android.okhttp.internal.http.Http1xStream$FixedLengthSource.read:395
+at com.android.okhttp.internal.Util.discard:147
+at com.android.okhttp.internal.http.Http1xStream$FixedLengthSource.close:412
+at kotlinx.io.InputStreamSource.close:93
+at io.ktor.utils.io.jvm.javaio.RawSourceChannel.closeSource:114
+at kotlinx.coroutines.InvokeOnCancelling.invoke:1571
+```
+
+El arranque posterior vuelve a incluir `reason=4`. **Está confirmada físicamente
+la excepción Java/Kotlin del cierre del body**, no un diagnóstico de OOM, ANR o GPU.
+El mensaje de `IllegalStateException` no se registra por privacidad: no se inventa
+su texto ni se deduce la versión exacta del Android del C55 a partir de la línea.
+El aviso de Android tras varios cierres no requiere atribuir otro fallo diferente.
+
+La corrección anterior mueve control/cancelación a IO, pero **IO no serializa la
+lectura y el cierre** de un mismo stream. El nuevo registro demuestra que esa
+corrección fue insuficiente para este crash; se conserva porque evita cleanup en UI.
+
+### Cadena de lectura/cierre y reproducción
+
+En el mismo [Ktor IO 3.6.0 publicado](https://repo.maven.apache.org/maven2/io/ktor/ktor-io-jvm/3.6.0/ktor-io-jvm-3.6.0-sources.jar),
+`jvm/javaio/Reading.kt::RawSourceChannel`:
+
+1. `awaitContent` ejecuta `source.readAtMostTo` en el contexto IO.
+2. El job registra un completion handler `onCancelling = true` que llama a
+   `closeSource`; este cambia el token y llama a `source.close()` directamente.
+3. No espera a que termine la lectura bloqueante. El cierre puede entrar en el
+   mismo stream mientras se está leyendo.
+4. La traza física muestra que el stream Android intenta descartar el body durante
+   `FixedLengthSource.close`: esa operación vuelve a leer y llega a `AsyncTimeout.enter`.
+   El error de cierre sale del callback y se envuelve en `CompletionHandlerException`.
+
+`GutenbergAndroidCancellationTest.cancellingDuringAResponseReadMustNotPropagateConcurrentCloseFailures`
+utiliza la factoría **real** `platformHttpEngine`, Gutenberg y los jobs reales de
+Ktor. Su InputStream sintético mantiene `read` pendiente por barrera y lanza una
+`IllegalStateException` si `close` entra durante esa lectura. Con el engine anterior
+falla determinísticamente: **uncaught CompletionHandlerException**. El transporte
+HTTPS del fixture legado es el mismo protocolo Java de test, sin Internet; para
+el nuevo engine se usa un interceptor público y un ResponseBody propio. No son
+streams del framework Android: la traza física aporta esa parte de la evidencia.
+
+Tras el cambio conserva la aserción de cero errores no capturados y añade cero
+cierres concurrentes, cierre final y UI disponible antes de liberar la lectura.
+La barrera del nuevo engine observa `Call.cancel` por `EventListener`; la del
+legado observa el cierre prematuro que provoca el guard. El test no presupone que
+ambos transports deban cerrar el body en el mismo instante. No se sustituye la
+excepción física por una simulación presentada como verificación de dispositivo.
+
+### Corrección del adaptador Android
+
+Se reemplaza **solo** `app/androidMain/.../network/PlatformHttpEngine.kt` por el
+adaptador `ktor-client-okhttp:3.6.0`. No se cambia de versión Ktor, proveedor,
+endpoint, OPDS2 ni motor de lectura. La factoría expect/actual y todos los clientes,
+validadores y repositorios compartidos siguen siendo los mismos. Desktop mantiene
+`ktor-client-java`. `ktor-client-android` queda solo en Android-host para conservar
+las cinco regresiones previas del transporte y la protección del hilo IO.
+
+El [engine OkHttp 3.6.0 publicado](https://repo.maven.apache.org/maven2/io/ktor/ktor-client-okhttp-jvm/3.6.0/ktor-client-okhttp-jvm-3.6.0-sources.jar),
+`OkHttpEngine.executeHttpRequest`/`BufferedSource.toChannel`, utiliza una llamada
+cancelable y un writer propietario del body. La limpieza del body espera la
+terminación del job de llamada y se ejecuta en el dispatcher del engine; no utiliza
+el `RawSourceChannel` del adaptador InputStream Android. Se usa esa implementación
+mantenida en lugar de copiar/parchear clases privadas de Ktor o del framework.
+
+No se añade un `catch` de aplicación para esconder `IllegalStateException` o
+`CompletionHandlerException`; el handler original y el diagnóstico siguen intactos.
+Los errores HTTP, validación, TLS o lectura real mantienen sus contratos de error.
+No se bloquea navegación, oculta la línea ni desactiva la carga.
+
+Configuración explícita y límites:
+
+- Dos llamadas simultáneas por engine/host, con el mismo dispatcher y pool entre
+  variantes de timeout. Dos variantes de cliente en caché; dos conexiones idle.
+- Connect 5 s y read/write 15 s por defecto; los timeouts de petición/miniaturas
+  existentes se aplican por el plugin Ktor. No se aumentan presupuestos de imagen.
+- Redirects HTTP/HTTPS deshabilitados también en engine; sin cookies o caché de
+  respuestas en disco, sin recuperación automática de fallos de conexión.
+- Trust store y comprobación de hostname por defecto del Android/OkHttp; ningún
+  trust manager, hostname verifier permisivo, CA propia o excepción HTTP se añade.
+- Los follow-ups HTTP de OkHttp no se describen como inexistentes: un 503 con
+  `Retry-After: 0` puede producir un retry solicitado por el proveedor; 421 puede
+  reencaminar una conexión HTTP/2 coalescida. No hay bucle de retry de la app.
+  Permanecen gates/deadlines y las mismas URLs/derechos de adquisición.
+
+Hay un coste de buffering distinto: el writer usa el `ByteChannel` estándar de Ktor
+3.6.0, cuyo umbral `CHANNEL_MAX_SIZE` es 1 MiB. Es un umbral de backpressure,
+**no una cota de RAM total**: hay buffers de lectura/escritura y del socket además
+de los bytes validados de la fuente. Puede adelantarse a la validación del body;
+no se presenta como tráfico nativo cero en un rechazo por headers. Los límites de
+bytes consumidos/aceptados de cada fuente y la validación antes de adquisición no
+cambian. No se modifica el umbral interno ni se añaden caches de libros/portadas o respuestas
+en disco: se acepta este coste del adaptador mantenido para corregir el cierre, y memoria/arranque deben revisarse
+en el C55. No se ha medido una reducción de RAM ni se aumenta el número de workers de portadas.
+
+### Dependencias y empaquetado
+
+El grafo Android real resuelve **OkHttp Android 5.5.0** y **Okio JVM 3.18.2**.
+Los POMs y licencias de los tres componentes declaran Apache-2.0, compatible con
+GPL-3.0-or-later; se conservan atribuciones/texto completo en un asset del APK.
+Véanse [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) y
+[ANDROID_DEPENDENCIES](ANDROID_DEPENDENCIES.md), con versiones/fuentes primarias.
+
+El asset **PublicSuffixDatabase.list** de OkHttp es un dato separado bajo **MPL-2.0**.
+Se compara byte a byte con el tag `parent-5.5.0`: SHA-256
+`c75ab827afd7ffff59a51b14729c25dbfc3b45237eb40ccf02bec7b7d44304a4`.
+Su fuente editable del mismo tag se recompone (9.764 reglas y ocho excepciones)
+y produce exactamente el mismo binario/hash. Su NOTICE original, URL de esa fuente
+y texto MPL completo se incluyen en el asset de licencias; no se supone que Apache cubra este dato. No es
+un peso/modelo de traducción ni se actualiza el dataset en esta corrección.
+
+El AAR real declara minSdk 21 (la app sigue en 26), INTERNET ya existente y metadata
+para el InitializationProvider **ya presente**. Su initializer selecciona el
+platform Android y retiene contexto de aplicación: no solicita red, carga modelos,
+traduce o descarga. No se elimina sin sustituir su contrato público. Su coste de
+arranque en el C55 no se ha medido. Sin firma/ID/permisos nuevos, binarios nativos,
+modelos o contenido de publicaciones. El coste en APK se registra después de construir;
+no se afirma una reducción de RAM ni una mejora de FPS por cambiar de transporte.
+
+### Pruebas y aceptación
+
+Enfocados: **24/24**, cero fallos/errores/omisiones. Incluyen las cinco regresiones
+previas del engine legado, la nueva carrera de lectura/cierre, **12 recorridos**
+(tres repeticiones × cuatro destinos) con HomeDiscovery/ApplicationSession reales
+y retorno/retry; cierra recursos, descarta generaciones anteriores y deja UI libre.
+Las pruebas Compose/App/scroll de la fase anterior se conservan en la suite completa.
+
+`AndroidHttpEngineTest` comprueba la configuración y la propiedad del dispatcher/pool
+entre tres variantes de timeout, el cierre de ejecutores y ausencia de llamadas o
+conexiones retenidas. Dos targets de redirect (HTTP/HTTPS) usan sockets loopback
+reales. Otra prueba deja headers/body reales pendientes y cancela desde UI: termina
+antes de dejar responder al servidor. No hay dependencias de mock webserver,
+servicios externos, publicaciones descargadas ni certificados/trust alterados.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Desktop completo | 1.584 / 1.584 |
+| Android-host completo | 1.327 / 1.327 |
+| Core JVM / Core Android-host | 59 / 59 + 59 / 59 |
+| Total | **3.029 aprobadas, cero fallos/errores/omisiones** |
+| Android debug / Desktop / seis CVR empaquetados | PASS |
+| Artefacto Android | Aviso/licencia incluido; engine legado y fixtures ausentes; mismos permisos |
+
+Las cuatro suites se fuerzan a ejecutar, Linux/JDK21/Gradle9.7.1/SDK37, 20/10/2026.
+El primer comando (9m 8s) aprueba Desktop y ambos Core, y detecta una
+aserción Android que exigía la clase del engine retirado. `AndroidSourcesTest`
+se actualiza al nuevo engine observando su builder real por API pública: conserva
+connect 5 s/read 15 s y añade write 15 s y redirects deshabilitados. No se elimina
+la prueba ni se cambian los límites. Se repite **Android-host completo** junto a
+ambas compilaciones: `BUILD SUCCESSFUL in 55s`. La única modificación
+posterior al pase Desktop/Core es ese test Android-host, que no forma parte de sus
+source sets; no se presentan sus resultados como una repetición inexistente.
+Se usa el mismo Skiko verificado en caché del harness, sin cambiar la configuración
+de tests del repositorio ni omitir/debilitar pruebas. Primer comando:
+
+```text
+:core:jvmTest :core:testAndroidHostTest
+:app:desktopTest :app:testAndroidHostTest
+:androidApp:assembleDebug :androidApp:verifyDebugLanguageResources
+:desktopApp:compileKotlin
+```
+
+Comando final (Desktop/Core ya aprobados con esta misma producción):
+
+```text
+:app:testAndroidHostTest :androidApp:assembleDebug
+:androidApp:verifyDebugLanguageResources :desktopApp:compileKotlin
+```
+
+El nuevo APK Gradle debug ocupa **20,685,253 bytes** antes de volver a
+firmarlo externamente con el certificado de desarrollo del usuario. El tamaño y
+SHA-256 del APK entregado constan en la PR. Son bytes de artefacto, no métricas RAM,
+CPU o FPS del teléfono. Tras añadir el NOTICE/fuente/MPL de la Public Suffix List,
+se rehace solo el empaquetado (`androidApp:clean`, `assembleDebug`,
+`verifyDebugLanguageResources`), PASS en 38 s: no hay cambios Kotlin/Gradle posteriores
+a las suites. El ZIP payload pasa de 19,918,319 a 20,617,524 bytes frente a `f8cbaef`;
+no se atribuyen a dependencias los huecos del empaquetado incremental descartado.
+La licencia empaquetada se compara con el asset; seis CVR
+con los generados; el grafo y DEX excluyen el engine Android legado del runtime.
+Se conservan INTERNET y demás permisos existentes; sigue eliminada la inicialización
+EmojiCompat y se incluye la metadata requerida de OkHttp en el provider existente.
+Recursos 410 cadenas/dos plurales por idioma y `git diff --check`: PASS. Sin firmas,
+claves, binarios de build o publicaciones añadidos al repositorio.
+
+Las pruebas Compose siguen siendo headless y las de sockets son loopback JVM;
+no son una ejecución de OkHttp/Conscrypt en el C55. No se mide ni garantiza fluidez,
+arranque o consumo de memoria físicos. **Falta la aceptación de la nueva APK.**
+
+
+Checklist físico, con la APK de esta revisión y sin borrar datos:
+
+1. Desactivar y reactivar diagnóstico local para limpiar el stack de `f8cbaef`.
+2. Inicio → final → línea activa → Historial, repetir diez veces; repetir para
+   Biblioteca/Búsqueda/Ajustes y regreso inmediato, con portadas frías/calientes.
+3. Comprobar red lenta/offline/recuperación, búsqueda IA/Gutenberg y retry; la línea
+   y navegación deben seguir funcionando. Verificar scroll y arranque por si hay
+   regresión de rendimiento, sin asumir mejoras de fotogramas no medidas.
+4. Revisar biblioteca, historial, lectores/progreso y traducción/modelos existentes.
+5. Si vuelve a cerrarse: reabrir, copiar el diagnóstico y enviar con nombre de APK.
+   El registro conserva las 12 causas/51 líneas; no captura todo crash nativo/OOM.
+6. Desactivar diagnóstico al acabar. PR #33 permanece Draft, sin merge ni release;
+   **la corrección del transporte queda pendiente de aceptación física del C55**.

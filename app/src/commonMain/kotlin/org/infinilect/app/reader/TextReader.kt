@@ -2,6 +2,8 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.reader
 
+import org.infinilect.app.ui.*
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,6 +40,7 @@ private fun TextReaderContent(
     document: TextDocument, reading: TextReadingProgress?, saveFailed: Boolean,
     onBack: () -> Unit, backLabel: String,
 ) {
+    val strings = LocalAppStrings.current
     val scope = rememberCoroutineScope()
     val loader = remember { TextWindowLoader(document, scope) }
     DisposableEffect(loader) { onDispose { loader.close() } }
@@ -84,9 +87,9 @@ private fun TextReaderContent(
             Text(document.title, style = MaterialTheme.typography.h6, modifier = Modifier.weight(1f))
             Button(onClick = onBack) { Text(backLabel) }
         }
-        if (reading != null) Text("${(document.progression(offset) * 100).toInt()}% · approximate position", style = MaterialTheme.typography.caption)
-        if (saveFailed) Text("Reading position could not be saved on this device.", style = MaterialTheme.typography.caption)
-        if (readFailed) Text(TextFailure.STORAGE.userMessage)
+        if (reading != null) Text(strings.format(UiText.UI_1_S_APPROXIMATE_POSITION, (document.progression(offset) * 100).toInt()), style = MaterialTheme.typography.caption)
+        if (saveFailed) Text(strings[UiText.POSITION_SAVE_ERROR], style = MaterialTheme.typography.caption)
+        if (readFailed) Text(strings.status(TextFailure.STORAGE.userMessage))
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val density = LocalDensity.current
             val style = MaterialTheme.typography.body1
@@ -106,7 +109,7 @@ private fun TextReaderContent(
                     if (current == null) {
                         val height = with(density) { geometry.pendingHeight(index, constraints.maxHeight).toDp() }
                         Box(Modifier.fillMaxWidth().height(height)) {
-                            if (!readFailed) Text("Loading text…", style = style)
+                            if (!readFailed) Text(strings[UiText.UI_LOADING_TEXT], style = style)
                         }
                     } else Text(current.text, modifier = Modifier.fillMaxWidth(), style = style,
                         onTextLayout = {

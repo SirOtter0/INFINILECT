@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="selected_count">
+        <item quantity="one">%1$s selected</item>
+        <item quantity="other">%1$s selected</item>
+    </plurals>
+    <plurals name="source_count">
+        <item quantity="one">%1$s source selected</item>
+        <item quantity="other">%1$s sources selected</item>
+    </plurals>
+</resources>

@@ -15,6 +15,10 @@ Que Project Gutenberg ofrezca una obra en EE. UU. no implica que sea de dominio 
 
 ## Estado
 
+La interfaz ofrece español, inglés y catalán en Android y Desktop.
+Elige Ajustes → Idioma y traducción; el texto y los metadatos de las publicaciones
+conservan su idioma original. [Alcance, pruebas y guía para añadir idiomas](docs/LOCALIZATION_COMPLETION.md).
+
 El proyecto está en una fase muy temprana. Desktop y la primera aplicación Android
 debug comparten la misma UI. Internet Archive (subset público CC0) es la fuente inicial de lectura TEXT real.
 **Project Gutenberg (experimental)** busca en el catálogo OPDS2 de desarrollo indicado

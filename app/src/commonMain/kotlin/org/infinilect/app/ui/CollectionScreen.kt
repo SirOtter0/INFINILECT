@@ -24,6 +24,7 @@ private data class CollectionRemoval(val publication: PublicationSnapshot, val h
 @Composable
 internal fun CollectionScreen(destination: Destination, application: ApplicationSession,
     position: LazyGridState = rememberLazyGridState(), progressRecords: List<ReadingProgress> = emptyList()) {
+    val strings = LocalAppStrings.current
     val controller = application.collections
     val library by controller.library.collectAsState()
     val history by controller.history.collectAsState()
@@ -45,10 +46,11 @@ internal fun CollectionScreen(destination: Destination, application: Application
     var remove by remember(destination) { mutableStateOf<CollectionRemoval?>(null) }
     var batch by remember(destination) { mutableStateOf<Set<PublicationId>?>(null) }
     val now = Clock.System.now().toEpochMilliseconds()
-    val historyGroups = remember(history.entries, isLibrary, historyDay(now, now).key) {
+    val interfaceLanguage = LocalInterfaceLanguage.current
+    val historyGroups = remember(history.entries, isLibrary, historyDay(now, now).key, interfaceLanguage) {
         if (isLibrary) emptyMap() else history.entries.groupBy { historyDay(it.lastOpenedAtEpochMillis, now) }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().semantics { paneTitle = if (isLibrary) "Library" else "History" }.onPreviewKeyEvent {
+    BoxWithConstraints(Modifier.fillMaxSize().semantics { paneTitle = if (isLibrary) strings[UiText.LIBRARY] else strings[UiText.HISTORY] }.onPreviewKeyEvent {
         if (selecting && it.type == KeyEventType.KeyDown && it.key == Key.Escape) { controller.clearSelection(); true } else false
     }) {
         val barMaxHeight = maxHeight / 2
@@ -57,28 +59,28 @@ internal fun CollectionScreen(destination: Destination, application: Application
             if (selecting) Surface(color = MaterialTheme.colors.primary.copy(alpha = .10f)) {
                 Column(Modifier.fillMaxWidth().heightIn(max = barMaxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("${selected.size} selected", style = MaterialTheme.typography.subtitle1,
+                        Text(strings.selectedCount(selected.size), style = MaterialTheme.typography.subtitle1,
                             modifier = Modifier.padding(vertical = 16.dp).semantics { liveRegion = LiveRegionMode.Polite; heading() })
-                        TextButton(controller::clearSelection, Modifier.heightIn(min = 48.dp)) { Text("Clear selection") }
-                        TextButton(controller::selectAll, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text("Select all") }
+                        TextButton(controller::clearSelection, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.UI_CLEAR_SELECTION]) }
+                        TextButton(controller::selectAll, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(strings[UiText.SELECT_ALL]) }
                         TextButton({ batch = selected.toSet() }, Modifier.heightIn(min = 48.dp), enabled = !busy && membership.mutating.isEmpty()) {
-                            Text(if (busy) "Removing…" else "Remove from Library")
+                            Text(if (busy) strings[UiText.UI_REMOVING] else strings[UiText.UI_REMOVE_FROM_LIBRARY])
                         }
                     }
                 }
             }
             LazyVerticalGrid(GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = position,
                 contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(if (isLibrary) 12.dp else 4.dp)) {
-                if (loading && entries.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Loading…", "Reading your saved publications.", busy = true) }
+                if (loading && entries.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard(strings[UiText.UI_LOADING], strings[UiText.UI_READING_YOUR_SAVED_PUBLICATIONS], busy = true) }
                 if (failed) item(span = { GridItemSpan(maxLineSpan) }) {
-                    FeedbackCard("Local storage is unavailable", "Your saved publications have not been removed. Please try again.", error = true,
-                        action = "Try again", onAction = { if (isLibrary) controller.refreshLibrary() else controller.refreshHistory() })
+                    FeedbackCard(strings[UiText.UI_LOCAL_STORAGE_IS_UNAVAILABLE], strings[UiText.UI_YOUR_SAVED_PUBLICATIONS_HAVE_NOT_BEEN_REMOVED_PLEASE_TRY_AGAIN], error = true,
+                        action = strings[UiText.UI_TRY_AGAIN], onAction = { if (isLibrary) controller.refreshLibrary() else controller.refreshHistory() })
                 }
-                error?.let { item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard("Change could not be saved", it, error = true) } }
+                error?.let { item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard(strings[UiText.UI_CHANGE_COULD_NOT_BE_SAVED], strings.status(it), error = true) } }
                 if (entries.isEmpty() && !loading && !failed) item(span = { GridItemSpan(maxLineSpan) }) {
-                    FeedbackCard(if (isLibrary) "Your Library is empty" else "No reading history yet",
-                        if (isLibrary) "Import a local file or save a publication from Search. Your reading positions are kept separately." else "Open a publication to start reading. Recent reads will appear here.",
-                        action = "Browse Search", onAction = { application.navigate(Destination.SEARCH) })
+                    FeedbackCard(if (isLibrary) strings[UiText.UI_YOUR_LIBRARY_IS_EMPTY] else strings[UiText.UI_NO_READING_HISTORY_YET],
+                        if (isLibrary) strings[UiText.UI_IMPORT_A_LOCAL_FILE_OR_SAVE_A_PUBLICATION_FROM_SEARCH_YOUR_READING_POSITIONS_ARE] else strings[UiText.UI_OPEN_A_PUBLICATION_TO_START_READING_RECENT_READS_WILL_APPEAR_HERE],
+                        action = strings[UiText.UI_BROWSE_SEARCH], onAction = { application.navigate(Destination.SEARCH) })
                 }
                 if (isLibrary) items(entries, key = { it.id.resultKey() }) { publication ->
                     LibraryCover(remember(publication) { publication.displayPublication() }, application.covers, progress[publication.id],
@@ -87,7 +89,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
                         select = { controller.select(publication.id) }, toggle = { controller.toggleSelection(publication.id) },
                         remove = { remove = CollectionRemoval(publication, history = false) })
                 } else historyGroups.forEach { (day, group) ->
-                    item(key = "history-day:${day.key}") { Text(day.label, style = MaterialTheme.typography.subtitle2,
+                    item(key = "history-day:${day.key}") { Text(if (day.label == "Today" || day.label == "Yesterday") strings.status(day.label) else day.label, style = MaterialTheme.typography.subtitle2,
                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp).semantics { heading() }) }
                     items(group, key = { it.publication.id.resultKey() }) { entry ->
                         val publication = entry.publication
@@ -97,7 +99,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
                     }
                 }
                 if (!isLibrary) item {
-                    TextButton(controller::requestClearHistory, Modifier.heightIn(min = 48.dp), enabled = !busy && entries.isNotEmpty()) { Text("Clear history") }
+                    TextButton(controller::requestClearHistory, Modifier.heightIn(min = 48.dp), enabled = !busy && entries.isNotEmpty()) { Text(strings[UiText.UI_CLEAR_HISTORY]) }
                 }
             }
         }
@@ -108,33 +110,32 @@ internal fun CollectionScreen(destination: Destination, application: Application
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
             progress = progress, close = { detail = null }, descriptions = application.descriptions, cover = { DetailsCover(publication.displayPublication(), application.covers) }) {
-            Button({ detail = null; application.openSaved(publication) }, Modifier.heightIn(min = 48.dp)) { Text(readingAction(progress)) }
+            Button({ detail = null; application.openSaved(publication) }, Modifier.heightIn(min = 48.dp)) { Text(strings.status(readingAction(progress))) }
             OutlinedButton({
                 if (action.inLibrary == true) { detail = null; remove = CollectionRemoval(publication, history = false) }
                 else controller.toggleCatalogLibrary(publication.displayPublication())
-            }, Modifier.heightIn(min = 48.dp), enabled = action.enabled && !busy) { Text(action.label) }
-            error?.let { Text(it, color = MaterialTheme.colors.error) }
+            }, Modifier.heightIn(min = 48.dp), enabled = action.enabled && !busy) { Text(strings.status(action.label)) }
+            error?.let { Text(strings.status(it), color = MaterialTheme.colors.error) }
         }
     }
     remove?.let { removal ->
         AlertDialog(onDismissRequest = { remove = null },
-            title = { Text(if (removal.history) "Remove from History?" else "Remove from Library?") },
-            text = { Text("${removal.publication.title} will be removed from this list only. Files and saved reading positions are kept." +
-                if (removal.history) " Library membership is unchanged." else " History is unchanged.") },
+            title = { Text(if (removal.history) strings[UiText.UI_REMOVE_FROM_HISTORY] else strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM]) },
+            text = { Text(if (removal.history) strings.format(UiText.UI_1_S_WILL_BE_REMOVED_FROM_THIS_LIST_ONLY_FILES_AND_SAVED_READING_POSITIONS_ARE_KE, removal.publication.title) else strings.format(UiText.UI_1_S_WILL_BE_REMOVED_FROM_THIS_LIST_ONLY_FILES_AND_SAVED_READING_POSITIONS_ARE_KE_NOTICE, removal.publication.title)) },
             confirmButton = { TextButton({
                 remove = null
                 if (removal.history) controller.removeHistory(removal.publication.id) else controller.removeLibrary(removal.publication.id)
-            }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text("Remove") } },
-            dismissButton = { TextButton({ remove = null }, Modifier.heightIn(min = 48.dp)) { Text("Cancel") } })
+            }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(strings[UiText.UI_REMOVE]) } },
+            dismissButton = { TextButton({ remove = null }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.CANCEL]) } })
     }
     batch?.let { ids ->
-        AlertDialog(onDismissRequest = { batch = null }, title = { Text("Remove ${ids.size} from Library?") },
-            text = { Text("Only Library membership is removed. Original files, imported copies, History and saved reading positions are kept. Items that cannot be removed stay in Library.") },
-            confirmButton = { TextButton({ batch = null; controller.removeSelectedLibrary(ids) }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text("Remove") } },
-            dismissButton = { TextButton({ batch = null }, Modifier.heightIn(min = 48.dp)) { Text("Cancel") } })
+        AlertDialog(onDismissRequest = { batch = null }, title = { Text(strings.format(UiText.UI_REMOVE_1_S_FROM_LIBRARY, ids.size)) },
+            text = { Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_ORIGINAL_FILES_IMPORTED_COPIES_HISTORY_AND_SA]) },
+            confirmButton = { TextButton({ batch = null; controller.removeSelectedLibrary(ids) }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(strings[UiText.UI_REMOVE]) } },
+            dismissButton = { TextButton({ batch = null }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.CANCEL]) } })
     }
-    if (confirmation) AlertDialog(onDismissRequest = controller::dismissClearHistory, title = { Text("Clear reading history?") },
-        text = { Text("Library entries and reading positions will be kept.") },
-        confirmButton = { TextButton(controller::confirmClearHistory, Modifier.heightIn(min = 48.dp)) { Text("Clear history") } },
-        dismissButton = { TextButton(controller::dismissClearHistory, Modifier.heightIn(min = 48.dp)) { Text("Cancel") } }, shape = MaterialTheme.shapes.medium)
+    if (confirmation) AlertDialog(onDismissRequest = controller::dismissClearHistory, title = { Text(strings[UiText.UI_CLEAR_READING_HISTORY]) },
+        text = { Text(strings[UiText.UI_LIBRARY_ENTRIES_AND_READING_POSITIONS_WILL_BE_KEPT]) },
+        confirmButton = { TextButton(controller::confirmClearHistory, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.UI_CLEAR_HISTORY]) } },
+        dismissButton = { TextButton(controller::dismissClearHistory, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.CANCEL]) } }, shape = MaterialTheme.shapes.medium)
 }

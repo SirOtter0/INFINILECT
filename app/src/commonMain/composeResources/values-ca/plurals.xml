@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="selected_count">
+        <item quantity="one">%1$s seleccionat</item>
+        <item quantity="other">%1$s seleccionats</item>
+    </plurals>
+    <plurals name="source_count">
+        <item quantity="one">%1$s font seleccionada</item>
+        <item quantity="other">%1$s fonts seleccionades</item>
+    </plurals>
+</resources>

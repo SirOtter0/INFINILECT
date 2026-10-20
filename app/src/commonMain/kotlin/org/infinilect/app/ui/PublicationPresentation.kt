@@ -65,6 +65,7 @@ private fun PublicationMark(type: PublicationType, modifier: Modifier = Modifier
 @Composable
 internal fun PublicationCard(publication: Publication, source: String, progress: ReadingProgress? = null,
     details: () -> Unit, actions: @Composable () -> Unit) {
+    val strings = LocalAppStrings.current
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, elevation = 0.dp) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
@@ -73,9 +74,9 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
                     Text(publication.title, style = MaterialTheme.typography.h6, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "), style = MaterialTheme.typography.body2,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(source, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = .72f))
+                    Text(strings.sourceName(source), style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = .72f))
                     if (progress != null) {
-                        Text("${(progress.progression * 100).toInt()}% read", style = MaterialTheme.typography.caption)
+                        Text(strings.format(UiText.UI_1_S_READ, (progress.progression * 100).toInt()), style = MaterialTheme.typography.caption)
                         LinearProgressIndicator(progress.progression.toFloat(), Modifier.fillMaxWidth().height(3.dp),
                             backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = .08f))
                     }
@@ -83,7 +84,7 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 actions()
-                TextButton(details, Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Details for ${publication.title}" }) { Text("Details") }
+                TextButton(details, Modifier.heightIn(min = 48.dp).semantics { contentDescription = strings.format(UiText.UI_DETAILS_FOR_1_S, publication.title) }) { Text(strings[UiText.UI_DETAILS]) }
             }
         }
     }
@@ -93,6 +94,7 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
     progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
     descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), actions: @Composable () -> Unit) {
+    val strings = LocalAppStrings.current
     val focus = remember { FocusRequester() }
     val synopsis by produceState<String?>(null, publication.id, descriptions) {
         try { value = descriptions?.get(publication.id) }
@@ -107,12 +109,12 @@ internal fun PublicationDetails(publication: Publication, source: String, format
             val frame = if (compact) Modifier.fillMaxSize() else Modifier.widthIn(max = 600.dp).fillMaxWidth(.94f).heightIn(max = maxHeight - 24.dp)
             Surface(frame.onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { close(); true } else false
-            }.semantics { paneTitle = "Publication details" },
+            }.semantics { paneTitle = strings[UiText.UI_PUBLICATION_DETAILS] },
                 shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large, elevation = 0.dp) {
                 Column {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Publication details", style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f).semantics { heading() })
-                        TextButton(close, Modifier.focusRequester(focus).heightIn(min = 48.dp)) { Text("Close") }
+                        Text(strings[UiText.UI_PUBLICATION_DETAILS], style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f).semantics { heading() })
+                        TextButton(close, Modifier.focusRequester(focus).heightIn(min = 48.dp)) { Text(strings[UiText.CLOSE]) }
                     }
                     Column(Modifier.weight(1f, fill = false).verticalScroll(scroll).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
@@ -125,22 +127,22 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
                         (suppliedSynopsis ?: synopsis)?.let { text ->
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Synopsis", style = MaterialTheme.typography.subtitle1, modifier = Modifier.semantics { heading() })
+                                Text(strings[UiText.UI_SYNOPSIS], style = MaterialTheme.typography.subtitle1, modifier = Modifier.semantics { heading() })
                                 Text(if (expanded) text else descriptionExcerpt(text), style = MaterialTheme.typography.body1)
                                 if (text.length > DescriptionPolicy.EXCERPT) TextButton({ expanded = !expanded },
-                                    Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }) {
-                                    Text(if (expanded) "Show less" else "Read more")
+                                    Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) strings[UiText.UI_EXPANDED] else strings[UiText.UI_COLLAPSED] }) {
+                                    Text(if (expanded) strings[UiText.UI_SHOW_LESS] else strings[UiText.UI_READ_MORE])
                                 }
                             }
                         }
-                        if (subjects.isNotEmpty()) DetailLine("Categories", subjects.joinToString("; "))
-                        DetailLine("Source", source)
-                        DetailLine("Format", publicationFormat(formats))
-                        if (publication.languages.isNotEmpty()) DetailLine("Languages", publication.languages.joinToString(", "))
-                        if (progress != null) DetailLine("Reading progress", "${(progress.progression * 100).toInt()}% read")
-                        publication.rights?.let { DetailLine("Source rights statement", it) }
-                        publication.sourceUrl?.let { DetailLine("Source reference", it) }
-                        Text("Availability does not establish rights in every country. Saved metadata does not authorize a download; opening still checks the source.", style = MaterialTheme.typography.caption)
+                        if (subjects.isNotEmpty()) DetailLine(strings[UiText.UI_CATEGORIES], subjects.joinToString("; "))
+                        DetailLine(strings[UiText.UI_SOURCE], strings.sourceName(source))
+                        DetailLine(strings[UiText.UI_FORMAT], if(formats.isEmpty()) strings[UiText.UI_FORMAT_CHECKED_WHEN_OPENING] else publicationFormat(formats))
+                        if (publication.languages.isNotEmpty()) DetailLine(strings[UiText.UI_LANGUAGES], publication.languages.joinToString(", "))
+                        if (progress != null) DetailLine(strings[UiText.UI_READING_PROGRESS], strings.format(UiText.UI_1_S_READ, (progress.progression * 100).toInt()))
+                        publication.rights?.let { DetailLine(strings[UiText.UI_SOURCE_RIGHTS_STATEMENT], it) }
+                        publication.sourceUrl?.let { DetailLine(strings[UiText.UI_SOURCE_REFERENCE], it) }
+                        Text(strings[UiText.UI_AVAILABILITY_DOES_NOT_ESTABLISH_RIGHTS_IN_EVERY_COUNTRY_SAVED_METADATA_DOES_NOT], style = MaterialTheme.typography.caption)
                     }
                 }
             }

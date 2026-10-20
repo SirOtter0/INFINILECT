@@ -9,6 +9,7 @@ import org.infinilect.app.collections.CollectionsController
 import org.infinilect.app.reader.OpenPublicationState
 import org.infinilect.core.*
 import org.infinilect.app.discovery.*
+import org.infinilect.app.diagnostics.*
 
 internal enum class Destination { HOME, SEARCH, LIBRARY, HISTORY, SETTINGS }
 
@@ -26,12 +27,13 @@ internal class ApplicationSession(
     private val discoveryOptions = sources.options.filterNot { it.developmentOnly }
     private val discoveryCatalog = DiscoveryCatalog(discoveryOptions.map { it.source }, this.scope, sources.discoveryDiagnostics, clock)
     val discovery = DiscoveryController(discoveryOptions, discoveryCatalog, this.scope)
-    val homeDiscovery = HomeDiscovery(discoveryOptions.filter { it.source is DiscoverySource }, discoveryCatalog, this.scope, clock)
+    val homeDiscovery = HomeDiscovery(discoveryOptions.filter { it.source is DiscoverySource }, discoveryCatalog, this.scope, sources.technicalDiagnostics, clock)
     val catalogOptions get() = discoveryOptions
     private val mutableSelected=MutableStateFlow(0)
     val selected=mutableSelected.asStateFlow()
     private val mutableDestination=MutableStateFlow(Destination.HOME)
     val destination=mutableDestination.asStateFlow()
+    val technicalDiagnostics get() = sources.technicalDiagnostics
     val covers get() = sources.covers
     val descriptions get() = sources.descriptions
     /** Details may query one existing progress summary after a restart; never save/normalize it. */
@@ -92,6 +94,11 @@ internal class ApplicationSession(
         if (destination != mutableDestination.value) collections.clearSelection()
         if (destination != Destination.SEARCH) discovery.pause()
         if (destination != Destination.HOME) homeDiscovery.pause()
+        technicalDiagnostics.event(when(destination) {
+            Destination.HOME -> TechnicalEvent.NAV_HOME; Destination.LIBRARY -> TechnicalEvent.NAV_LIBRARY
+            Destination.HISTORY -> TechnicalEvent.NAV_HISTORY; Destination.SEARCH -> TechnicalEvent.NAV_SEARCH
+            Destination.SETTINGS -> TechnicalEvent.NAV_SETTINGS
+        })
         mutableDestination.value=destination
         if (destination == Destination.SEARCH) discovery.resume()
         if (destination == Destination.HOME) refreshHomeProgress() else { homeGeneration++; homeLookup?.cancel() }

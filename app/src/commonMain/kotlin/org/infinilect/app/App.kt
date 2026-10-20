@@ -62,6 +62,7 @@ fun App(
     localFilePicker: org.infinilect.app.imports.LocalFilePicker? = null,
     readerAppearance: (ReaderAppearance?) -> Unit = {},
     applicationAppearance: (ReaderAppearance) -> Unit = {},
+    developmentSettings: @Composable () -> Unit = {},
 ) {
     val application=remember(applicationSources) { applicationSources.applicationSession() }
     val appearanceState by (applicationSources.appearance?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(ApplicationAppearanceState()) }).collectAsState()
@@ -139,9 +140,9 @@ fun App(
                             val feedbackMaxHeight = maxHeight / 2
                             Column(Modifier.fillMaxSize()) {
                                 Column(Modifier.fillMaxWidth().heightIn(max = feedbackMaxHeight).verticalScroll(rememberScrollState())) {
-                                    if (importing.busy) FeedbackCard("Importing…", "Copying and validating your publication in private storage.", busy = true,
-                                        action = "Cancel", onAction = application::back, modifier = Modifier.padding(horizontal = 24.dp))
-                                    importing.message?.let { FeedbackCard("Import could not finish", it, error = true, modifier = Modifier.padding(horizontal = 24.dp)) }
+                                    if (importing.busy) FeedbackCard(strings[UiText.UI_IMPORTING], strings[UiText.UI_COPYING_AND_VALIDATING_YOUR_PUBLICATION_IN_PRIVATE_STORAGE], busy = true,
+                                        action = strings[UiText.CANCEL], onAction = application::back, modifier = Modifier.padding(horizontal = 24.dp))
+                                    importing.message?.let { FeedbackCard(strings[UiText.UI_IMPORT_COULD_NOT_FINISH], strings.status(it), error = true, modifier = Modifier.padding(horizontal = 24.dp)) }
                                 }
                                 androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                                     screenState.SaveableStateProvider(destination.name) { when (destination) {
@@ -152,7 +153,7 @@ fun App(
                                         Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, collectionProgress)
-                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation)
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation, developmentSettings)
                                     } }
                                 }
                             }
@@ -169,11 +170,11 @@ fun App(
                     },
                     notices = if (membership.unavailable || collectionError != null || historyFailed) ({
                         if (membership.unavailable) {
-                            Text("Library storage is unavailable on this device.")
-                            Button(onClick = application.collections::refreshLibrary) { Text("Retry Library") }
+                            Text(strings[UiText.UI_LIBRARY_STORAGE_IS_UNAVAILABLE_ON_THIS_DEVICE])
+                            Button(onClick = application.collections::refreshLibrary) { Text(strings[UiText.UI_RETRY_LIBRARY]) }
                         }
-                        collectionError?.let { Text(it, color = MaterialTheme.colors.error) }
-                        if (historyFailed) Text("Reading history could not be saved on this device.")
+                        collectionError?.let { Text(strings.status(it), color = MaterialTheme.colors.error) }
+                        if (historyFailed) Text(strings[UiText.UI_READING_HISTORY_COULD_NOT_BE_SAVED_ON_THIS_DEVICE])
                     }) else null,
                 )
                 is OpenPublicationState.PageReady -> key(current.reader) {
@@ -182,11 +183,11 @@ fun App(
                         publicationActions = { LibraryAction(LibraryActionState(membership.inLibrary, membership.busy, membership.unavailable), application.collections::toggleLibrary) },
                         notices = {
                             if (membership.unavailable) {
-                                Text("Library storage is unavailable on this device.")
-                                Button(onClick = application.collections::refreshLibrary) { Text("Retry Library") }
+                                Text(strings[UiText.UI_LIBRARY_STORAGE_IS_UNAVAILABLE_ON_THIS_DEVICE])
+                                Button(onClick = application.collections::refreshLibrary) { Text(strings[UiText.UI_RETRY_LIBRARY]) }
                             }
-                            collectionError?.let { Text(it, color = MaterialTheme.colors.error) }
-                            if (historyFailed) Text("Reading history could not be saved on this device.")
+                            collectionError?.let { Text(strings.status(it), color = MaterialTheme.colors.error) }
+                            if (historyFailed) Text(strings[UiText.UI_READING_HISTORY_COULD_NOT_BE_SAVED_ON_THIS_DEVICE])
                         })
                 }
                 is OpenPublicationState.Ready, is OpenPublicationState.PdfReady -> Column(Modifier.fillMaxSize()) {
@@ -196,11 +197,11 @@ fun App(
                             application.collections::toggleLibrary)
                     }
                     if(membership.unavailable) {
-                        Text("Library storage is unavailable on this device.",modifier=Modifier.padding(horizontal=24.dp))
-                        Button(onClick=application.collections::refreshLibrary,modifier=Modifier.padding(horizontal=24.dp)) { Text("Retry Library") }
+                        Text(strings[UiText.UI_LIBRARY_STORAGE_IS_UNAVAILABLE_ON_THIS_DEVICE],modifier=Modifier.padding(horizontal=24.dp))
+                        Button(onClick=application.collections::refreshLibrary,modifier=Modifier.padding(horizontal=24.dp)) { Text(strings[UiText.UI_RETRY_LIBRARY]) }
                     }
-                    collectionError?.let { Text(it,modifier=Modifier.padding(horizontal=24.dp),color=MaterialTheme.colors.error) }
-                    if(historyFailed) Text("Reading history could not be saved on this device.",modifier=Modifier.padding(horizontal=24.dp))
+                    collectionError?.let { Text(strings.status(it),modifier=Modifier.padding(horizontal=24.dp),color=MaterialTheme.colors.error) }
+                    if(historyFailed) Text(strings[UiText.UI_READING_HISTORY_COULD_NOT_BE_SAVED_ON_THIS_DEVICE],modifier=Modifier.padding(horizontal=24.dp))
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                         when (current) {
                             is OpenPublicationState.Ready -> TextReader(current.document,current.reading,saveFailed,application::back,backLabel)
@@ -210,18 +211,18 @@ fun App(
                 }
                 is OpenPublicationState.Loading -> ApplicationTheme(mode) {
                     Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        ScreenHeading(current.publication.title, "Preparing your reading session.")
-                        FeedbackCard("Opening publication…", "Your saved reading position will be restored when the publication is ready.", busy = true,
+                        ScreenHeading(current.publication.title, strings[UiText.UI_PREPARING_YOUR_READING_SESSION])
+                        FeedbackCard(strings[UiText.UI_OPENING_PUBLICATION], strings[UiText.UI_YOUR_SAVED_READING_POSITION_WILL_BE_RESTORED_WHEN_THE_PUBLICATION_IS_READY], busy = true,
                             action = backLabel, onAction = application::back)
                     }
                 }
                 is OpenPublicationState.Error -> ApplicationTheme(mode) {
                     Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        ScreenHeading(current.publication.title, "This publication could not be opened.")
-                        FeedbackCard("Unable to open", current.userMessage, error = true)
+                        ScreenHeading(current.publication.title, strings[UiText.UI_THIS_PUBLICATION_COULD_NOT_BE_OPENED])
+                        FeedbackCard(strings[UiText.UI_UNABLE_TO_OPEN], strings.status(current.userMessage), error = true)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = application::back) { Text(backLabel) }
-                            androidx.compose.material.OutlinedButton(enabled = application.canRetry(current.publication), onClick = { application.retry(current.publication) }) { Text("Try again") }
+                            androidx.compose.material.OutlinedButton(enabled = application.canRetry(current.publication), onClick = { application.retry(current.publication) }) { Text(strings[UiText.UI_TRY_AGAIN]) }
                         }
                     }
                 }
@@ -237,6 +238,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
     sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
     collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open,
     modifier: Modifier = Modifier, progressRecords: List<org.infinilect.core.ReadingProgress> = emptyList(), descriptions: PublicationDescriptions? = null, applicationSession: ApplicationSession? = null) {
+    val strings = LocalAppStrings.current
     var detail by remember(session) { mutableStateOf<org.infinilect.core.Publication?>(null) }
     val query by session.query.collectAsState()
     val membership by collections.membership.collectAsState()
@@ -255,23 +257,23 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
             // Long headers/source rows may scroll, but can never consume the result viewport.
             Column(Modifier.fillMaxWidth().heightIn(max = headerMaxHeight)
                 .verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ScreenHeading("Search", "Explore the existing catalogs or your imported files.")
+                ScreenHeading(strings[UiText.SEARCH], strings[UiText.UI_EXPLORE_THE_EXISTING_CATALOGS_OR_YOUR_IMPORTED_FILES])
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     sources.forEachIndexed { index, source ->
-                        androidx.compose.material.OutlinedButton(enabled = index != selected, onClick = { onSource(index) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(source.name) }
+                        androidx.compose.material.OutlinedButton(enabled = index != selected, onClick = { onSource(index) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.sourceName(source.name)) }
                     }
                 }
-                Text("Source: ${sources[selected].name}")
-                Text(if (session.textReadingEnabled && session.epubReadingEnabled && session.pageReadingEnabled) "Search your imported TEXT, EPUB, CBZ and PDF publications. Use * to list all imports."
-                    else if (session.textReadingEnabled) "Search publications. Open compatible UTF-8 TEXT up to 16 MiB."
-                    else if (session.pageReadingEnabled) "Original development comic. No production comic acquisition is enabled."
-                    else if (session.epubReadingEnabled) "Original development EPUB. No production EPUB acquisition is enabled."
-                    else "Experimental catalog only. TEXT opening is unavailable for this source.")
+                Text(strings.format(UiText.UI_SOURCE_1_S, strings.sourceName(sources[selected].name)))
+                Text(if (session.textReadingEnabled && session.epubReadingEnabled && session.pageReadingEnabled) strings[UiText.UI_SEARCH_YOUR_IMPORTED_TEXT_EPUB_CBZ_AND_PDF_PUBLICATIONS_USE_TO_LIST_ALL_IMPORTS]
+                    else if (session.textReadingEnabled) strings[UiText.UI_SEARCH_PUBLICATIONS_OPEN_COMPATIBLE_UTF_8_TEXT_UP_TO_16_MIB]
+                    else if (session.pageReadingEnabled) strings[UiText.UI_ORIGINAL_DEVELOPMENT_COMIC_NO_PRODUCTION_COMIC_ACQUISITION_IS_ENABLED]
+                    else if (session.epubReadingEnabled) strings[UiText.UI_ORIGINAL_DEVELOPMENT_EPUB_NO_PRODUCTION_EPUB_ACQUISITION_IS_ENABLED]
+                    else strings[UiText.UI_EXPERIMENTAL_CATALOG_ONLY_TEXT_OPENING_IS_UNAVAILABLE_FOR_THIS_SOURCE])
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = query,
                         onValueChange = session::editQuery,
-                        label = { Text("Title, author, or keyword") },
+                        label = { Text(strings[UiText.UI_TITLE_AUTHOR_OR_KEYWORD]) },
                         singleLine = true,
                         enabled = !loading,
                         modifier = Modifier.weight(1f),
@@ -282,7 +284,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                     )
                     Button(enabled = !loading && query.isNotBlank(), onClick = {
                         session.submitSearch()
-                    }) { Text("Search") }
+                    }) { Text(strings[UiText.SEARCH]) }
                 }
             }
             // Keep one bounded lazy viewport for results and every feedback/pagination state.
@@ -291,21 +293,21 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                 item(key = "search-status") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (loading) {
-                            FeedbackCard("Searching…", "Your current results remain available while the source responds.", busy = true)
+                            FeedbackCard(strings[UiText.UI_SEARCHING], strings[UiText.UI_YOUR_CURRENT_RESULTS_REMAIN_AVAILABLE_WHILE_THE_SOURCE_RESPONDS], busy = true)
                         }
                         when (val current = state) {
-                            SearchState.Idle -> FeedbackCard("Find your next read", "Enter a search to discover publications.")
-                            is SearchState.Error -> FeedbackCard("Search could not finish", current.message, error = true, action = "Try again", onAction = session::submitSearch)
+                            SearchState.Idle -> FeedbackCard(strings[UiText.UI_FIND_YOUR_NEXT_READ], strings[UiText.UI_ENTER_A_SEARCH_TO_DISCOVER_PUBLICATIONS])
+                            is SearchState.Error -> FeedbackCard(strings[UiText.UI_SEARCH_COULD_NOT_FINISH], strings.status(current.message), error = true, action = strings[UiText.UI_TRY_AGAIN], onAction = session::submitSearch)
                             else -> Unit
                         }
                         if(membership.unavailable) {
-                            Text("Library storage is unavailable on this device.",color=MaterialTheme.colors.error)
-                            Button(onClick=collections::refreshLibrary) { Text("Retry Library") }
+                            Text(strings[UiText.UI_LIBRARY_STORAGE_IS_UNAVAILABLE_ON_THIS_DEVICE],color=MaterialTheme.colors.error)
+                            Button(onClick=collections::refreshLibrary) { Text(strings[UiText.UI_RETRY_LIBRARY]) }
                         }
-                        libraryError?.let { Text(it,color=MaterialTheme.colors.error) }
+                        libraryError?.let { Text(strings.status(it),color=MaterialTheme.colors.error) }
                         if (displayed != null) {
-                            if (displayed.page.publications.isEmpty()) FeedbackCard("No results", "No publications found for “${displayed.query}”.")
-                            else Text("Results for “${displayed.query}”")
+                            if (displayed.page.publications.isEmpty()) FeedbackCard(strings[UiText.UI_NO_RESULTS], strings.format(UiText.UI_NO_PUBLICATIONS_FOUND_FOR_1_S, displayed.query))
+                            else Text(strings.format(UiText.UI_RESULTS_FOR_1_S, displayed.query))
                         }
                     }
                 }
@@ -314,7 +316,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                         PublicationCard(publication, sources[selected].name, publicationProgress(progressRecords, publication.id), details = { detail = publication }) {
                             if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
                                 Button(enabled = !loading, onClick = { onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                                    Text(if (session.pdfReadingEnabled) "Open" else if (session.pageReadingEnabled) "Open pages" else if (session.epubReadingEnabled && !session.textReadingEnabled) "Open EPUB" else "Open text")
+                                    Text(if (session.pdfReadingEnabled) strings[UiText.UI_OPEN] else if (session.pageReadingEnabled) strings[UiText.UI_OPEN_PAGES] else if (session.epubReadingEnabled && !session.textReadingEnabled) strings[UiText.UI_OPEN_EPUB] else strings[UiText.UI_OPEN_TEXT])
                                 }
                             }
                             CatalogLibraryAction(membership.forPublication(publication.id), onToggle = { collections.toggleCatalogLibrary(publication) })
@@ -323,11 +325,11 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                 }
                 if (displayed?.page?.nextPageToken != null) {
                     item(key = "search-pagination") {
-                        Button(enabled = !loading, onClick = session::nextPage) { Text("Next page") }
+                        Button(enabled = !loading, onClick = session::nextPage) { Text(strings[UiText.UI_NEXT_PAGE]) }
                     }
                 }
                 item(key = "search-notice") {
-                    Text("Availability does not establish rights in every country. Reading position is saved locally; reopening still checks the source.", style = MaterialTheme.typography.caption)
+                    Text(strings[UiText.UI_AVAILABILITY_DOES_NOT_ESTABLISH_RIGHTS_IN_EVERY_COUNTRY_READING_POSITION_IS_SAVE], style = MaterialTheme.typography.caption)
                 }
             }
         }
@@ -338,7 +340,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         PublicationDetails(publication, sources[selected].name, publication.resources.map { it.format },
             record, close = { detail = null }, descriptions = descriptions) {
             if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
-                Button(enabled = !loading, onClick = { detail = null; onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(readingAction(record)) }
+                Button(enabled = !loading, onClick = { detail = null; onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.status(readingAction(record))) }
             }
             CatalogLibraryAction(membership.forPublication(publication.id), onToggle = { collections.toggleCatalogLibrary(publication) })
         }
@@ -348,13 +350,13 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
 @Composable
 private fun LibraryAction(state: LibraryActionState, onToggle: () -> Unit) {
     Button(enabled=state.enabled,onClick=onToggle) {
-        Text(state.label)
+        Text(LocalAppStrings.current.status(state.label))
     }
 }
 
 @Composable
 private fun CatalogLibraryAction(state: LibraryActionState, onToggle: () -> Unit) {
     androidx.compose.material.OutlinedButton(enabled = state.enabled, onClick = onToggle, modifier = Modifier.heightIn(min = 48.dp)) {
-        Text(state.label)
+        Text(LocalAppStrings.current.status(state.label))
     }
 }

@@ -103,7 +103,8 @@ class SearchLayoutTest {
                 SearchState.Idle to "Enter a search to discover publications.",
                 SearchState.Loading() to "Searching…",
                 SearchState.Empty(f.result.copy(page=SearchPage(emptyList()))) to "No publications found for “books”.",
-                SearchState.Error("Please try again.") to "Please try again.",
+                // Unknown status contracts use a localized safe error; still assert exact feedback and reachability.
+                SearchState.Error("Please try again.") to org.infinilect.app.ui.UiText.UI_THE_ACTION_COULD_NOT_COMPLETE_PLEASE_TRY_AGAIN.fallback,
             )) {
                 f.state=state;f.draw();f.scrollTo(0);f.reachText(message)
                 assertTrue(f.position.layoutInfo.viewportEndOffset>f.position.layoutInfo.viewportStartOffset)

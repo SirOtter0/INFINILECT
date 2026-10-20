@@ -6,6 +6,38 @@ Status: **user-reported translation/model-management success on realme C55; the 
 fully operational; its translation engine is explicitly unavailable. Test providers
 are used only for deterministic shared/UI tests, never as native-engine evidence.
 
+**UI localization update (PR #33):** the historical PR #31 scope below is superseded
+by [LOCALIZATION_COMPLETION.md](LOCALIZATION_COMPLETION.md). Application screens,
+reader controls and errors now use the shared en/es/ca resources. This does not
+translate publication metadata or change the engine, models, storage or progress.
+
+## PR #33 physical-feedback follow-up: Spanish/Catalan pairs
+
+The four validated app descriptors are unchanged from the merged PR #31:
+`en→es`, `es→en`, `en→ca`, `ca→en`. They are now testable shared **metadata** in
+`VerifiedTranslationModels.kt`; the Android adapter uses the same values and its
+existing descriptor, checksum, storage and native-lifetime validation. This does
+not enable translation on Desktop.
+
+The pinned Foxlet registry **and the checksummed 0.5.0 AAR's actual `models.tsv`**
+were inspected: each has no direct `es→ca` or `ca→es` entry. The SDK bundles 106
+other/direct directions in total; only the four app-validated directions are
+advertised by INFINILECT. No Spanish/Catalan model disappeared in PR #33, and UI
+locale does not filter the model list. The previous English-bridge prototype
+below was explicitly not integrated. A bridge requires two model stages and
+separate memory/quality/progress/cache validation; it is not a missing direct
+model and is not silently enabled by this patch.
+
+Settings now explains that limitation in en/es/ca; unsupported pairs keep Original
+available and offer no invented download. Independent pinned registry excerpts
+in `jvmSharedTest/resources/translation/foxlet-registry-supported.json` test sizes,
+versions, directions, allowed HTTPS hosts and hashes in the SDK's filename order.
+The factual metadata fixture attributes the MPL-2.0 source; existing license texts
+remain in `third-party/foxlet-LICENSE.txt` and
+`third-party/mozilla-translation-models-LICENSE.txt`. No weights or dependencies
+were added. See [the physical-feedback report](LOCALIZATION_COMPLETION.md#correcciones-posteriores-a-pruebas-físicas--realme-c55)
+for the startup limitation, UI/admin tests and final build results.
+
 ## Provider decision and licensing
 
 Choose **Foxlet 0.5.0**, an Android adaptation of Mozilla's Bergamot/Marian engine.
@@ -431,6 +463,8 @@ thread only on startup/language change. A composition-local immutable string tab
 updates labels without recreating reading sessions. English is the fallback; resource
 failure retains the last successfully applied language rather than crashing. No model-generated UI strings.
 
+Historical PR #31 coverage (see the PR #33 update linked above):
+
 | Surface | Actual coverage |
 | --- | --- |
 | Interface/default reading settings and model management | en/es/ca strings, errors, confirmation, progress and accessibility |
@@ -440,8 +474,7 @@ failure retains the last successfully applied language rather than crashing. No 
 | Main navigation/import accessibility and Home greeting/local section labels | Localized; remaining Home/discovery/details text is pending |
 | Library, History, Search/acquisition/details; TXT/PDF/CBZ controls/errors | Full extraction/translation remains pending; original functionality retained |
 
-The UI explicitly describes this partial scope. **The entire application is not yet
-localized.** Original publication metadata and source rights statements are not
+In PR #31 the UI described that partial scope; PR #33 removes the obsolete notice. **The historical PR #31 table does not describe current application coverage.** Original publication metadata and source rights statements are not
 rewritten. System-language changes outside the app while its process remains alive
 may require a normal relaunch; explicit en/es/ca changes apply within the app without
 restarting it. Broad Home scrolling/recomposition work belongs to PR #32; no phone
@@ -538,8 +571,9 @@ keeps the last successfully applied table/language, exposes Retry, and emits onl
 `INFINILECT.Locale stage=load-interface-resources language=<code> exception=<class>`.
 It never logs exception messages, resource/filesystem paths, profile or publication
 text. Language preferences and reading-language overrides retain their prior format
-and owner. The localization scope remains **partial**: PR #33 completes the
-application; broad performance work remains PR #32.
+and owner. That PR #31 correction retained **partial** localization. PR #33 extends it as
+documented in LOCALIZATION_COMPLETION.md; the subsequent PR #32 performance changes
+are preserved.
 
 Language and translation and Edit profile are full-width settings rows with a
 leading glyph, title, short description, disclosure chevron, native click/ripple,

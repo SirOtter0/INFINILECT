@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import org.infinilect.app.*
 import org.infinilect.core.*
 import org.infinilect.app.discovery.*
+import org.infinilect.app.diagnostics.*
 
 internal fun homeRecentLibrary(entries: List<LibraryEntry>): List<PublicationSnapshot> = entries.sortedByDescending { it.addedAtEpochMillis }
     .distinctBy { it.publication.id }.take(8).map { it.publication }
@@ -41,7 +43,13 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     LaunchedEffect(preferences.loaded, preferences.discovery) {
         if (preferences.loaded) application.homeDiscovery.refresh(preferences.discovery)
     }
-    DisposableEffect(application) { onDispose { application.homeDiscovery.pause() } }
+    DisposableEffect(application) {
+        application.technicalDiagnostics.event(TechnicalEvent.HOME_VISIBLE)
+        onDispose {
+            application.technicalDiagnostics.event(TechnicalEvent.HOME_DISPOSED)
+            application.homeDiscovery.pause()
+        }
+    }
     val known = remember(online.rows, searchEntries) { (online.rows.flatMap { it.entries } + searchEntries).associateBy { it.publication.id } }
     val inferred = remember(preferences.discovery.personalized, preferences.discovery.inferenceAfter, history.entries, known) { if (preferences.discovery.personalized) history.entries
         .filter { it.lastOpenedAtEpochMillis > preferences.discovery.inferenceAfter }.take(20)
@@ -65,23 +73,23 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
         if (preferences.loaded && !preferences.profile.setupHandled && settings!=null) item(key="profile-setup") {
             Surface(shape=MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text("Make this space yours",style=MaterialTheme.typography.subtitle1)
-                    Text("A name is optional. Choose a residence country for future discovery; no online account is created.")
+                    Text(strings[UiText.UI_MAKE_THIS_SPACE_YOURS],style=MaterialTheme.typography.subtitle1)
+                    Text(strings[UiText.UI_A_NAME_IS_OPTIONAL_CHOOSE_A_RESIDENCE_COUNTRY_FOR_FUTURE_DISCOVERY_NO_ONLINE_ACC])
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        TextButton(editProfile,Modifier.heightIn(min=48.dp)) { Text("Set up profile") }
+                        TextButton(editProfile,Modifier.heightIn(min=48.dp)) { Text(strings[UiText.UI_SET_UP_PROFILE]) }
                         TextButton({settings.changeProfile(preferences.profile.copy(setupHandled=true))},Modifier.heightIn(min=48.dp)) { Text(strings[UiText.SET_UP_LATER]) }
                     }
                 }
             }
         }
         if (settingsFailed) item(key="settings-error") {
-            FeedbackCard(strings[UiText.SETTINGS_SAVE_ERROR],"Your profile applies for now. Retry to keep it after restarting.",error=true,
+            FeedbackCard(strings[UiText.SETTINGS_SAVE_ERROR],strings[UiText.UI_YOUR_PROFILE_APPLIES_FOR_NOW_RETRY_TO_KEEP_IT_AFTER_RESTARTING],error=true,
                 action=strings[UiText.RETRY_SETTINGS],onAction={settings?.retry()})
         }
-        error?.let { message -> item(key="collection-error") { FeedbackCard("Change could not be saved",message,error=true) } }
+        error?.let { message -> item(key="collection-error") { FeedbackCard(strings[UiText.UI_CHANGE_COULD_NOT_BE_SAVED],strings.status(message),error=true) } }
         if (library.failed || history.failed) item(key="storage-error") {
-            FeedbackCard("Local collection unavailable","Your publications and positions have not been removed.",error=true,
-                action="Try again",onAction={application.collections.refreshLibrary();application.collections.refreshHistory()})
+            FeedbackCard(strings[UiText.UI_LOCAL_COLLECTION_UNAVAILABLE],strings[UiText.UI_YOUR_PUBLICATIONS_AND_POSITIONS_HAVE_NOT_BEEN_REMOVED],error=true,
+                action=strings[UiText.UI_TRY_AGAIN],onAction={application.collections.refreshLibrary();application.collections.refreshHistory()})
         }
         if (continued.isNotEmpty()) item(key="continue") {
             HomeSection(strings[UiText.CONTINUE_READING],strings[UiText.VIEW_HISTORY],{application.navigate(Destination.HISTORY)}) {
@@ -93,8 +101,8 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
             }
         }
         if (preferences.discovery.homeEnabled && recommendations.isNotEmpty()) item(key="discovery-recommendations") {
-            HomeSection(if (personalized) DiscoveryStrings.RECOMMENDED else DiscoveryStrings.GENERAL,DiscoveryStrings.VIEW_SEARCH,{application.navigate(Destination.SEARCH)}) {
-                Text(if (personalized) DiscoveryStrings.PERSONALIZED_EXPLANATION else DiscoveryStrings.GENERAL_EXPLANATION,style=MaterialTheme.typography.caption)
+            HomeSection(if (personalized) strings[UiText.UI_RECOMMENDED_FOR_YOU] else strings[UiText.UI_EXPLORE_THE_CATALOGS],strings[UiText.UI_VIEW_SEARCH],{application.navigate(Destination.SEARCH)}) {
+                Text(if (personalized) strings[UiText.UI_BASED_ON_SELECTED_INTERESTS_AND_KNOWN_SUBJECTS_IN_LOCAL_READING_ACTIVITY] else strings[UiText.UI_GENERAL_CATALOG_DISCOVERY_NOT_PERSONALIZED],style=MaterialTheme.typography.caption)
                 LazyRow(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     items(recommendations,key={it.publication.id.resultKey()},contentType={"publication"}) { entry -> DiscoveryTile(entry,application,Modifier.width(144.dp)) { onlineDetail=entry } }
                 }
@@ -111,27 +119,27 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
         }
         if (preferences.discovery.homeEnabled) {
             online.rows.filter { it.genre != null }.forEach { row -> item(key="discovery-${row.key}") {
-                HomeSection(row.title,DiscoveryStrings.VIEW_ALL,{application.discovery.browse(row.genre!!);application.navigate(Destination.SEARCH)}) {
+                HomeSection(strings.status(row.title),strings[UiText.UI_VIEW_ALL],{application.discovery.browse(row.genre!!);application.navigate(Destination.SEARCH)}) {
                     LazyRow(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         items(row.entries,key={it.publication.id.resultKey()},contentType={"publication"}) { entry -> DiscoveryTile(entry,application,Modifier.width(144.dp)) {onlineDetail=entry} }
                     }
                 }
             } }
-            if (online.loading) item(key="discovery-loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            if (online.failed) item(key="discovery-error") { FeedbackCard(DiscoveryStrings.HOME_UNAVAILABLE,DiscoveryStrings.HOME_RETRY_EXPLANATION,
-                action=DiscoveryStrings.RETRY_DISCOVERY,onAction={application.homeDiscovery.refresh(preferences.discovery,true)}) }
-            item(key="discovery-notice") { Text(DiscoveryStrings.RIGHTS,style=MaterialTheme.typography.caption) }
+            if (online.loading) item(key="discovery-loading") { LinearProgressIndicator(Modifier.fillMaxWidth().testTag("home-discovery-loading")) }
+            if (online.failed) item(key="discovery-error") { FeedbackCard(strings[UiText.UI_ONLINE_DISCOVERY_UNAVAILABLE],strings[UiText.UI_LOCAL_READING_IS_READY_RETRY_CATALOGS_WHEN_CONNECTED],
+                action=strings[UiText.UI_RETRY_DISCOVERY],onAction={application.homeDiscovery.refresh(preferences.discovery,true)}) }
+            item(key="discovery-notice") { Text(strings[UiText.UI_CATALOG_PRESENCE_IS_NOT_PERMISSION_TO_DOWNLOAD_OR_PROOF_OF_RIGHTS_IN_YOUR_COUNTR],style=MaterialTheme.typography.caption) }
         } else if (preferences.loaded && settings != null) item(key="discovery-opt-in") {
             Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                Text(DiscoveryStrings.OPT_IN_TITLE,style=MaterialTheme.typography.subtitle1)
-                Text(DiscoveryStrings.OPT_IN_EXPLANATION,style=MaterialTheme.typography.body2)
-                TextButton({settings.changeDiscovery(preferences.discovery.copy(homeEnabled=true))},Modifier.heightIn(min=48.dp)) {Text(DiscoveryStrings.OPT_IN_ACTION)}
+                Text(strings[UiText.UI_EXPLORE_BEYOND_YOUR_LIBRARY],style=MaterialTheme.typography.subtitle1)
+                Text(strings[UiText.UI_ONLINE_CATALOGS_ARE_OPTIONAL_YOUR_LOCAL_HOME_WORKS_OFFLINE],style=MaterialTheme.typography.body2)
+                TextButton({settings.changeDiscovery(preferences.discovery.copy(homeEnabled=true))},Modifier.heightIn(min=48.dp)) {Text(strings[UiText.UI_EXPLORE_ONLINE_CATALOGS])}
             }
         }
         if (library.entries.isEmpty() && history.entries.isEmpty() && !library.loading && !history.loading && !library.failed && !history.failed) item(key="empty") {
             Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                Text("Your next read starts here",style=MaterialTheme.typography.h6)
-                Text("Import a local EPUB, comic, PDF or text file. Your books and reading positions stay on this device.")
+                Text(strings[UiText.UI_YOUR_NEXT_READ_STARTS_HERE],style=MaterialTheme.typography.h6)
+                Text(strings[UiText.UI_IMPORT_A_LOCAL_EPUB_COMIC_PDF_OR_TEXT_FILE_YOUR_BOOKS_AND_READING_POSITIONS_STAY])
                 if (importAction!=null) Button(importAction,Modifier.heightIn(min=48.dp)) { Text(strings[UiText.IMPORT_FILE]) }
             }
         }
@@ -148,14 +156,14 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
         PublicationDetails(publication.displayPublication(),application.sourceName(publication.id.sourceId),
             formats=record?.let {listOf(it.id.format)}?:format?.let {listOf(it)}?:emptyList(),progress=record,close={detail=null},
             descriptions=application.descriptions, cover={DetailsCover(publication.displayPublication(),application.covers)}) {
-            Button({detail=null;application.openSaved(publication)},Modifier.heightIn(min=48.dp)) { Text(readingAction(record)) }
+            Button({detail=null;application.openSaved(publication)},Modifier.heightIn(min=48.dp)) { Text(strings.status(readingAction(record))) }
             OutlinedButton({ if(action.inLibrary==true) confirmRemoval=true else application.collections.toggleCatalogLibrary(publication.displayPublication()) },
-                Modifier.heightIn(min=48.dp),enabled=action.enabled) { Text(action.label) }
-            error?.let {Text(it,color=MaterialTheme.colors.error)}
+                Modifier.heightIn(min=48.dp),enabled=action.enabled) { Text(strings.status(action.label)) }
+            error?.let {Text(strings.status(it),color=MaterialTheme.colors.error)}
         }
-        if (confirmRemoval) AlertDialog(onDismissRequest={confirmRemoval=false},title={Text("Remove from Library?")},
-            text={Text("Only Library membership is removed. Files, History and saved reading positions are kept.")},
-            confirmButton={TextButton({confirmRemoval=false;application.collections.removeLibrary(publication.id);detail=null},Modifier.heightIn(min=48.dp),enabled=action.enabled){Text("Remove")}},
+        if (confirmRemoval) AlertDialog(onDismissRequest={confirmRemoval=false},title={Text(strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM])},
+            text={Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_FILES_HISTORY_AND_SAVED_READING_POSITIONS_ARE])},
+            confirmButton={TextButton({confirmRemoval=false;application.collections.removeLibrary(publication.id);detail=null},Modifier.heightIn(min=48.dp),enabled=action.enabled){Text(strings[UiText.UI_REMOVE])}},
             dismissButton={TextButton({confirmRemoval=false},Modifier.heightIn(min=48.dp)){Text(strings[UiText.CANCEL])}})
     }
 }
