@@ -2,11 +2,13 @@
 
 Base: `6a95580a60f1119770c035b380a8b89af9ff4746` (integración de PR #32).
 Trabajo de PR #33, rama `feat/complete-ui-localization`. **Draft; no fusionar sin
-aceptación del usuario.** **Bloqueante pendiente:** el cierre al abandonar Inicio durante el indicador
-inferior de descubrimiento en el realme C55 sigue sin causa confirmada. El último
-informe físico ya no reproduce el cambio inmediato de pestaña al arrancar; véase
-el seguimiento de pruebas físicas al final. Este documento distingue comprobaciones automáticas,
-compilación y validación física pendiente.
+aceptación del usuario.** **Bloqueante físico pendiente:** el journal del realme C55
+identifica ahora la cancelación de Gutenberg/Ktor al abandonar Inicio como ruta del
+crash. Se reproduce y corrige un defecto de desconexión en el hilo UI; la excepción
+terminal no estaba incluida en el journal anterior y la aceptación en el teléfono
+sigue pendiente. El cambio inmediato de pestaña al arrancar ya no falla según el
+último informe físico. Véase el seguimiento al final; se distinguen pruebas host,
+compilación y validación física.
 
 ## Arquitectura y selección de idioma
 
@@ -449,7 +451,7 @@ Son renders headless Linux; no capturas físicas Android ni una medida de FPS.
 
 ### Verificación del seguimiento
 
-Ejecución final del seguimiento: **20 de octubre de 2026**, Linux x86_64,
+Ejecución del seguimiento anterior al journal físico de `55d694d`: **20 de octubre de 2026**, Linux x86_64,
 JDK 21, Gradle 9.7.1 y SDK 37. Las cuatro suites se forzaron a ejecutar de nuevo;
 no se omite ni debilita ningún test existente.
 
@@ -516,3 +518,23 @@ en español, inglés y catalán (410 cadenas y dos plurales por idioma). No cont
 texto de publicaciones ni datos del usuario y no se muestra en release/Desktop.
 Se mantienen la navegación catalana, el catálogo real de modelos y la separación
 idioma de interfaz/contenido. No se declara resuelto el cierre por pasar pruebas host.
+
+### Seguimiento del journal físico: Gutenberg
+
+El informe aportado desde el C55 identifica una excepción de completion handlers
+al cancelar Gutenberg durante `HOME_PAUSED`. El último wrapper físico todavía no
+está visible en el log de tres causas. Dos regresiones con el motor Android Ktor
+real y una conexión sintética reprodujeron cancelación/cierre en UI; la corrección
+lleva esas operaciones a IO y conserva la navegación. El formateador captura más
+causas **sin superar las 51 líneas anteriores** ni registrar datos privados.
+
+Evidencia, alcance, resultados y pasos para limpiar el informe antiguo antes de
+repetir la prueba: [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md#pr-33--traza-del-c55-cancelación-de-gutenberg).
+No se cambian los 410 textos, idiomas, recursos empaquetados, modelos, lectores,
+progreso, firma ni ID. No se declara resuelto físicamente hasta la nueva prueba.
+
+La verificación posterior a esta corrección ejecuta **3.024 tests**, sin fallos,
+errores ni omisiones: Desktop 1.584, Android-host 1.322 y Core 59 + 59. Android
+debug, Desktop y los seis recursos de idioma empaquetados compilan/verifican
+correctamente. Véase el detalle de ejecución y pruebas rojas/verdes en el apartado
+anterior de rendimiento; la aceptación física sigue pendiente.

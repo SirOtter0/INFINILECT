@@ -22,12 +22,13 @@ class DiscoveryProviderTest {
         val last=ArchiveMetadata.search("""{"response":{"numFound":21,"docs":[]}}""".toByteArray(),query,3)
         assertNull(last.nextPageToken)
     }
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test fun slowThumbnailDoesNotHoldTheCatalogMetadataLock()=runTest {
+    @Test fun slowThumbnailDoesNotHoldTheCatalogMetadataLock()=runTest { withContext(Dispatchers.Default) {
         val coverStarted=CompletableDeferred<Unit>()
         val queryStarted=CompletableDeferred<Unit>()
         val source=GutenbergSource(MockEngine(MockEngineConfig().apply {
-            dispatcher=StandardTestDispatcher(testScheduler)
+            // The source owns IO requests. Keep its transport and timeout on a real
+            // dispatcher too; a virtual timeout can otherwise outrun the IO worker.
+            dispatcher=Dispatchers.Default
             addHandler { request ->
                 if(request.url.host=="www.gutenberg.org") { coverStarted.complete(Unit); awaitCancellation() }
                 else {
@@ -40,15 +41,16 @@ class DiscoveryProviderTest {
         }))
         try {
             source.discover(DiscoveryRequest("books"))
-            val cover=backgroundScope.launch { source.coverThumbnail(PublicationId(source.id,"84")) }
-            runCurrent(); coverStarted.await()
-            val query=backgroundScope.async { source.discover(DiscoveryRequest("Cervantes")) }
-            runCurrent()
-            assertTrue(queryStarted.isCompleted,"A pending image must not block catalog metadata")
-            cover.cancel();runCurrent()
-            assertEquals(1,query.await().entries.size)
-        } finally {source.close()}
-    }
+            val cover=launch { source.coverThumbnail(PublicationId(source.id,"84")) }
+            try {
+                coverStarted.await()
+                val page=withTimeout(5_000) { source.discover(DiscoveryRequest("Cervantes")) }
+                assertTrue(queryStarted.isCompleted,"A pending image must not block catalog metadata")
+                assertEquals(1,page.entries.size)
+                assertTrue(cover.isActive,"The metadata request must finish before the image is cancelled")
+            } finally {cover.cancelAndJoin()}
+        } finally {source.close();source.awaitClosed()}
+    } }
 
     @Test fun supportedGenreAliasesRetainRightsSubsetAndPageTokenBinding()=runTest {
         val queries=mutableListOf<String>()

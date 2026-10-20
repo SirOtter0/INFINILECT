@@ -993,3 +993,185 @@ Comando de la matriz (con JDK21/SDK y cache Skiko escribible):
 No se presenta un APK compilado, una excepción sintética del journal o un test
 host como una validación física del C55. **La PR #33 permanece Draft y bloqueada
 para fusión hasta que el usuario vuelva a comprobar el escenario.**
+
+## PR #33 — Traza del C55: cancelación de Gutenberg
+
+### Evidencia recibida y lo que todavía falta
+
+Tras instalar `55d694d`, el usuario copió el journal del realme C55. El informe
+contiene `HOME_PAUSED` → `REQUEST_CANCELLED` y una excepción no capturada:
+
+```text
+uncaught depth=0 class=kotlinx.coroutines.CompletionHandlerException
+at org.infinilect.app.gutenberg.GutenbergSource.operation:55
+uncaught depth=1 class=kotlinx.coroutines.CompletionHandlerException
+at io.ktor.client.engine.UtilsKt$attachToUserJob$cleanupHandler$1.invoke:110
+uncaught depth=2 class=kotlinx.coroutines.CompletionHandlerException
+```
+
+En el siguiente arranque aparecen salidas `reason=4` (crash Java/Kotlin). Otros
+registros `reason=10` indican salida solicitada por usuario y no prueban un segundo
+bug. El mismo informe termina con otro recorrido que sí llega a `NAV_SETTINGS` y
+`HOME_DISPOSED`: el fallo depende de la intercalación; no falla toda cancelación.
+
+**Confirmado físicamente:** la ruta de fallo incluye cancelación/limpieza de Ktor
+originada en `GutenbergSource.operation`, antes de terminar la navegación. No es ya
+una atribución genérica al scroll. **No confirmado:** la excepción terminal debajo
+de las tres `CompletionHandlerException`, porque el primer formateador truncaba
+la cadena a tres causas. No se afirma haber observado `NetworkOnMainThreadException`
+en el teléfono ni una causa nativa/OOM específica.
+
+### Defecto reproducible de afinidad de hilo
+
+Se contrastaron los sources oficiales del **mismo Ktor 3.6.0 que utiliza la app**:
+
+- [ktor-client-android-jvm 3.6.0 sources](https://repo.maven.apache.org/maven2/io/ktor/ktor-client-android-jvm/3.6.0/ktor-client-android-jvm-3.6.0-sources.jar),
+  `AndroidClientEngine.kt::execute` y
+  `AndroidURLConnectionUtils.kt::disconnectOnCancellation`.
+- [ktor-client-core-jvm 3.6.0 sources](https://repo.maven.apache.org/maven2/io/ktor/ktor-client-core-jvm/3.6.0/ktor-client-core-jvm-3.6.0-sources.jar),
+  `engine/Utils.kt::attachToUserJob`.
+
+El motor Android registra `disconnect()` en un handler de cancelación síncrono.
+Cambiar el dispatcher del motor no basta: el callback puede ejecutarse en el hilo
+que invoca `Job.cancel`, aunque el HTTP se ejecutase en IO. En `55d694d`, la
+operación Gutenberg heredaba el dispatcher del llamante y su `finally` hacía
+`request.cancel()` directamente; la salida desde Compose puede iniciar esto en
+Main. `close()` también cancelaba el lifetime y cerraba el transporte en el hilo
+llamante. El cierre de una conexión puede efectuar IO. Ese es un defecto real de
+hilo, compatible con la traza recibida, aun sin conocer su última causa física.
+
+El camino de producción conserva ese contexto: `ApplicationSources.applicationSession`
+crea el scope en `Dispatchers.Main.immediate` por defecto (Android no lo sustituye);
+`ApplicationSession` y `DiscoveryCatalog` heredan el dispatcher. La liberación del
+último borrower cancela su deferred; en la implementación anterior el `finally`
+de Gutenberg podía ejecutar entonces la desconexión síncrona en Main. Los scopes
+y límites del catálogo no necesitan cambiar para corregir esa frontera de la fuente.
+
+### Regresión roja/verde con el motor Android real
+
+`androidHostTest/.../gutenberg/GutenbergAndroidCancellationTest.kt` usa el motor
+Android **real**, sus jobs y sus handlers Ktor reales. La única parte sintética es
+la `HttpsURLConnection`: se mantiene pendiente mediante barreras y su guard falla
+si se desconecta en el hilo UI equivalente del test. Es un test JVM/host, **no
+StrictMode Android físico**. No utiliza `MockEngine` para esta ruta.
+
+El transporte del fixture reescribe internamente la petición hacia un protocolo
+JVM de prueba único, con una URLConnection original. Usa APIs públicas de Java;
+no registra handlers para HTTP/HTTPS ni hace solicitudes de Internet. La reescritura
+vive exclusivamente en test, después de la construcción normal de URLs de la fuente;
+ninguna política de URL/TLS de producción se modifica.
+
+Antes del cambio de producción:
+
+- Cancelar una petición activa desde UI: **FAIL**, la conexión se desconecta en UI.
+- Cerrar la fuente con petición activa desde UI: **FAIL**, mismo defecto.
+
+Después del cambio se conservan esas dos aserciones y se añaden:
+
+- Reintento explícito con Root OPDS2 + Search válidos tras cancelar.
+- Desconexión retenida: una tarea UI sigue respondiendo **antes** de liberar el
+  cierre; el job cancelado espera su cleanup sin bloquear navegación.
+- `ApplicationSession`/`HomeDiscovery` reales: cuatro destinos y regreso con retry,
+  resultados anteriores descartados, sin excepciones de completion handlers.
+- Cancelación de una miniatura realmente anunciada por el catálogo, sin decodificar
+  un JPEG ni adquirir libros para preparar el test.
+
+Los tests de App/scroll de la fase anterior usaban fuentes sintéticas y no
+recorrían esta implementación del transporte Android. Se conservan íntegros;
+los nuevos tests cubren ese hueco concreto. El guard sintético reproduce el defecto
+de hilo, pero no demuestra que su clase sea la última excepción del C55.
+
+### Corrección limitada a la fuente Gutenberg
+
+En `jvmSharedMain/.../gutenberg/GutenbergSource.kt`:
+
+1. El child de cada operación conserva propiedad del lifetime de la fuente, pero
+   ejecuta su control HTTP y sus fallos en `Dispatchers.IO`, no en Main heredado.
+2. Si el llamante deja de esperar y la tarea no ha terminado, su `finally` cancela
+   **y une** la tarea en `NonCancellable + Dispatchers.IO`. El resultado no puede
+   regresar a una generación de Home abandonada; se mantienen sus fences.
+3. `close()` rechaza nuevas operaciones inmediatamente con el CAS existente y
+   vacía sus referencias de miniaturas. Programa **un solo** cleanup independiente
+   en IO: cancelar lifetime, cerrar cliente/motor, unir los hijos. `awaitClosed`
+   permite verificar terminación y propagar errores en tests. No se tragan errores
+   fatales; no se convierte un fallo de cleanup en éxito.
+
+No hay espera fija, navegación deshabilitada, ocultación del indicador, reintento
+silencioso ni sustitución del proveedor. Se conservan el mutex del catálogo, el
+permiso único de miniaturas, límites de respuesta, timeouts, OPDS2, validación de
+URLs, ausencia de redirects y restricciones catalog-only. No cambian TLS, trust,
+permisos, firma, ID, adquisición, lectores, modelos, localización ni límites de caché.
+Esta corrección no se presenta como una auditoría de todos los motores/fuentes;
+si una nueva traza señala otra ruta, se investigará con esa evidencia.
+El cleanup sigue esperando la liberación del transporte, pero en IO. Al regresar,
+una petición nueva puede esperar el mutex mientras termina la anterior; no se
+elimina esa serialización ni se crea una cola adicional para aparentar rapidez.
+
+### La causa profunda ya no queda oculta por wrappers
+
+`SanitizedCrashDiagnostic` ahora inspecciona hasta **12 causas**, deteniéndose en
+ciclos de identidad. Mantiene **el máximo anterior de 51 líneas**: hasta ocho
+frames de la primera causa, dos por wrapper intermedio y hasta 16 para la última
+causa disponible, ajustados al presupuesto restante. El journal v1 acepta los
+nuevos índices 0–11 sin migrar datos ni crear otro almacenamiento.
+
+No se añaden mensajes de Throwable, filenames/rutas, nombres de hilo, texto de
+libros, búsquedas o datos del perfil. Continúa delegando el mismo error al handler
+anterior incluso si falla la salida de diagnóstico. Tests nuevos fallan con el
+formateador anterior (raíz profunda perdida y ciclo repetido), y comprueban la raíz,
+privacidad, persistencia después de reabrir y los mismos límites 51/128/40.000.
+
+### Verificación y aceptación física
+
+| Comprobación | Resultado actual |
+| --- | --- |
+| Desktop completo | 1.584 / 1.584 |
+| Android-host completo | 1.322 / 1.322 |
+| Core JVM / Core Android-host | 59 / 59 + 59 / 59 |
+| Total | **3.024 aprobadas, cero fallos, errores u omisiones** |
+| Enfocados Gutenberg + diagnósticos | 48 / 48 |
+| Enfocados finales catálogo + motor Android real | 22 / 22 (cinco compartidos con el grupo anterior) |
+| Android debug / Desktop / recursos empaquetados | PASS |
+
+Ejecución forzada de las cuatro suites, Linux/JDK21/Gradle9.7.1/SDK37, 20/10/2026:
+`BUILD SUCCESSFUL in 10m 25s`. El harness usa el mismo binario Skiko verificado
+en caché externa para evitar el home de solo lectura; no cambia el runtime de la app.
+Son pruebas JVM/host/headless, no StrictMode ni mediciones de fotogramas en Android.
+
+Tasks ejecutados:
+
+```text
+:core:jvmTest :core:testAndroidHostTest
+:app:desktopTest :app:testAndroidHostTest
+:androidApp:assembleDebug :androidApp:verifyDebugLanguageResources
+:desktopApp:compileKotlin
+```
+
+El primer pase completo reveló una prueba que mezclaba un reloj virtual de
+`HttpTimeout` con el worker IO real. Se corrige su planificación con dispatcher real
+y barreras; mantiene la comprobación de metadata independiente y añade comprobar
+que la portada sigue pendiente hasta después de completar el catálogo. No se
+cambian timeouts de producción ni se desactiva ninguna aserción. La suite completa
+se repitió después del ajuste. Recursos: 410 cadenas y dos plurales en cada idioma;
+los seis CVR empaquetados se verifican contra los generados. `git diff --check` e
+higiene del diff: PASS; sin dependencias, claves, firmas o binarios versionados.
+
+
+Checklist C55:
+
+1. Instalar la APK firmada de esta revisión sin desinstalar ni borrar datos.
+2. En Ajustes, **desactivar y volver a activar Registrar diagnóstico local** para
+   limpiar el stack anterior. El journal conserva intencionadamente el último
+   crash; sin este paso podría confundirse la traza antigua con una nueva.
+3. Inicio → final → línea activa → cada una de las cuatro pestañas; repetir diez
+   veces con regreso inmediato, caché caliente/fría y red lenta/offline cuando sea
+   posible. La navegación y la carga deben continuar disponibles.
+4. Si vuelve a cerrarse, reabrir → Ver y copiar diagnóstico → Copiar y pegar aquí,
+   incluyendo el nombre de APK y destino. La nueva cadena permite ver más allá
+   de los tres wrappers iniciales. No garantiza stack nativo ni diagnóstico OOM.
+5. Revisar fuentes IA/Gutenberg, búsqueda/retry, portadas, biblioteca/historial y
+   lectores/progreso/traducción. Desactivar el diagnóstico después.
+
+**Hay una corrección de hilo reproducida por regresión; la última causa del crash
+físico y la aceptación del C55 siguen pendientes. PR #33 permanece Draft, sin merge
+ni release.**

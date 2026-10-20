@@ -15,7 +15,7 @@ internal class LocalDiagnosticJournal(private val directory: File, private val n
     companion object {
         const val MAX_LINES = 128
         const val MAX_BYTES = 40_000L
-        private val linePattern = Regex("(?:t=[0-9]{1,18} code=[A-Z_]{1,40} g=[0-9]{1,18} n=[0-9]{1,10}|uncaught depth=[0-2] class=[A-Za-z0-9_.$]{1,160}|at [A-Za-z0-9_.$]{1,160}\\.[A-Za-z0-9_<>$-]{1,100}:-?[0-9]{1,10}|exit reason=[0-9]{1,3} status=-?[0-9]{1,10} pssKb=[0-9]{1,15} rssKb=[0-9]{1,15})")
+        private val linePattern = Regex("(?:t=[0-9]{1,18} code=[A-Z_]{1,40} g=[0-9]{1,18} n=[0-9]{1,10}|uncaught depth=(?:[0-9]|1[01]) class=[A-Za-z0-9_.$]{1,160}|at [A-Za-z0-9_.$]{1,160}\\.[A-Za-z0-9_<>$-]{1,100}:-?[0-9]{1,10}|exit reason=[0-9]{1,3} status=-?[0-9]{1,10} pssKb=[0-9]{1,15} rssKb=[0-9]{1,15})")
     }
     private val memory = Any()
     private val writes = Any()

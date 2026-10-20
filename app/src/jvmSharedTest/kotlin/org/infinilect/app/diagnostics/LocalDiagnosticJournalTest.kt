@@ -96,4 +96,17 @@ class LocalDiagnosticJournalTest {
             assertFalse("COVER_STARTED" in journal.summary())
         } finally { pool.shutdownNow() }
     }
+    @Test fun deepestCauseSurvivesFormatFilterStorageAndRestartWithoutRaisingBudgets() = fixture { dir ->
+        val journal = LocalDiagnosticJournal(dir); journal.enable()
+        var error: Throwable = java.io.IOException("private leaf")
+        repeat(10) { error = IllegalStateException("private wrapper", error) }
+        SanitizedCrashDiagnostic({ _, _ -> journal.flush() }, journal::crashLine)
+            .uncaughtException(Thread.currentThread(), error)
+        val reopened = LocalDiagnosticJournal(dir); reopened.restore()
+        assertTrue("depth=10 class=java.io.IOException" in reopened.summary())
+        assertFalse("private" in reopened.summary())
+        assertTrue(reopened.summary().lines().size <= 52)
+        assertTrue(File(dir, "events.txt").length() <= LocalDiagnosticJournal.MAX_BYTES)
+    }
+
 }

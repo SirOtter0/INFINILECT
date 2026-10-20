@@ -39,6 +39,7 @@ internal class GutenbergSource(
     private val imageGate = Semaphore(1)
     private val closed = AtomicBoolean()
     private val lifetime = SupervisorJob()
+    private val shutdown = CompletableDeferred<Unit>()
     private val client = HttpClient(engine) {
         followRedirects = false; expectSuccess = false
         install(HttpTimeout) { connectTimeoutMillis = 5_000; requestTimeoutMillis = 15_000; socketTimeoutMillis = 15_000 }
@@ -48,11 +49,17 @@ internal class GutenbergSource(
         check(!closed.get()) { "Gutenberg source is closed." }
         // Each caller owns its child; source close also cancels all active requests.
         currentCoroutineContext().ensureActive()
-        val request = CoroutineScope(currentCoroutineContext() + lifetime).async {
+        // Android HttpURLConnection installs synchronous cancellation handlers. Both request
+        // failures and explicit cleanup must run on IO, not the UI thread that awaited us.
+        val request = CoroutineScope(currentCoroutineContext() + lifetime + Dispatchers.IO).async {
             if (serializedCatalog) requestLock.withLock { check(!closed.get()); userFacing(block) }
             else imageGate.withPermit { check(!closed.get()); userFacing(block) }
         }
-        try { return request.await() } finally { request.cancel() }
+        try { return request.await() } finally {
+            if (!request.isCompleted) withContext(NonCancellable + Dispatchers.IO) {
+                request.cancelAndJoin()
+            }
+        }
     }
     override suspend fun search(query: String, pageToken: String?): SearchPage = operation { catalog.search(query, pageToken) }
     override suspend fun discover(request: DiscoveryRequest, token: String?): DiscoveryPage = operation {
@@ -187,6 +194,14 @@ internal class GutenbergSource(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         synchronized(thumbnailLock) { thumbnails.clear() }
-        lifetime.cancel(); client.close(); engine.close()
+        // One close task per source (CAS above), independent of the disappearing UI job.
+        // Close rejects new requests immediately; cancellation/transport release happen on IO.
+        CoroutineScope(Dispatchers.IO).launch {
+            try { lifetime.cancel() } finally { try { client.close() } finally { engine.close() } }
+            lifetime.join()
+        }.invokeOnCompletion { failure ->
+            if (failure == null) shutdown.complete(Unit) else shutdown.completeExceptionally(failure)
+        }
     }
+    internal suspend fun awaitClosed() { shutdown.await() }
 }
