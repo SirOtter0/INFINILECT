@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.infinilect.app.media.*
+import org.infinilect.app.diagnostics.*
 import org.infinilect.core.*
 
 internal object CoverPolicy {
@@ -36,6 +37,7 @@ internal class PublicationCovers(
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val convert: suspend (Raster) -> ImageBitmap = ::rasterImageBitmap,
 ) {
+    internal var technicalDiagnostics: TechnicalDiagnostics? = null
     internal class Lease internal constructor(internal val id: PublicationId, internal val entry: Entry?) {
         val state: StateFlow<CoverState> = entry?.state ?: MutableStateFlow(CoverState())
     }
@@ -62,6 +64,7 @@ internal class PublicationCovers(
                             val work = async {
                                 try {
                                     withTimeout(10_000) {
+                                        technicalDiagnostics.event(TechnicalEvent.COVER_STARTED)
                                         val artwork = load(id)
                                         val raster = artwork?.raster
                                         require(raster == null || raster.width <= CoverPolicy.WIDTH && raster.height <= CoverPolicy.HEIGHT)
@@ -70,19 +73,20 @@ internal class PublicationCovers(
                                         CoverState(artwork?.format, image)
                                     }
                                 } catch (error: CancellationException) { throw error }
-                                catch (_: Exception) { CoverState() }
+                                catch (_: Exception) { technicalDiagnostics.event(TechnicalEvent.COVER_FAILED); CoverState() }
                             }
                             entry.active = work
                             Triple(id, entry, work)
                         }
                     } ?: break
                     val result = try { next.third.await() }
-                    catch (_: CancellationException) { currentCoroutineContext().ensureActive(); null }
+                    catch (_: CancellationException) { technicalDiagnostics.event(TechnicalEvent.COVER_CANCELLED); currentCoroutineContext().ensureActive(); null }
                     lock.withLock {
                         if (entries[next.first] === next.second && next.second.active === next.third) {
                             next.second.active = null
                             // Timeout is a bounded negative result; cancellation of an unused lease is retryable.
                             if (result != null || next.second.references > 0) {
+                                technicalDiagnostics.event(if (result?.image != null) TechnicalEvent.COVER_READY else TechnicalEvent.COVER_FALLBACK)
                                 next.second.ready = true
                                 next.second.state.value = result ?: CoverState()
                             }
@@ -113,13 +117,13 @@ internal class PublicationCovers(
         val entry = lease.entry ?: return@withLock
         check(entry.references > 0)
         entry.references--
-        if (entry.references == 0) { entry.active?.cancel(); entry.active = null }
+        if (entry.references == 0) { technicalDiagnostics.event(TechnicalEvent.COVER_RELEASED); entry.active?.cancel(); entry.active = null }
     }
     suspend fun invalidate(id: PublicationId) = lock.withLock {
         entries.remove(id)?.let { it.active?.cancel(); it.state.value = CoverState() }
         resident.value = entries.toMap()
     }
     internal suspend fun retainedEntries() = lock.withLock { entries.size }
-    fun close() { scope.cancel(); signal.close() }
+    fun close() { technicalDiagnostics.event(TechnicalEvent.COVERS_CLOSED); scope.cancel(); signal.close() }
     suspend fun awaitClosed() { worker.join() }
 }

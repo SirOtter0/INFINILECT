@@ -8,6 +8,13 @@ import org.jetbrains.compose.resources.StringResource
 
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
+    DEBUG_DIAGNOSTICS(Res.string.debug_diagnostics, "Development diagnostics"),
+    DEBUG_DIAGNOSTICS_NOTICE(Res.string.debug_diagnostics_notice, "Optional local technical log for investigating crashes. No book, search or profile data. Disabling deletes the log. Available only in development builds."),
+    DEBUG_DIAGNOSTICS_ENABLE(Res.string.debug_diagnostics_enable, "Record local diagnostics"),
+    DEBUG_DIAGNOSTICS_ERROR(Res.string.debug_diagnostics_error, "The diagnostic log could not be saved. Check available storage and try again."),
+    DEBUG_DIAGNOSTICS_VIEW(Res.string.debug_diagnostics_view, "View and copy diagnostic log"),
+    DEBUG_DIAGNOSTICS_REPORT_NOTICE(Res.string.debug_diagnostics_report_notice, "After a crash, reopen the app and copy this report. A missing Java exception does not rule out a native crash or system termination. Technical event codes are not translated."),
+    DEBUG_DIAGNOSTICS_REFRESH(Res.string.debug_diagnostics_refresh, "Refresh report"),
     INTERFACE_LOCALE_TAG(Res.string.interface_locale_tag, "en"),
     HOME(Res.string.home, "Home"),
     LIBRARY(Res.string.library, "Library"),

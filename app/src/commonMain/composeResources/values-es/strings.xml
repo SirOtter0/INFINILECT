@@ -403,4 +403,11 @@
     <string name="image_alt_fallback">[Imagen: %1$s]</string>
     <string name="image_not_rendered">[Imagen no representada]</string>
     <string name="direct_model_limits">Pares directos disponibles: inglés ↔ español e inglés ↔ catalán. Español ↔ catalán no está disponible; la traducción mediante inglés no está habilitada.</string>
+    <string name="debug_diagnostics">Diagnóstico de desarrollo</string>
+    <string name="debug_diagnostics_notice">Registro técnico local opcional para investigar cierres. Sin datos de libros, búsquedas ni perfil. Al desactivarlo se borra el registro. Solo en compilaciones de desarrollo.</string>
+    <string name="debug_diagnostics_enable">Registrar diagnóstico local</string>
+    <string name="debug_diagnostics_error">No se ha podido guardar el diagnóstico. Comprueba el espacio disponible y vuelve a intentarlo.</string>
+    <string name="debug_diagnostics_view">Ver y copiar diagnóstico</string>
+    <string name="debug_diagnostics_report_notice">Tras un cierre, vuelve a abrir la aplicación y copia este informe. La ausencia de una excepción Java no descarta un fallo nativo o un cierre del sistema. Los códigos técnicos no se traducen.</string>
+    <string name="debug_diagnostics_refresh">Actualizar informe</string>
 </resources>

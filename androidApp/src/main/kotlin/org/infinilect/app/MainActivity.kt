@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModelProvider
 
 class MainActivity : ComponentActivity() {
     private lateinit var sources: ApplicationSources
+    private var localDiagnostics: org.infinilect.app.diagnostics.AndroidLocalDiagnostics? = null
     private lateinit var picker: AndroidDocumentPicker
     private var frameDiagnostics: AutoCloseable? = null
 
@@ -32,10 +33,12 @@ class MainActivity : ComponentActivity() {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 require(modelClass == ReaderRuntime::class.java)
-                return ReaderRuntime(createApplicationSources(applicationContext)) as T
+                return ReaderRuntime(createApplicationSources(applicationContext), applicationContext) as T
             }
         }
-        sources = ViewModelProvider(this, factory)[ReaderRuntime::class.java].sources
+        val runtime = ViewModelProvider(this, factory)[ReaderRuntime::class.java]
+        sources = runtime.sources
+        localDiagnostics = runtime.localDiagnostics
         picker = AndroidDocumentPicker(this)
         setContent {
             var appearance by remember { mutableStateOf<ReaderAppearance?>(null) }
@@ -58,7 +61,8 @@ class MainActivity : ComponentActivity() {
             Box(Modifier.fillMaxSize().background(systemAppearance.background).safeDrawingPadding().imePadding()) {
                 App(sources, localFilePicker = picker, backHandler = { enabled, onBack ->
                     BackHandler(enabled = enabled, onBack = onBack)
-                }, readerAppearance = { appearance = it }, applicationAppearance = { appAppearance = it })
+                }, readerAppearance = { appearance = it }, applicationAppearance = { appAppearance = it },
+                    developmentSettings = { localDiagnostics?.let { org.infinilect.app.diagnostics.LocalDiagnosticsControls(it) } })
             }
         }
     }
@@ -71,10 +75,12 @@ class MainActivity : ComponentActivity() {
             val refreshRate = if (android.os.Build.VERSION.SDK_INT >= 30) display?.refreshRate ?: 60f else windowManager.defaultDisplay.refreshRate
             frameDiagnostics = org.infinilect.app.diagnostics.startFrameDiagnostics(window, refreshRate)
         }
+        localDiagnostics?.foreground()
         if (::sources.isInitialized) sources.resumeDiscovery()
     }
 
     override fun onStop() {
+        localDiagnostics?.background()
         frameDiagnostics?.close(); frameDiagnostics = null
         if (::sources.isInitialized) { sources.pauseDiscovery(); sources.flushProgress() }
         super.onStop()
@@ -85,10 +91,13 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private class ReaderRuntime(val sources: ApplicationSources) : ViewModel() {
+    private class ReaderRuntime(val sources: ApplicationSources, context: android.content.Context) : ViewModel() {
+        val localDiagnostics = if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+            org.infinilect.app.diagnostics.AndroidLocalDiagnostics(context, sources) else null
         override fun onCleared() {
             // Real finish releases readers before their providers; rotation only replaces UI.
             sources.close()
+            localDiagnostics?.close()
             super.onCleared()
         }
     }

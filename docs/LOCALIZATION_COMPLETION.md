@@ -2,9 +2,10 @@
 
 Base: `6a95580a60f1119770c035b380a8b89af9ff4746` (integración de PR #32).
 Trabajo de PR #33, rama `feat/complete-ui-localization`. **Draft; no fusionar sin
-aceptación del usuario.** **Bloqueante pendiente:** el cierre de arranque comunicado
-en el realme C55 no tiene aún una causa confirmada; véase el seguimiento de pruebas
-físicas al final. Este documento distingue comprobaciones automáticas,
+aceptación del usuario.** **Bloqueante pendiente:** el cierre al abandonar Inicio durante el indicador
+inferior de descubrimiento en el realme C55 sigue sin causa confirmada. El último
+informe físico ya no reproduce el cambio inmediato de pestaña al arrancar; véase
+el seguimiento de pruebas físicas al final. Este documento distingue comprobaciones automáticas,
 compilación y validación física pendiente.
 
 ## Arquitectura y selección de idioma
@@ -15,8 +16,8 @@ Los textos estáticos revisados están en Compose Multiplatform resources:
 - `app/src/commonMain/composeResources/values/`: inglés y respaldo.
 - `values-es/`: español.
 - `values-ca/`: catalán.
-- `strings.xml`: **403 cadenas por idioma**, frente a 166 en la base. Se añaden
-  238 claves y se retira `language_scope`, cuyo aviso de localización parcial ya
+- `strings.xml`: **410 cadenas por idioma**, frente a 166 en la base. Se añaden
+  245 claves y se retira `language_scope`, cuyo aviso de localización parcial ya
   no describe estas pantallas.
 - `plurals.xml`: **2 recursos plurales** por idioma, para selección de publicaciones
   y fuentes seleccionadas. Cada uno contiene formas `one` y `other`.
@@ -498,3 +499,20 @@ La APK compilada no se publicó como release ni se cambió configuración de fir
 
 **Las pruebas host no levantan el bloqueo del crash: se necesita nueva validación
 física y evidencia para confirmar su causa y resolución. No fusionar.**
+
+### Seguimiento: salida de Inicio durante descubrimiento inferior
+
+El nuevo informe físico posterior a `8614b9f` acota el cierre a abandonar Inicio
+mientras se muestra `discovery-loading`. Ya no se observa el fallo inmediato de
+arranque en la última prueba del usuario; no se extrapola esa observación a todos
+los escenarios. La línea corresponde al job `HomeDiscovery.refresh`, no a
+paginación por scroll ni al progreso de portadas.
+
+La cadena de propiedad, pruebas con App real y barreras, diagnóstico de desarrollo
+copiable **sin PC**, hipótesis y checklist C55 se documentan en
+[ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md#pr-33--investigación-del-cierre-al-abandonar-inicio-durante-la-carga-inferior).
+El diagnóstico es optativo, local y borrable, con siete cadenas nuevas revisadas
+en español, inglés y catalán (410 cadenas y dos plurales por idioma). No contiene
+texto de publicaciones ni datos del usuario y no se muestra en release/Desktop.
+Se mantienen la navegación catalana, el catálogo real de modelos y la separación
+idioma de interfaz/contenido. No se declara resuelto el cierre por pasar pruebas host.

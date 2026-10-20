@@ -62,6 +62,7 @@ fun App(
     localFilePicker: org.infinilect.app.imports.LocalFilePicker? = null,
     readerAppearance: (ReaderAppearance?) -> Unit = {},
     applicationAppearance: (ReaderAppearance) -> Unit = {},
+    developmentSettings: @Composable () -> Unit = {},
 ) {
     val application=remember(applicationSources) { applicationSources.applicationSession() }
     val appearanceState by (applicationSources.appearance?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(ApplicationAppearanceState()) }).collectAsState()
@@ -152,7 +153,7 @@ fun App(
                                         Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, collectionProgress)
-                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation)
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation, developmentSettings)
                                     } }
                                 }
                             }

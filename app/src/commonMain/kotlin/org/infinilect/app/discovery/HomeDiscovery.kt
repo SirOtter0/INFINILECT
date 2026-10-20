@@ -5,11 +5,12 @@ package org.infinilect.app.discovery
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.infinilect.app.SourceOption
+import org.infinilect.app.diagnostics.*
 
 internal data class DiscoveryRow(val key: String, val title: String, val entries: List<DiscoveryEntry>, val genre: Genre? = null)
 internal data class HomeDiscoveryState(val rows: List<DiscoveryRow> = emptyList(), val loading: Boolean = false, val failed: Boolean = false)
 /** Explicit opt-in metadata discovery. At most four bounded requests in two batches, no endless prefetch. */
-internal class HomeDiscovery(private val options: List<SourceOption>, private val catalog: DiscoveryCatalog, parent: CoroutineScope, private val now: () -> Long) {
+internal class HomeDiscovery(private val options: List<SourceOption>, private val catalog: DiscoveryCatalog, parent: CoroutineScope, private val diagnostics: TechnicalDiagnostics? = null, private val now: () -> Long) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
     private val mutable = MutableStateFlow(HomeDiscoveryState())
     val state = mutable.asStateFlow()
@@ -23,6 +24,7 @@ internal class HomeDiscovery(private val options: List<SourceOption>, private va
         pause(); choice = preferences
         val stamp = generation
         mutable.value = mutable.value.copy(loading = true, failed = false)
+        diagnostics.event(TechnicalEvent.HOME_LOADING, stamp)
         task = scope.launch {
             val genres = ((if (preferences.personalized) preferences.interests.sortedBy { it.ordinal } else emptyList()) +
                 listOf(Genre.PHILOSOPHY, Genre.HISTORY)).distinct().take(2)
@@ -32,8 +34,11 @@ internal class HomeDiscovery(private val options: List<SourceOption>, private va
                 options.map { option -> async {
                     try {
                         val query = if ((option.source as? DiscoverySource)?.canBrowseGenres == true) "*" else "classics"
+                        diagnostics.event(TechnicalEvent.GENERAL_STARTED, stamp)
                         val page = catalog.load(option.source.id, DiscoveryRequest(query))
+                        if (stamp != generation) diagnostics.event(TechnicalEvent.STALE_RESPONSE, stamp)
                         ensureActive()
+                        diagnostics.event(TechnicalEvent.REQUEST_COMPLETE, stamp)
                         if (stamp == generation) mutable.update { state ->
                             val previous = state.rows.firstOrNull { it.key == "general" }?.entries.orEmpty()
                                 .filter { it.publication.id.sourceId != option.source.id }
@@ -41,28 +46,33 @@ internal class HomeDiscovery(private val options: List<SourceOption>, private va
                             val general = if (entries.isEmpty()) emptyList() else listOf(DiscoveryRow("general", DiscoveryStrings.GENERAL, entries))
                             state.copy(rows = general + state.rows.filter { it.key != "general" })
                         }
-                    } catch (e: CancellationException) { throw e } catch (_: Exception) { failed = true }
+                    } catch (e: CancellationException) { diagnostics.event(TechnicalEvent.REQUEST_CANCELLED, stamp); throw e }
+                    catch (_: Exception) { diagnostics.event(TechnicalEvent.REQUEST_FAILED, stamp); failed = true }
                 } }.awaitAll()
             }
             val browser = options.firstOrNull { (it.source as? DiscoverySource)?.canBrowseGenres == true }
             if (browser != null) coroutineScope {
                 genres.map { genre -> async {
                     try {
+                        diagnostics.event(TechnicalEvent.GENRE_STARTED, stamp)
                         val entries = catalog.load(browser.source.id, DiscoveryRequest("", genre)).entries
+                        if (stamp != generation) diagnostics.event(TechnicalEvent.STALE_RESPONSE, stamp)
                         ensureActive()
+                        diagnostics.event(TechnicalEvent.REQUEST_COMPLETE, stamp)
                         if (stamp == generation) mutable.update { state ->
                             val retained = state.rows.filter { it.genre != genre }
                             val rows = retained + if (entries.isEmpty()) emptyList() else listOf(DiscoveryRow(genre.name, genre.label, entries, genre))
                             state.copy(rows = rows.sortedBy { if (it.genre == null) -1 else genres.indexOf(it.genre) })
                         }
-                    } catch (e: CancellationException) { throw e } catch (_: Exception) { failed = true }
+                    } catch (e: CancellationException) { diagnostics.event(TechnicalEvent.REQUEST_CANCELLED, stamp); throw e }
+                    catch (_: Exception) { diagnostics.event(TechnicalEvent.REQUEST_FAILED, stamp); failed = true }
                 } }.awaitAll()
             }
             ensureActive()
-            if (stamp == generation) { mutable.update { it.copy(loading = false, failed = failed) }; loadedAt = if (failed) null else now() }
+            if (stamp == generation) { mutable.update { it.copy(loading = false, failed = failed) }; loadedAt = if (failed) null else now(); diagnostics.event(TechnicalEvent.HOME_COMPLETE, stamp, mutable.value.rows.size) }
 
         }
     }
-    fun pause() { generation++; task?.cancel(); task = null; mutable.value = mutable.value.copy(loading = false) }
+    fun pause() { if (task?.isActive == true) diagnostics.event(TechnicalEvent.HOME_PAUSED, generation); generation++; task?.cancel(); task = null; mutable.value = mutable.value.copy(loading = false) }
     fun close() { pause(); scope.cancel(); mutable.value = HomeDiscoveryState() }
 }

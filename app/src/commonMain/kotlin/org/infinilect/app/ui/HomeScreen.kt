@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import org.infinilect.app.*
 import org.infinilect.core.*
 import org.infinilect.app.discovery.*
+import org.infinilect.app.diagnostics.*
 
 internal fun homeRecentLibrary(entries: List<LibraryEntry>): List<PublicationSnapshot> = entries.sortedByDescending { it.addedAtEpochMillis }
     .distinctBy { it.publication.id }.take(8).map { it.publication }
@@ -41,7 +43,13 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     LaunchedEffect(preferences.loaded, preferences.discovery) {
         if (preferences.loaded) application.homeDiscovery.refresh(preferences.discovery)
     }
-    DisposableEffect(application) { onDispose { application.homeDiscovery.pause() } }
+    DisposableEffect(application) {
+        application.technicalDiagnostics.event(TechnicalEvent.HOME_VISIBLE)
+        onDispose {
+            application.technicalDiagnostics.event(TechnicalEvent.HOME_DISPOSED)
+            application.homeDiscovery.pause()
+        }
+    }
     val known = remember(online.rows, searchEntries) { (online.rows.flatMap { it.entries } + searchEntries).associateBy { it.publication.id } }
     val inferred = remember(preferences.discovery.personalized, preferences.discovery.inferenceAfter, history.entries, known) { if (preferences.discovery.personalized) history.entries
         .filter { it.lastOpenedAtEpochMillis > preferences.discovery.inferenceAfter }.take(20)
@@ -117,7 +125,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
                     }
                 }
             } }
-            if (online.loading) item(key="discovery-loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            if (online.loading) item(key="discovery-loading") { LinearProgressIndicator(Modifier.fillMaxWidth().testTag("home-discovery-loading")) }
             if (online.failed) item(key="discovery-error") { FeedbackCard(strings[UiText.UI_ONLINE_DISCOVERY_UNAVAILABLE],strings[UiText.UI_LOCAL_READING_IS_READY_RETRY_CATALOGS_WHEN_CONNECTED],
                 action=strings[UiText.UI_RETRY_DISCOVERY],onAction={application.homeDiscovery.refresh(preferences.discovery,true)}) }
             item(key="discovery-notice") { Text(strings[UiText.UI_CATALOG_PRESENCE_IS_NOT_PERMISSION_TO_DOWNLOAD_OR_PROOF_OF_RIGHTS_IN_YOUR_COUNTR],style=MaterialTheme.typography.caption) }
