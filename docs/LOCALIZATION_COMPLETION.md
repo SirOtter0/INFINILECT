@@ -2,13 +2,14 @@
 
 Base: `6a95580a60f1119770c035b380a8b89af9ff4746` (integración de PR #32).
 Trabajo de PR #33, rama `feat/complete-ui-localization`. **Draft; no fusionar sin
-aceptación del usuario.** **Bloqueante físico pendiente:** el journal del realme C55
-identifica ahora la cancelación de Gutenberg/Ktor al abandonar Inicio como ruta del
-crash. Se reproduce y corrige un defecto de desconexión en el hilo UI; la excepción
-terminal no estaba incluida en el journal anterior y la aceptación en el teléfono
-sigue pendiente. El cambio inmediato de pestaña al arrancar ya no falla según el
-último informe físico. Véase el seguimiento al final; se distinguen pruebas host,
-compilación y validación física.
+aceptación del usuario.** **Bloqueante físico pendiente:** el nuevo journal de
+`f8cbaef` ya muestra la causa terminal: `IllegalStateException` en
+`com.android.okhttp.okio.AsyncTimeout.enter`, al cerrar el body HTTP desde
+`RawSourceChannel.closeSource`. Mover la cancelación a IO fue insuficiente. Se
+sustituye el adaptador HTTP Android por el de OkHttp mantenido por Ktor, con una
+regresión de lectura/cierre retenidos roja antes y verde después. La aceptación en
+el C55 sigue pendiente; los lectores y recursos no cambian. Véase el seguimiento
+al final; se distinguen pruebas host, compilación y validación física.
 
 ## Arquitectura y selección de idioma
 
@@ -538,3 +539,22 @@ errores ni omisiones: Desktop 1.584, Android-host 1.322 y Core 59 + 59. Android
 debug, Desktop y los seis recursos de idioma empaquetados compilan/verifican
 correctamente. Véase el detalle de ejecución y pruebas rojas/verdes en el apartado
 anterior de rendimiento; la aceptación física sigue pendiente.
+
+## Segundo journal físico: cierre del body HTTP Android
+
+La traza recibida de `f8cbaef` conserva por primera vez la causa profunda. No es una
+confirmación de que bastase mover `cancelAndJoin` a IO. La corrección posterior
+sustituye únicamente el adaptador HTTP específico de Android; Desktop, lectores,
+recursos de idioma, gestión de modelos y progreso permanecen intactos. Las
+regresiones incluyen lectura retenida/cierre concurrente, 12 recorridos de cuatro
+destinos y retorno, sockets locales detenidos, redirects y liberación de recursos.
+
+El resultado completo, las fuentes y licencias de la dependencia, las diferencias
+entre fixture y teléfono y la validación pendiente están en
+[ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md#pr-33--causa-profunda-readclose-del-stream-android).
+No se declara listo para fusionar hasta repetir la prueba física. PR #33 sigue Draft.
+
+Verificación de este segundo seguimiento: **3.029 pruebas** (Desktop 1.584,
+Android-host 1.327, Core 59 + 59), cero fallos, errores u omisiones; Android y
+Desktop compilan. Los seis CVR y la licencia del transporte están empaquetados;
+el engine legado permanece solo en tests. Aceptación física pendiente.

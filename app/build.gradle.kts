@@ -105,7 +105,7 @@ kotlin {
         getByName("androidMain") {
             dependsOn(jvmSharedMain)
             dependencies {
-                implementation("io.ktor:ktor-client-android:3.6.0")
+                implementation("io.ktor:ktor-client-okhttp:3.6.0")
                 implementation(files(foxletArtifact).builtBy(prepareEpubTranslationSdk))
                 implementation("app.cash.sqldelight:android-driver:2.4.0")
             }
@@ -125,6 +125,8 @@ kotlin {
         }
         getByName("androidHostTest") {
             dependsOn(jvmSharedTest)
+            // Retain the previous transport only for its cancellation regressions.
+            dependencies { implementation("io.ktor:ktor-client-android:3.6.0") }
         }
 
     }

@@ -2,7 +2,15 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.network
 
-import io.ktor.client.engine.android.AndroidEngineConfig
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttpConfig
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.prepareGet
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.ObjectInputStream
@@ -30,14 +38,26 @@ class AndroidSourcesTest {
         }
         ObjectInputStream(ByteArrayInputStream(bytes)).use { assertEquals(key, it.readObject()) }
     }
-    @Test fun usesAndroidEngineWithBoundedTransportTimeouts() {
+    @Test fun usesCancellableAndroidEngineWithBoundedTransportTimeouts() = runBlocking {
         val engine = platformHttpEngine()
+        val config = assertIs<OkHttpConfig>(engine.config)
+        var native: OkHttpClient? = null
+        // Observe the real builder through its public hook; do not mirror constants.
+        config.config { native = build() }
+        config.addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                .code(200).message("Original fixture").body("original".toResponseBody()).build()
+        }
+        val client = HttpClient(engine) { followRedirects = false; install(HttpTimeout) }
         try {
-            assertEquals("AndroidClientEngine",engine::class.java.simpleName)
-            val config = assertIs<AndroidEngineConfig>(engine.config)
-            assertEquals(5_000,config.connectTimeout)
-            assertEquals(15_000,config.socketTimeout)
-        } finally { engine.close() }
+            assertEquals("OkHttpEngine", engine::class.java.simpleName)
+            client.prepareGet("https://example.invalid/original-fixture").execute { assertEquals(200, it.status.value) }
+            val applied = assertNotNull(native)
+            assertEquals(5_000, applied.connectTimeoutMillis)
+            assertEquals(15_000, applied.readTimeoutMillis)
+            assertEquals(15_000, applied.writeTimeoutMillis)
+            assertFalse(applied.followRedirects); assertFalse(applied.followSslRedirects)
+        } finally { client.close(); engine.close() }
     }
     @Test fun createsSessionSourcesWithoutNetworkAndCanDisposeTwice() {
         val directory = java.nio.file.Files.createTempDirectory("infinilect-android-sources")

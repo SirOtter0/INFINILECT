@@ -1,5 +1,45 @@
 # Android / Desktop resolved dependency graphs
 
+
+## PR #33 — HTTP cancellation correction, 20 October 2026
+
+Actual `:app:dependencies --configuration androidRuntimeClasspath` resolution:
+
+| Runtime selection | Version | License / scope |
+| --- | --- | --- |
+| `io.ktor:ktor-client-okhttp` / `ktor-client-okhttp-jvm` | 3.6.0 | Apache-2.0; Android transport |
+| `com.squareup.okhttp3:okhttp` / `okhttp-android` | 5.5.0 | Apache-2.0; Android AAR |
+| `com.squareup.okio:okio` / `okio-jvm` | 3.18.2 | Apache-2.0; transitive runtime |
+
+`ktor-client-android:3.6.0` is removed from the production graph and retained only
+in `androidHostTest` for the existing transport regressions. Desktop/common/core
+versions and engines are unchanged. POMs, tagged licenses, attributions and the
+APK license asset are linked in [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md).
+The bundled Public Suffix List is separately MPL-2.0; its pinned binary is verified
+against the tag, with notice, corresponding editable-source URL and full MPL text
+in the same APK asset. It is not covered by the engine's Apache license.
+The historic inventories below describe their stated older revisions.
+
+The resolved OkHttp AAR declares **minSdk 21**, compatible with the unchanged
+application minimum 26. Its AndroidX Startup metadata uses the **already existing**
+InitializationProvider; the initializer retains the application Context and selects
+the Android platform, without network requests or model/inference work. It does not
+initialize a translator. INTERNET is the same existing normal permission. Android
+library selection and manifest merging are distinguished from host JVM execution;
+C55 startup/frame timing after the change still requires physical acceptance.
+
+The transport shares a dispatcher and connection pool across at most two cached
+timeout variants: two active calls per engine/host and two idle connections. No
+disk response cache, cookies, connection-failure retries or redirects; system TLS trust and
+hostname verification remain default. Existing outer concurrency, response/body
+limits and acquisition validation are preserved. OkHttp still implements provider-directed HTTP follow-ups: for example one 503 retry
+when the provider explicitly sends `Retry-After: 0`, and a 421 reroute for a coalesced
+HTTP/2 connection. `retryOnConnectionFailure(false)` is not described as disabling
+all HTTP follow-ups. There is no application retry loop or fallback provider, and
+source request deadlines/gates remain in force. Native rendering/image budgets
+are unchanged; no additional native library or publication/model payload is added.
+
+
 ## Current PR #11 correction — 2026-10-04
 
 Gutenberg now uses shared OPDS2 JSON via already-declared

@@ -4,6 +4,8 @@ package org.infinilect.app.gutenberg
 
 import io.ktor.client.engine.*
 import io.ktor.client.engine.android.Android
+import io.ktor.client.engine.android.AndroidEngineConfig
+import io.ktor.client.engine.okhttp.OkHttpConfig
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.utils.io.InternalAPI
@@ -16,6 +18,8 @@ import java.security.Principal
 import java.security.cert.Certificate
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -23,6 +27,13 @@ import kotlin.test.*
 import org.infinilect.app.*
 import org.infinilect.app.discovery.*
 import org.infinilect.core.PublicationId
+import org.infinilect.app.network.platformHttpEngine
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.BufferedSource
+import okio.buffer
+import okio.source
 
 /** Executes the production Ktor Android 3.6.0 engine and its real cleanup chain on a JVM.
  * Only the URL connection is synthetic. Its strict-thread guard is not a physical Android trace. */
@@ -37,6 +48,7 @@ class GutenbergAndroidCancellationTest {
         @Volatile var response = previewRoot
         @Volatile var responseMediaType = "application/opds+json"
         @Volatile var hold = true
+        var stream: InputStream? = null
         override fun connect() {}
         override fun usingProxy() = false
         override fun disconnect() {
@@ -52,7 +64,7 @@ class GutenbergAndroidCancellationTest {
         }
         override fun getResponseMessage() = "OK"
         override fun getHeaderFields(): Map<String, List<String>> = mapOf("Content-Type" to listOf(responseMediaType))
-        override fun getInputStream(): InputStream = ByteArrayInputStream(response.toByteArray())
+        override fun getInputStream(): InputStream = stream ?: ByteArrayInputStream(response.toByteArray())
         override fun getCipherSuite() = "TEST_ONLY"
         override fun getLocalCertificates(): Array<Certificate>? = null
         override fun getServerCertificates(): Array<Certificate> = emptyArray()
@@ -206,6 +218,125 @@ class GutenbergAndroidCancellationTest {
                 assertTrue(errors.isEmpty())
             } finally {
                 image?.readGate?.countDown(); source.close(); source.awaitClosed(); scope.cancel()
+            }
+        }
+    }
+
+    /** Models the C55 stream contract: close may read/discard the same stream and
+     * throw if a blocking read is already active. No device framework or messages are faked. */
+    private class HeldBody : InputStream() {
+        val reading = CompletableDeferred<Unit>()
+        val closeAttempted = CompletableDeferred<Unit>()
+        val cancellationObserved = CompletableDeferred<Unit>()
+        val safelyClosed = CompletableDeferred<Unit>()
+        val releaseRead = CountDownLatch(1)
+        val inRead = AtomicBoolean()
+        val overlappingCloses = AtomicInteger()
+        override fun read(): Int = read(ByteArray(1), 0, 1)
+        override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+            inRead.set(true)
+            try {
+                reading.complete(Unit)
+                check(releaseRead.await(10, TimeUnit.SECONDS))
+                return -1
+            } finally { inRead.set(false) }
+        }
+        override fun close() {
+            closeAttempted.complete(Unit)
+            cancellationObserved.complete(Unit)
+            if (inRead.get()) {
+                overlappingCloses.incrementAndGet()
+                throw IllegalStateException("Synthetic non-concurrent stream guard")
+            }
+            safelyClosed.complete(Unit)
+        }
+    }
+
+    private fun productionStreamingEngine(connection: Connection, body: HeldBody): HttpClientEngine {
+        val engine = platformHttpEngine()
+        when (val config = engine.config) {
+            is AndroidEngineConfig -> {
+                connection.hold = false; connection.stream = body
+                TestUrls.next.set(connection)
+                return Engine(engine)
+            }
+            is OkHttpConfig -> {
+                config.config { eventListener(object : EventListener() {
+                    override fun canceled(call: Call) { body.cancellationObserved.complete(Unit) }
+                }) }
+                val first = AtomicBoolean(true)
+                config.addInterceptor { chain ->
+                    val responseBody = if (first.compareAndSet(true, false)) object : ResponseBody() {
+                        private val buffered = body.source().buffer()
+                        override fun contentType() = "application/opds+json".toMediaType()
+                        override fun contentLength() = -1L
+                        override fun source(): BufferedSource = buffered
+                    } else (if (chain.request().url.encodedPath.endsWith("/search"))
+                        previewPage(chain.request().url.queryParameter("query").orEmpty()) else previewRoot)
+                        .toResponseBody("application/opds+json".toMediaType())
+                    Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                        .code(200).message("Original fixture").header("Content-Type", "application/opds+json").body(responseBody).build()
+                }
+            }
+            else -> error("Unsupported Android test transport")
+        }
+        return engine
+    }
+
+    @Test fun cancellingDuringAResponseReadMustNotPropagateConcurrentCloseFailures() = runBlocking {
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { ui ->
+            val body = HeldBody()
+            val connection = Connection(URL("https://example.invalid/original-fixture"), withContext(ui) { Thread.currentThread() })
+            val errors = ConcurrentLinkedQueue<Throwable>()
+            val scope = CoroutineScope(SupervisorJob() + ui + CoroutineExceptionHandler { _, error -> errors.add(error) })
+            val source = GutenbergSource(productionStreamingEngine(connection, body))
+            try {
+                val request = scope.launch { source.search("original fixture") }
+                withTimeout(5_000) { body.reading.await() }
+                withContext(ui) { request.cancel() }
+                withTimeout(5_000) { body.cancellationObserved.await() }
+                assertEquals(42, withTimeout(5_000) { withContext(ui) { 42 } })
+                body.releaseRead.countDown()
+                withTimeout(5_000) { request.join() }
+                assertTrue(errors.isEmpty(), "Concurrent body close must not escape through completion handlers: ${errors.map { it.javaClass.simpleName }}")
+                assertEquals(0, body.overlappingCloses.get(), "The body must not close while its read is active")
+                withTimeout(5_000) { body.safelyClosed.await() }
+                assertTrue(request.isCancelled)
+            } finally {
+                body.releaseRead.countDown(); source.close(); source.awaitClosed(); scope.cancel()
+            }
+        }
+    }
+
+    @Test fun leavingHomeDuringBodyReadIsSafeForEveryDestinationAndReturn() = runBlocking {
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { ui ->
+            repeat(3) {
+                for (target in listOf(Destination.LIBRARY, Destination.HISTORY, Destination.SEARCH, Destination.SETTINGS)) {
+                    val body = HeldBody()
+                    val connection = Connection(URL("https://example.invalid/original-fixture"), withContext(ui) { Thread.currentThread() })
+                    val errors = ConcurrentLinkedQueue<Throwable>()
+                    val scope = CoroutineScope(SupervisorJob() + ui + CoroutineExceptionHandler { _, error -> errors.add(error) })
+                    val source = GutenbergSource(productionStreamingEngine(connection, body))
+                    val owner = ApplicationSources(listOf(SourceOption("Original fixture", source)), sessionDispatcher = ui) { source.close() }
+                    val app = ApplicationSession(owner, scope); owner.attach(app)
+                    try {
+                        withContext(ui) { app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true)) }
+                        withTimeout(5_000) { body.reading.await() }
+                        withContext(ui) { app.navigate(target) }
+                        withTimeout(5_000) { body.cancellationObserved.await() }
+                        assertEquals(target, app.destination.value); assertFalse(app.homeDiscovery.state.value.loading)
+                        assertEquals(42, withTimeout(5_000) { withContext(ui) { 42 } })
+                        body.releaseRead.countDown()
+                        withTimeout(5_000) { body.safelyClosed.await() }
+                        withContext(ui) { app.navigate(Destination.HOME); app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true)) }
+                        withTimeout(5_000) { app.homeDiscovery.state.first { !it.loading } }
+                        assertTrue(app.homeDiscovery.state.value.rows.isNotEmpty())
+                        assertTrue(errors.isEmpty())
+                        assertEquals(0, body.overlappingCloses.get())
+                    } finally {
+                        body.releaseRead.countDown(); owner.close(); source.awaitClosed(); scope.cancel(); owner.awaitProgressClosed()
+                    }
+                }
             }
         }
     }

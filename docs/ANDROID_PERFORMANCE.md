@@ -996,6 +996,10 @@ para fusión hasta que el usuario vuelva a comprobar el escenario.**
 
 ## PR #33 — Traza del C55: cancelación de Gutenberg
 
+**Seguimiento histórico de `55d694d` → `f8cbaef`.** La traza posterior de `f8cbaef`
+y la corrección del adaptador de streams se documentan en el apartado siguiente;
+la transferencia a IO por sí sola no resolvió el crash físico.
+
 ### Evidencia recibida y lo que todavía falta
 
 Tras instalar `55d694d`, el usuario copió el journal del realme C55. El informe
@@ -1175,3 +1179,219 @@ Checklist C55:
 **Hay una corrección de hilo reproducida por regresión; la última causa del crash
 físico y la aceptación del C55 siguen pendientes. PR #33 permanece Draft, sin merge
 ni release.**
+
+## PR #33 — Causa profunda: read/close del stream Android
+
+### Lo que demuestra el nuevo journal
+
+El usuario reprodujo el cierre con la APK `f8cbaef`. Dos salidas a Historial
+completan; en la tercera, `HOME_PAUSED` → `REQUEST_CANCELLED` → `NAV_HISTORY`
+precede el crash. Ahora el formateador conserva una cuarta causa:
+
+```text
+uncaught depth=0 class=kotlinx.coroutines.CompletionHandlerException
+at kotlinx.coroutines.JobKt__JobKt.cancelAndJoin:510
+uncaught depth=3 class=java.lang.IllegalStateException
+at com.android.okhttp.okio.AsyncTimeout.enter:64
+at com.android.okhttp.okio.AsyncTimeout$2.read:211
+at com.android.okhttp.internal.http.Http1xStream$FixedLengthSource.read:395
+at com.android.okhttp.internal.Util.discard:147
+at com.android.okhttp.internal.http.Http1xStream$FixedLengthSource.close:412
+at kotlinx.io.InputStreamSource.close:93
+at io.ktor.utils.io.jvm.javaio.RawSourceChannel.closeSource:114
+at kotlinx.coroutines.InvokeOnCancelling.invoke:1571
+```
+
+El arranque posterior vuelve a incluir `reason=4`. **Está confirmada físicamente
+la excepción Java/Kotlin del cierre del body**, no un diagnóstico de OOM, ANR o GPU.
+El mensaje de `IllegalStateException` no se registra por privacidad: no se inventa
+su texto ni se deduce la versión exacta del Android del C55 a partir de la línea.
+El aviso de Android tras varios cierres no requiere atribuir otro fallo diferente.
+
+La corrección anterior mueve control/cancelación a IO, pero **IO no serializa la
+lectura y el cierre** de un mismo stream. El nuevo registro demuestra que esa
+corrección fue insuficiente para este crash; se conserva porque evita cleanup en UI.
+
+### Cadena de lectura/cierre y reproducción
+
+En el mismo [Ktor IO 3.6.0 publicado](https://repo.maven.apache.org/maven2/io/ktor/ktor-io-jvm/3.6.0/ktor-io-jvm-3.6.0-sources.jar),
+`jvm/javaio/Reading.kt::RawSourceChannel`:
+
+1. `awaitContent` ejecuta `source.readAtMostTo` en el contexto IO.
+2. El job registra un completion handler `onCancelling = true` que llama a
+   `closeSource`; este cambia el token y llama a `source.close()` directamente.
+3. No espera a que termine la lectura bloqueante. El cierre puede entrar en el
+   mismo stream mientras se está leyendo.
+4. La traza física muestra que el stream Android intenta descartar el body durante
+   `FixedLengthSource.close`: esa operación vuelve a leer y llega a `AsyncTimeout.enter`.
+   El error de cierre sale del callback y se envuelve en `CompletionHandlerException`.
+
+`GutenbergAndroidCancellationTest.cancellingDuringAResponseReadMustNotPropagateConcurrentCloseFailures`
+utiliza la factoría **real** `platformHttpEngine`, Gutenberg y los jobs reales de
+Ktor. Su InputStream sintético mantiene `read` pendiente por barrera y lanza una
+`IllegalStateException` si `close` entra durante esa lectura. Con el engine anterior
+falla determinísticamente: **uncaught CompletionHandlerException**. El transporte
+HTTPS del fixture legado es el mismo protocolo Java de test, sin Internet; para
+el nuevo engine se usa un interceptor público y un ResponseBody propio. No son
+streams del framework Android: la traza física aporta esa parte de la evidencia.
+
+Tras el cambio conserva la aserción de cero errores no capturados y añade cero
+cierres concurrentes, cierre final y UI disponible antes de liberar la lectura.
+La barrera del nuevo engine observa `Call.cancel` por `EventListener`; la del
+legado observa el cierre prematuro que provoca el guard. El test no presupone que
+ambos transports deban cerrar el body en el mismo instante. No se sustituye la
+excepción física por una simulación presentada como verificación de dispositivo.
+
+### Corrección del adaptador Android
+
+Se reemplaza **solo** `app/androidMain/.../network/PlatformHttpEngine.kt` por el
+adaptador `ktor-client-okhttp:3.6.0`. No se cambia de versión Ktor, proveedor,
+endpoint, OPDS2 ni motor de lectura. La factoría expect/actual y todos los clientes,
+validadores y repositorios compartidos siguen siendo los mismos. Desktop mantiene
+`ktor-client-java`. `ktor-client-android` queda solo en Android-host para conservar
+las cinco regresiones previas del transporte y la protección del hilo IO.
+
+El [engine OkHttp 3.6.0 publicado](https://repo.maven.apache.org/maven2/io/ktor/ktor-client-okhttp-jvm/3.6.0/ktor-client-okhttp-jvm-3.6.0-sources.jar),
+`OkHttpEngine.executeHttpRequest`/`BufferedSource.toChannel`, utiliza una llamada
+cancelable y un writer propietario del body. La limpieza del body espera la
+terminación del job de llamada y se ejecuta en el dispatcher del engine; no utiliza
+el `RawSourceChannel` del adaptador InputStream Android. Se usa esa implementación
+mantenida en lugar de copiar/parchear clases privadas de Ktor o del framework.
+
+No se añade un `catch` de aplicación para esconder `IllegalStateException` o
+`CompletionHandlerException`; el handler original y el diagnóstico siguen intactos.
+Los errores HTTP, validación, TLS o lectura real mantienen sus contratos de error.
+No se bloquea navegación, oculta la línea ni desactiva la carga.
+
+Configuración explícita y límites:
+
+- Dos llamadas simultáneas por engine/host, con el mismo dispatcher y pool entre
+  variantes de timeout. Dos variantes de cliente en caché; dos conexiones idle.
+- Connect 5 s y read/write 15 s por defecto; los timeouts de petición/miniaturas
+  existentes se aplican por el plugin Ktor. No se aumentan presupuestos de imagen.
+- Redirects HTTP/HTTPS deshabilitados también en engine; sin cookies o caché de
+  respuestas en disco, sin recuperación automática de fallos de conexión.
+- Trust store y comprobación de hostname por defecto del Android/OkHttp; ningún
+  trust manager, hostname verifier permisivo, CA propia o excepción HTTP se añade.
+- Los follow-ups HTTP de OkHttp no se describen como inexistentes: un 503 con
+  `Retry-After: 0` puede producir un retry solicitado por el proveedor; 421 puede
+  reencaminar una conexión HTTP/2 coalescida. No hay bucle de retry de la app.
+  Permanecen gates/deadlines y las mismas URLs/derechos de adquisición.
+
+Hay un coste de buffering distinto: el writer usa el `ByteChannel` estándar de Ktor
+3.6.0, cuyo umbral `CHANNEL_MAX_SIZE` es 1 MiB. Es un umbral de backpressure,
+**no una cota de RAM total**: hay buffers de lectura/escritura y del socket además
+de los bytes validados de la fuente. Puede adelantarse a la validación del body;
+no se presenta como tráfico nativo cero en un rechazo por headers. Los límites de
+bytes consumidos/aceptados de cada fuente y la validación antes de adquisición no
+cambian. No se modifica el umbral interno ni se añaden caches de libros/portadas o respuestas
+en disco: se acepta este coste del adaptador mantenido para corregir el cierre, y memoria/arranque deben revisarse
+en el C55. No se ha medido una reducción de RAM ni se aumenta el número de workers de portadas.
+
+### Dependencias y empaquetado
+
+El grafo Android real resuelve **OkHttp Android 5.5.0** y **Okio JVM 3.18.2**.
+Los POMs y licencias de los tres componentes declaran Apache-2.0, compatible con
+GPL-3.0-or-later; se conservan atribuciones/texto completo en un asset del APK.
+Véanse [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md) y
+[ANDROID_DEPENDENCIES](ANDROID_DEPENDENCIES.md), con versiones/fuentes primarias.
+
+El asset **PublicSuffixDatabase.list** de OkHttp es un dato separado bajo **MPL-2.0**.
+Se compara byte a byte con el tag `parent-5.5.0`: SHA-256
+`c75ab827afd7ffff59a51b14729c25dbfc3b45237eb40ccf02bec7b7d44304a4`.
+Su fuente editable del mismo tag se recompone (9.764 reglas y ocho excepciones)
+y produce exactamente el mismo binario/hash. Su NOTICE original, URL de esa fuente
+y texto MPL completo se incluyen en el asset de licencias; no se supone que Apache cubra este dato. No es
+un peso/modelo de traducción ni se actualiza el dataset en esta corrección.
+
+El AAR real declara minSdk 21 (la app sigue en 26), INTERNET ya existente y metadata
+para el InitializationProvider **ya presente**. Su initializer selecciona el
+platform Android y retiene contexto de aplicación: no solicita red, carga modelos,
+traduce o descarga. No se elimina sin sustituir su contrato público. Su coste de
+arranque en el C55 no se ha medido. Sin firma/ID/permisos nuevos, binarios nativos,
+modelos o contenido de publicaciones. El coste en APK se registra después de construir;
+no se afirma una reducción de RAM ni una mejora de FPS por cambiar de transporte.
+
+### Pruebas y aceptación
+
+Enfocados: **24/24**, cero fallos/errores/omisiones. Incluyen las cinco regresiones
+previas del engine legado, la nueva carrera de lectura/cierre, **12 recorridos**
+(tres repeticiones × cuatro destinos) con HomeDiscovery/ApplicationSession reales
+y retorno/retry; cierra recursos, descarta generaciones anteriores y deja UI libre.
+Las pruebas Compose/App/scroll de la fase anterior se conservan en la suite completa.
+
+`AndroidHttpEngineTest` comprueba la configuración y la propiedad del dispatcher/pool
+entre tres variantes de timeout, el cierre de ejecutores y ausencia de llamadas o
+conexiones retenidas. Dos targets de redirect (HTTP/HTTPS) usan sockets loopback
+reales. Otra prueba deja headers/body reales pendientes y cancela desde UI: termina
+antes de dejar responder al servidor. No hay dependencias de mock webserver,
+servicios externos, publicaciones descargadas ni certificados/trust alterados.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Desktop completo | 1.584 / 1.584 |
+| Android-host completo | 1.327 / 1.327 |
+| Core JVM / Core Android-host | 59 / 59 + 59 / 59 |
+| Total | **3.029 aprobadas, cero fallos/errores/omisiones** |
+| Android debug / Desktop / seis CVR empaquetados | PASS |
+| Artefacto Android | Aviso/licencia incluido; engine legado y fixtures ausentes; mismos permisos |
+
+Las cuatro suites se fuerzan a ejecutar, Linux/JDK21/Gradle9.7.1/SDK37, 20/10/2026.
+El primer comando (9m 8s) aprueba Desktop y ambos Core, y detecta una
+aserción Android que exigía la clase del engine retirado. `AndroidSourcesTest`
+se actualiza al nuevo engine observando su builder real por API pública: conserva
+connect 5 s/read 15 s y añade write 15 s y redirects deshabilitados. No se elimina
+la prueba ni se cambian los límites. Se repite **Android-host completo** junto a
+ambas compilaciones: `BUILD SUCCESSFUL in 55s`. La única modificación
+posterior al pase Desktop/Core es ese test Android-host, que no forma parte de sus
+source sets; no se presentan sus resultados como una repetición inexistente.
+Se usa el mismo Skiko verificado en caché del harness, sin cambiar la configuración
+de tests del repositorio ni omitir/debilitar pruebas. Primer comando:
+
+```text
+:core:jvmTest :core:testAndroidHostTest
+:app:desktopTest :app:testAndroidHostTest
+:androidApp:assembleDebug :androidApp:verifyDebugLanguageResources
+:desktopApp:compileKotlin
+```
+
+Comando final (Desktop/Core ya aprobados con esta misma producción):
+
+```text
+:app:testAndroidHostTest :androidApp:assembleDebug
+:androidApp:verifyDebugLanguageResources :desktopApp:compileKotlin
+```
+
+El nuevo APK Gradle debug ocupa **20,685,253 bytes** antes de volver a
+firmarlo externamente con el certificado de desarrollo del usuario. El tamaño y
+SHA-256 del APK entregado constan en la PR. Son bytes de artefacto, no métricas RAM,
+CPU o FPS del teléfono. Tras añadir el NOTICE/fuente/MPL de la Public Suffix List,
+se rehace solo el empaquetado (`androidApp:clean`, `assembleDebug`,
+`verifyDebugLanguageResources`), PASS en 38 s: no hay cambios Kotlin/Gradle posteriores
+a las suites. El ZIP payload pasa de 19,918,319 a 20,617,524 bytes frente a `f8cbaef`;
+no se atribuyen a dependencias los huecos del empaquetado incremental descartado.
+La licencia empaquetada se compara con el asset; seis CVR
+con los generados; el grafo y DEX excluyen el engine Android legado del runtime.
+Se conservan INTERNET y demás permisos existentes; sigue eliminada la inicialización
+EmojiCompat y se incluye la metadata requerida de OkHttp en el provider existente.
+Recursos 410 cadenas/dos plurales por idioma y `git diff --check`: PASS. Sin firmas,
+claves, binarios de build o publicaciones añadidos al repositorio.
+
+Las pruebas Compose siguen siendo headless y las de sockets son loopback JVM;
+no son una ejecución de OkHttp/Conscrypt en el C55. No se mide ni garantiza fluidez,
+arranque o consumo de memoria físicos. **Falta la aceptación de la nueva APK.**
+
+
+Checklist físico, con la APK de esta revisión y sin borrar datos:
+
+1. Desactivar y reactivar diagnóstico local para limpiar el stack de `f8cbaef`.
+2. Inicio → final → línea activa → Historial, repetir diez veces; repetir para
+   Biblioteca/Búsqueda/Ajustes y regreso inmediato, con portadas frías/calientes.
+3. Comprobar red lenta/offline/recuperación, búsqueda IA/Gutenberg y retry; la línea
+   y navegación deben seguir funcionando. Verificar scroll y arranque por si hay
+   regresión de rendimiento, sin asumir mejoras de fotogramas no medidas.
+4. Revisar biblioteca, historial, lectores/progreso y traducción/modelos existentes.
+5. Si vuelve a cerrarse: reabrir, copiar el diagnóstico y enviar con nombre de APK.
+   El registro conserva las 12 causas/51 líneas; no captura todo crash nativo/OOM.
+6. Desactivar diagnóstico al acabar. PR #33 permanece Draft, sin merge ni release;
+   **la corrección del transporte queda pendiente de aceptación física del C55**.
