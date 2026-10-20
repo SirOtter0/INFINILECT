@@ -402,4 +402,5 @@
     <string name="interface_locale_tag">en</string>
     <string name="image_alt_fallback">[Image: %1$s]</string>
     <string name="image_not_rendered">[Image not rendered]</string>
+    <string name="direct_model_limits">Available direct pairs: English ↔ Spanish and English ↔ Catalan. Spanish ↔ Catalan is not supported; translating through English is not enabled.</string>
 </resources>

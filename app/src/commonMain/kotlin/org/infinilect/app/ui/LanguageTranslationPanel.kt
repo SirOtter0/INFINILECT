@@ -97,6 +97,8 @@ private fun TranslationModelList(manager: TranslationModels) {
     var clean by remember { mutableStateOf(false) }
     LaunchedEffect(manager, state.working) { if (!state.loaded && !state.working && state.error == null) manager.refresh() }
     Text(strings[UiText.MODELS_AVAILABLE], style = MaterialTheme.typography.subtitle2)
+    if (state.models.map { it.model }.toSet() == foxletVerifiedModels.toSet())
+        Text(strings[UiText.DIRECT_MODEL_LIMITS], style = MaterialTheme.typography.caption)
     state.storageBytes?.let { Text(strings.format(UiText.STORAGE, (it + 1_048_575) / 1_048_576), style = MaterialTheme.typography.caption) }
         ?: if (state.loaded) Text(strings[UiText.STORAGE_UNKNOWN], style = MaterialTheme.typography.caption) else Unit
     state.models.forEach { row ->

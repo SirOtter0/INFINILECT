@@ -2,7 +2,9 @@
 
 Base: `6a95580a60f1119770c035b380a8b89af9ff4746` (integración de PR #32).
 Trabajo de PR #33, rama `feat/complete-ui-localization`. **Draft; no fusionar sin
-aceptación del usuario.** Este documento distingue comprobaciones automáticas,
+aceptación del usuario.** **Bloqueante pendiente:** el cierre de arranque comunicado
+en el realme C55 no tiene aún una causa confirmada; véase el seguimiento de pruebas
+físicas al final. Este documento distingue comprobaciones automáticas,
 compilación y validación física pendiente.
 
 ## Arquitectura y selección de idioma
@@ -13,8 +15,8 @@ Los textos estáticos revisados están en Compose Multiplatform resources:
 - `app/src/commonMain/composeResources/values/`: inglés y respaldo.
 - `values-es/`: español.
 - `values-ca/`: catalán.
-- `strings.xml`: **402 cadenas por idioma**, frente a 166 en la base. Se añaden
-  237 claves y se retira `language_scope`, cuyo aviso de localización parcial ya
+- `strings.xml`: **403 cadenas por idioma**, frente a 166 en la base. Se añaden
+  238 claves y se retira `language_scope`, cuyo aviso de localización parcial ya
   no describe estas pantallas.
 - `plurals.xml`: **2 recursos plurales** por idioma, para selección de publicaciones
   y fuentes seleccionadas. Cada uno contiene formas `one` y `other`.
@@ -197,7 +199,7 @@ idiomas. No se modifica el motor PDF.
 
 ## Pruebas y compilaciones
 
-Ejecución final: **19 de octubre de 2026**, host Linux x86_64, JDK 21,
+Primera entrega automatizada, anterior al seguimiento físico: **19 de octubre de 2026**, host Linux x86_64, JDK 21,
 Gradle 9.7.1, SDK Android 37 / build-tools 36. Las cuatro suites se ejecutaron
 explícitamente, sin reutilizar su resultado de test como `UP-TO-DATE`.
 
@@ -287,3 +289,212 @@ logs y artefactos generados de esta ejecución tampoco se versionan.
    explícito. Esto no implica añadir modelos o pares de traducción de libros.
 5. Ampliar tests, guardia y verificación del artefacto; probar navegación, diálogos,
    accesibilidad, fuente grande y texto original independiente en ambos targets.
+
+## Correcciones posteriores a pruebas físicas — realme C55
+
+Seguimiento de la APK del commit `290122a3d7c210c890a9d36edabe7735e85f676f`.
+**La PR continúa en Draft y bloqueada para fusión por el cierre de arranque sin
+causa confirmada.** No hay acceso al C55 ni runtime Android ejecutable en este
+entorno; una prueba Compose en Linux no demuestra que desaparezca el cierre.
+
+### Arranque y navegación: evidencia y límites
+
+Se revisaron `MainActivity.onCreate/onStart/onStop`, la creación de
+`ApplicationSources`, `App`, `InterfaceLanguage`, `ApplicationAppearancePreferences`,
+`ApplicationSession.navigate`, `CollectionsController`, `HomeDiscovery` y
+`PublicationCovers`. La secuencia real es: propietario retenido de fuentes → sesión
+→ cargas independientes de preferencias/colecciones → marco navegable con tabla
+inglesa inicial → tabla localizada completa. El propietario de la tabla está fuera
+de `SaveableStateProvider(destination.name)`; cambiar una pestaña no lo destruye.
+Los repositorios y motores tampoco pertenecen a cada pestaña. Inicio/Búsqueda
+cancelan sus trabajos al abandonarse, con generaciones y descarte de respuestas
+obsoletas. La tabla se obtiene en IO y se publica en el contexto Compose; una carga
+fallida mantiene la última válida.
+
+Las pruebas nuevas `StartupNavigationTest` cubren:
+
+- Los seis recorridos solicitados en en/es/ca/Sistema, antes de liberar preferencias
+  y colecciones: **48 arranques controlados**, incluyendo fallos de almacenamiento
+  y preferencias. Usan el `App` real y propietarios/repositorios de prueba.
+- El marco y las pantallas reales con `InterfaceLanguage` y una carga de recursos
+  gobernada por `CompletableDeferred`: ocho combinaciones de preferencia y fallo,
+  con los seis recorridos antes y después de resolver recursos. Las acciones de
+  pestaña deben estar habilitadas y conservar el destino elegido. Sistema usa el
+  locale capturado del host; no simula un cambio de configuración del SO Android.
+- Resultados de Inicio que terminan después de cancelar/abandonar la pantalla,
+  reintento tras error de recursos, persistencia de identidades y ausencia de
+  mutaciones de biblioteca/historial. Un transporte no cancelable termina su
+  callback, pero sus resultados obsoletos no se publican.
+- Retirada del marco antes de su primer layout, sin solicitar un foco no adjunto.
+
+La primera pasada de estos tres métodos pasó **antes de cambiar código de
+producción**. No se ha identificado una excepción de arranque ni una causa raíz;
+no existe una prueba roja de ese crash ni se presenta el ajuste visual como su
+corrección. No se añadieron esperas, pestañas deshabilitadas, reinicios ni `catch`
+genéricos. Permanecen pendientes de evidencia Android, en este orden:
+
+| Hipótesis sin confirmar | Evidencia necesaria |
+| --- | --- |
+| Excepción Android de UI/lifecycle durante el primer cambio de destino | Clase y frames de `InfinilectCrash`/`AndroidRuntime`, destino y momento aproximado |
+| Presión Java/nativa/GPU durante arranque y portadas | Motivo de salida, `OutOfMemoryError` o señal nativa, PSS/GC y traza; PSS aislado no diagnostica OOM |
+| Bloqueo/ANR de inicialización | Motivo ANR y Perfetto/stack del hilo principal; esperar cinco segundos no prueba esta causa |
+| Diferencia Android de recursos, foco o restauración | Excepción y frames reales; los fallos controlados de recursos en host conservan navegación y tabla válida |
+
+El diagnóstico de PR #32 permanece intacto: opt-in debug, métricas y motivo de
+salida, sin telemetría remota ni logs de libros, consultas o perfiles. Cuando se
+disponga de PC, abrir **primero** un terminal y dejarlo capturando:
+
+```sh
+adb devices
+adb logcat -v monotonic -s InfinilectPerf:I InfinilectCrash:E InfinilectExit:I INFINILECT.Locale:W '*:S' > infinilect-pr33-startup.txt
+```
+
+En otro terminal:
+
+```sh
+adb shell am force-stop org.infinilect.app
+adb shell am start -W -n org.infinilect.app/.MainActivity --ez infinilect.performance true
+```
+
+Cambiar de pestaña en cuanto aparezca la interfaz. Si se cierra, **no hacer otro
+force-stop antes de recoger el motivo**. Reabrir con el mismo flag y recoger:
+
+```sh
+adb shell am start -W -n org.infinilect.app/.MainActivity --ez infinilect.performance true
+adb shell dumpsys activity exit-info org.infinilect.app > infinilect-pr33-exit.txt
+adb shell dumpsys meminfo org.infinilect.app > infinilect-pr33-memory.txt
+```
+
+La primera orden force-stop produce su propio motivo de salida; distinguirlo del
+cierre posterior. Motivos habituales: 3 memoria baja, 4 crash Java, 5 nativo,
+6 ANR, 10 solicitado por el usuario. OEMs pueden omitir información. Si falta el
+stack, consultar localmente `adb logcat -b crash -d -v threadtime`; revisar y
+recortar al proceso de INFINILECT antes de compartir, evitando rutas privadas u
+otros datos. Perfetto y escenarios calientes/cargando: [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md).
+Sin PC, anotar build, versión Android, idioma, pestaña, tiempo desde apertura y si
+había conexión/portadas pendientes. Ese registro ayuda, pero no sustituye la traza.
+
+### Modelos: diagnóstico por dirección
+
+La comparación del código Android de PR #31 con `290122a` no muestra cambios en el
+catálogo. La infraestructura admite códigos en/es/ca, pero eso no implica que
+existan las seis combinaciones. El registro primario fijado es
+[Foxlet `registry.json` en `0eff2a15032362115848a496ce1df8ed9fc68650`](https://github.com/yinvoke/foxlet-translate/blob/0eff2a15032362115848a496ce1df8ed9fc68650/registry.json),
+SHA-256 `1a3b02c2a91be818350e2b3e1968cc5413feeb1ea3bdf4726f75d95354e6aa89`.
+Se verificó también el hash fijado del AAR 0.5.0 y su `models.tsv` real: mismos
+archivos, hashes, versiones, tamaños y URLs para las cuatro direcciones admitidas;
+ninguna entrada es→ca o ca→es. El SDK contiene 106 direcciones; INFINILECT solo
+expone las cuatro verificadas, sin prometer las restantes.
+
+| Dirección | Versión | Descarga (bytes) | Estado real |
+| --- | --- | --- | --- |
+| en→es | 2.1 | 36.576.277 | Admitida, sin cambios |
+| es→en | 2.0 | 37.014.089 | Admitida, sin cambios |
+| en→ca | 2.0 | 36.716.532 | Admitida, sin cambios |
+| ca→en | 2.0 | 36.731.612 | Admitida, sin cambios |
+| es→ca | — | — | Sin artefacto directo en proveedor fijado |
+| ca→es | — | — | Sin artefacto directo en proveedor fijado |
+
+No son pares ocultos por localización ni modelos desaparecidos. La prueba mediante
+idioma puente de PR #31 quedó expresamente fuera de la integración; requiere dos
+etapas, otras garantías de caché/calidad y medición de memoria/latencia. Se difiere
+esa funcionalidad sin fabricar manifiestos ni habilitarla silenciosamente.
+
+`VerifiedTranslationModels.kt` centraliza **solo los mismos metadatos** para poder
+probarlos desde host. El adaptador Android conserva toda la validación de
+`descriptor`, instalación, hashes, almacenamiento, mutex y liberación nativa.
+No cambian identidad del proveedor, revisiones, rutas privadas ni registros de
+modelos instalados; no hay migración ni nuevas descargas. Desktop continúa sin
+motor real. La licencia del motor/modelos y los avisos existentes no cambian;
+el extracto factual de registro para tests conserva origen y atribución MPL-2.0.
+
+El panel en/es/ca explica ahora el límite de pares directos. Los tests de catálogo
+comparan metadatos con el extracto primario independiente, ausencia de duplicados
+y hosts HTTPS. Las pruebas de UI usan esos cuatro descriptores con un proveedor
+administrativo **determinista**, no inferencia ni descargas reales: visibilidad en
+los tres idiomas, preferencia de lectura independiente, progreso, cancelación,
+fallo/reintento, eliminación y restauración de instalaciones/retención.
+Una selección es↔ca sin modelo conserva Original y devuelve el error localizado
+sin solicitar una descarga inexistente. Las pruebas previas de archivos de
+retención, instalación atómica y presupuestos siguen en las suites completas.
+
+### «Configuració»: causa y corrección
+
+`ApplicationNavigation.NavigationItem` asignaba cinco pesos iguales y 4 dp de
+padding por lado, con `maxLines=2`. Una palabra más ancha que su celda podía saltar
+por caracteres y dejar una letra aislada. La nueva prueba falló antes del cambio
+con `en/320 dp/1,5: Library`, dos líneas en vez de una; el mismo contrato de layout
+afectaba a la etiqueta catalana comunicada por el usuario.
+
+La barra mide las cinco etiquetas con el estilo y escala reales, conserva al menos
+48 dp por destino en los tamaños solicitados y distribuye el ancho adicional
+según la necesidad del texto. El cálculo se recuerda por idioma/geometría/estilo;
+no depende del scroll, las portadas ni el progreso de traducción. Son cinco textos
+y una caché de medición de cinco entradas, sin dependencia nueva.
+
+Las etiquetas compactas usan una sola línea. Si la fuente aumentada supera el
+ancho disponible, se elide con puntos suspensivos, conservando nombre completo,
+rol, estado seleccionado y acción accesible. No se reduce el tamaño SP, no se
+inventa una abreviatura ni se cambia el destino o sus atajos. La barra puede crecer
+en altura según la fuente; iconos y objetivos táctiles conservan espacio. La rail
+Desktop mantiene su política y umbral existentes.
+
+`NavigationLabelLayoutTest` cubre **54 combinaciones**: tres idiomas × 320/360/600 dp
+× fuente 100/150/180 % × claro/oscuro. Comprueba las **270 etiquetas**, acciones,
+semántica y objetivos de 48 dp. La ejecución enfocada midió cero etiquetas en
+varias líneas y cero etiquetas elididas a escala normal. Se generaron ocho PNG
+catalanes comparables de 320/360 dp, 100/180 %, ambos temas, fuera del repositorio.
+Son renders headless Linux; no capturas físicas Android ni una medida de FPS.
+
+### Verificación del seguimiento
+
+Ejecución final del seguimiento: **20 de octubre de 2026**, Linux x86_64,
+JDK 21, Gradle 9.7.1 y SDK 37. Las cuatro suites se forzaron a ejecutar de nuevo;
+no se omite ni debilita ningún test existente.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Desktop completo | **1.568/1.568**, 0 fallos/errores/omitidas |
+| Android-host completo | **1.305/1.305**, 0 fallos/errores/omitidas |
+| Core JVM | **59/59**, 0 fallos/errores/omitidas |
+| Core Android-host | **59/59**, 0 fallos/errores/omitidas |
+| Total | **2.991 pruebas aprobadas** |
+| APK Android debug | `assembleDebug` correcto |
+| Desktop | `compileKotlin` correcto |
+| Recursos APK | `verifyDebugLanguageResources` correcto, cadenas/plurales en/es/ca |
+| Guardia de localización | 403 cadenas + 2 plurales por idioma, 169 archivos Kotlin revisados |
+| Catálogo | Registro primario y TSV real del AAR verificados; cuatro descriptores idénticos; es↔ca ausente |
+| Higiene | `git diff --check` correcto; sin secretos, binarios, dependencias, permisos, firma ni ID añadidos/modificados |
+
+`BUILD SUCCESSFUL` en **10 min 36 s**: tiempo de tests/compilación de este host,
+no una medida de FPS Android. La pasada enfocada final aprobó 19 tests. Las
+regresiones completas incluyen importación/ZIP/XML/adquisición, recursos/selección,
+traducción/caché/modelos/persistencia y los cuatro lectores; no se han cambiado sus
+motores ni garantías. No se ejecutó inferencia nueva en Android ni una prueba
+física del cierre. Los PNG/CSV y logs de diagnóstico se generaron fuera de Git.
+La APK compilada no se publicó como release ni se cambió configuración de firma.
+
+### Checklist de nueva validación física
+
+1. Actualizar conservando datos/firma; no desinstalar ni borrar datos. En cada idioma
+   y Sistema: abrir desde proceso detenido y tocar inmediatamente Biblioteca,
+   Historial, Búsqueda o Ajustes. Repetir Inicio→Biblioteca→Inicio e
+   Inicio→Ajustes→Búsqueda; comparar arranque frío y caliente. Registrar cualquier
+   cierre y recoger el motivo con los comandos anteriores.
+2. Repetir con red lenta/sin red y con Inicio cargando portadas; después con portadas
+   calientes, scroll vertical/horizontal rápido y cambios de pestaña. Mantener
+   comparables fuente, dispositivo, temperatura y datos. No se afirma fluidez nueva.
+3. Revisar las cinco etiquetas en claro/oscuro, normal/150/180 %. «Configuració»
+   completa cuando cabe, una sola línea y nombre accesible completo si se elide.
+   Confirmar pulsación, TalkBack y regreso desde lectores.
+4. Ajustes → Idioma y traducción: los cuatro pares reales deben ser iguales en los
+   tres idiomas. Revisar aviso de es↔ca no admitido; no hay botón para ese modelo.
+   Comprobar instalaciones existentes, descarga explícita de un par admitido,
+   progreso/cancelar/reintentar y eliminación sin afectar otros modelos ni libros.
+5. EPUB2/3: selección, Copiar/Traducir, Original/Traducido, idioma de destino y
+   posición al reabrir. Cambiar idioma UI no modifica el catálogo ni el texto.
+   CBZ/PDF/TXT: abrir/reanudar, controles, gestos y posiciones; Biblioteca/Historial/
+   Búsqueda y preferencias deben conservarse. Comprobar datos tras reiniciar.
+
+**Las pruebas host no levantan el bloqueo del crash: se necesita nueva validación
+física y evidencia para confirmar su causa y resolución. No fusionar.**

@@ -402,4 +402,5 @@
     <string name="interface_locale_tag">ca</string>
     <string name="image_alt_fallback">[Imatge: %1$s]</string>
     <string name="image_not_rendered">[Imatge no representada]</string>
+    <string name="direct_model_limits">Parelles directes disponibles: anglès ↔ espanyol i anglès ↔ català. Espanyol ↔ català no està disponible; la traducció a través de l'anglès no està habilitada.</string>
 </resources>

@@ -1,0 +1,230 @@
+{
+  "_source": {
+    "url": "https://github.com/yinvoke/foxlet-translate/blob/0eff2a15032362115848a496ce1df8ed9fc68650/registry.json",
+    "sha256": "1a3b02c2a91be818350e2b3e1968cc5413feeb1ea3bdf4726f75d95354e6aa89",
+    "license": "MPL-2.0; Mozilla Firefox translation model registry, factual metadata excerpt; no weights included",
+    "retrieved": "2026-10-19"
+  },
+  "availableDirections": [
+    "af-en",
+    "ar-en",
+    "bg-en",
+    "bn-en",
+    "bs-en",
+    "ca-en",
+    "cs-en",
+    "da-en",
+    "de-en",
+    "el-en",
+    "en-af",
+    "en-ar",
+    "en-az",
+    "en-bg",
+    "en-bn",
+    "en-bs",
+    "en-ca",
+    "en-cs",
+    "en-da",
+    "en-de",
+    "en-el",
+    "en-es",
+    "en-et",
+    "en-eu",
+    "en-fa",
+    "en-fi",
+    "en-fr",
+    "en-gl",
+    "en-gu",
+    "en-he",
+    "en-hi",
+    "en-hr",
+    "en-hu",
+    "en-id",
+    "en-is",
+    "en-it",
+    "en-ja",
+    "en-kn",
+    "en-ko",
+    "en-lt",
+    "en-lv",
+    "en-ml",
+    "en-mr",
+    "en-ms",
+    "en-nb",
+    "en-nl",
+    "en-pl",
+    "en-pt",
+    "en-ro",
+    "en-ru",
+    "en-sk",
+    "en-sl",
+    "en-sr",
+    "en-sv",
+    "en-ta",
+    "en-te",
+    "en-th",
+    "en-tr",
+    "en-uk",
+    "en-ur",
+    "en-vi",
+    "en-zh-Hans",
+    "en-zh-Hant",
+    "es-en",
+    "et-en",
+    "eu-en",
+    "fa-en",
+    "fi-en",
+    "fr-en",
+    "gl-en",
+    "gu-en",
+    "he-en",
+    "hi-en",
+    "hr-en",
+    "hu-en",
+    "id-en",
+    "is-en",
+    "it-en",
+    "ja-en",
+    "kn-en",
+    "ko-en",
+    "lt-en",
+    "lv-en",
+    "ml-en",
+    "mr-en",
+    "ms-en",
+    "nb-en",
+    "nl-en",
+    "pl-en",
+    "pt-en",
+    "ro-en",
+    "ru-en",
+    "sk-en",
+    "sl-en",
+    "sq-en",
+    "sr-en",
+    "sv-en",
+    "ta-en",
+    "te-en",
+    "th-en",
+    "tr-en",
+    "uk-en",
+    "ur-en",
+    "vi-en",
+    "zh-Hans-en",
+    "zh-Hant-en"
+  ],
+  "models": [
+    {
+      "from": "ca",
+      "to": "en",
+      "version": "2.0",
+      "files": [
+        {
+          "type": "lex",
+          "name": "lex.50.50.caen.s2t.bin",
+          "size": 4359552,
+          "sha256": "74880047539925630601d61aa6c29a0672046236ca6cf33eeaf6f6f6690e914e",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/99f40b15-343d-4210-887a-7c4388156868.bin"
+        },
+        {
+          "type": "model",
+          "name": "model.caen.intgemm.alphas.bin",
+          "size": 31561787,
+          "sha256": "b7f9c70823052f60c257eb1c4eff893abea3648aa9d1c23c8774e1e5ef061434",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/4b691a87-59f0-46e1-b609-fb6d687199f2.bin"
+        },
+        {
+          "type": "vocab",
+          "name": "vocab.caen.spm",
+          "size": 810273,
+          "sha256": "6d22da90905873c2793d0805e34e5c27901b16e7e7a7a427696696f67dfe1f0e",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/2a2ebc69-f213-4c69-8721-80ef9e6bc2e9.spm"
+        }
+      ]
+    },
+    {
+      "from": "en",
+      "to": "ca",
+      "version": "2.0",
+      "files": [
+        {
+          "type": "lex",
+          "name": "lex.50.50.enca.s2t.bin",
+          "size": 4344092,
+          "sha256": "8f2151a7fb75454f5167a8df8758ec02ab02c0302893851bad7caa6b729822fb",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/d2065bc0-e4bf-4810-a0cf-a0cd1163b3c0.bin"
+        },
+        {
+          "type": "model",
+          "name": "model.enca.intgemm.alphas.bin",
+          "size": 31561787,
+          "sha256": "735881c99ff303e55eb2e92a3b86762523d5dd1a4797b2574b851062051426ee",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/deeec29e-faaa-4273-bef6-2827edf193f6.bin"
+        },
+        {
+          "type": "vocab",
+          "name": "vocab.enca.spm",
+          "size": 810653,
+          "sha256": "64ebcb5f6cb5a954ced615e48a44a85e77a644e4910544014b299b8ee0fa1b1f",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/6f3f4782-5c23-4f61-bcd5-3234441c59e6.spm"
+        }
+      ]
+    },
+    {
+      "from": "en",
+      "to": "es",
+      "version": "2.1",
+      "files": [
+        {
+          "type": "lex",
+          "name": "lex.50.50.enes.s2t.bin",
+          "size": 4198436,
+          "sha256": "7d51237c0a07027dcd61643cfbbb0f8c48597d19907ef53d2cae9d6bec2cf25c",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/1834a61e-0331-4c4a-bbc0-dda02afa8188.bin"
+        },
+        {
+          "type": "model",
+          "name": "model.enes.intgemm.alphas.bin",
+          "size": 31561787,
+          "sha256": "3b1c399511c01c84c36fae5c0524df44096288efdc8236e182b5c97d7ad2244c",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/a4ba0e94-16de-4058-9a44-5bbbbb3c8640.bin"
+        },
+        {
+          "type": "vocab",
+          "name": "vocab.enes.spm",
+          "size": 816054,
+          "sha256": "5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/170634fd-511a-4a28-b723-0a1025c67feb.spm"
+        }
+      ]
+    },
+    {
+      "from": "es",
+      "to": "en",
+      "version": "2.0",
+      "files": [
+        {
+          "type": "lex",
+          "name": "lex.50.50.esen.s2t.bin",
+          "size": 4636248,
+          "sha256": "e2610211d3b9577d012638fe7e7e74ed7b4b708ce96b9e792e67c282a6492daa",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/a55a9cf2-8a8c-4942-a528-91e93d081746.bin"
+        },
+        {
+          "type": "model",
+          "name": "model.esen.intgemm.alphas.bin",
+          "size": 31561787,
+          "sha256": "4aed7734152ae0045d1a69ae49c86cfda18f53c61f90e95e1d1de1c7c7c3b033",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/d7256ea9-7731-4f15-866c-62998eef93b9.bin"
+        },
+        {
+          "type": "vocab",
+          "name": "vocab.esen.spm",
+          "size": 816054,
+          "sha256": "5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad",
+          "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/8695cc3d-7897-4c29-808b-bc983a93d1cd.spm"
+        }
+      ]
+    }
+  ]
+}

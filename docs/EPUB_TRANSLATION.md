@@ -11,6 +11,33 @@ by [LOCALIZATION_COMPLETION.md](LOCALIZATION_COMPLETION.md). Application screens
 reader controls and errors now use the shared en/es/ca resources. This does not
 translate publication metadata or change the engine, models, storage or progress.
 
+## PR #33 physical-feedback follow-up: Spanish/Catalan pairs
+
+The four validated app descriptors are unchanged from the merged PR #31:
+`en→es`, `es→en`, `en→ca`, `ca→en`. They are now testable shared **metadata** in
+`VerifiedTranslationModels.kt`; the Android adapter uses the same values and its
+existing descriptor, checksum, storage and native-lifetime validation. This does
+not enable translation on Desktop.
+
+The pinned Foxlet registry **and the checksummed 0.5.0 AAR's actual `models.tsv`**
+were inspected: each has no direct `es→ca` or `ca→es` entry. The SDK bundles 106
+other/direct directions in total; only the four app-validated directions are
+advertised by INFINILECT. No Spanish/Catalan model disappeared in PR #33, and UI
+locale does not filter the model list. The previous English-bridge prototype
+below was explicitly not integrated. A bridge requires two model stages and
+separate memory/quality/progress/cache validation; it is not a missing direct
+model and is not silently enabled by this patch.
+
+Settings now explains that limitation in en/es/ca; unsupported pairs keep Original
+available and offer no invented download. Independent pinned registry excerpts
+in `jvmSharedTest/resources/translation/foxlet-registry-supported.json` test sizes,
+versions, directions, allowed HTTPS hosts and hashes in the SDK's filename order.
+The factual metadata fixture attributes the MPL-2.0 source; existing license texts
+remain in `third-party/foxlet-LICENSE.txt` and
+`third-party/mozilla-translation-models-LICENSE.txt`. No weights or dependencies
+were added. See [the physical-feedback report](LOCALIZATION_COMPLETION.md#correcciones-posteriores-a-pruebas-físicas--realme-c55)
+for the startup limitation, UI/admin tests and final build results.
+
 ## Provider decision and licensing
 
 Choose **Foxlet 0.5.0**, an Android adaptation of Mozilla's Bergamot/Marian engine.

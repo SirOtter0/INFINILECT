@@ -55,6 +55,7 @@ internal enum class UiText(val resource: StringResource, val fallback: String) {
     DEFAULT_READING_LANGUAGE(Res.string.default_reading_language, "Default reading language"),
     FOLLOW_INTERFACE(Res.string.follow_interface, "Follow interface language"),
     USE_DEFAULT(Res.string.use_default, "Use default reading language"),
+    DIRECT_MODEL_LIMITS(Res.string.direct_model_limits, "Available direct pairs: English ↔ Spanish and English ↔ Catalan. Spanish ↔ Catalan is not supported; translating through English is not enabled."),
     MODELS_AVAILABLE(Res.string.models_available, "Available models"),
     INSTALLED(Res.string.installed, "Installed"),
     NOT_INSTALLED(Res.string.not_installed, "Not installed"),
