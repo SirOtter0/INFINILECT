@@ -135,7 +135,7 @@ At 5,000 rows, search/filter min–max was **0.296–1.670 ms**; index creation 
 - Six packaged locale CVR files exactly match generated resources. The historical database fixture, test SQL and test classes are absent from the APK. No private key files are packaged.
 - All **six** packaged native libraries are byte-identical to the previous PR #33 development APK; network notices and public-suffix resource are preserved.
 - No runtime dependency, permission, application ID, release or signing-configuration changes. The only committed `.db` is the intentionally empty historical schema verification input.
-- **Same-certificate APK delivery is pending:** the user's development keystore/password attachments from earlier sessions are no longer present in this execution environment; the retained build-cache debug key has a different certificate. No alternate-key APK is offered as an upgrade and no release or replacement identity was published. Restore the original signing inputs to produce the install-over build; uninstalling or clearing user data is not a workaround.
+- **Same-certificate APK delivered privately via Drive:** `INFINILECT-PR34-c3cd85f-development.apk`, built from `c3cd85fad1f21b6b7411fc0d4074d8b9be9ea9f5`, 20,821,558 bytes. SHA-256: `55e51bfdd26210a110ae86304d8a2276ab144efe58ee58693da6753c3d45eae6`. The supplied original development certificate matches the preceding installation; v2 signing and 16 KiB alignment verified. Drive metadata confirms the byte count and owner-only access. No signing inputs were committed or uploaded. Install over the previous version without uninstalling or clearing data; physical upgrade validation remains pending.
 
 ### Remaining acceptance limits
 
