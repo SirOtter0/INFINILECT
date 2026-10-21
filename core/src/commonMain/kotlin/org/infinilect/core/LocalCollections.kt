@@ -26,7 +26,9 @@ data class PublicationSnapshot(
     }
 }
 
-data class LibraryEntry(val publication: PublicationSnapshot, val addedAtEpochMillis: Long, val lastOpenedAtEpochMillis: Long? = null) {
+data class LibraryEntry(val publication: PublicationSnapshot, val addedAtEpochMillis: Long, val lastOpenedAtEpochMillis: Long? = null,
+    val readingState: LibraryReadingState = LibraryReadingState.NOT_STARTED,
+    val stateIsExplicit: Boolean = false, val favorite: Boolean = false, val tags: List<LibraryTag> = emptyList()) {
     init { require(addedAtEpochMillis >= 0 && (lastOpenedAtEpochMillis == null || lastOpenedAtEpochMillis >= 0)) }
 }
 data class HistoryEntry(val publication: PublicationSnapshot, val lastOpenedAtEpochMillis: Long) {
@@ -46,10 +48,34 @@ interface LibraryRepository {
     suspend fun put(publication: PublicationSnapshot, atEpochMillis: Long): LocalStoreResult<LibraryEntry>
     suspend fun remove(id: PublicationId): LocalStoreResult<Unit>
     suspend fun contains(id: PublicationId): LocalStoreResult<Boolean>
+    /** All IDs are validated before a single atomic edit; failures leave the batch unchanged. */
+    suspend fun organize(ids: Set<PublicationId>, change: LibraryOrganizationChange): LocalStoreResult<Unit> = LocalStoreResult.Unavailable
+    /** Existing validated locator evidence; changes only an implicit not-started state. */
+    suspend fun recordProgressEvidence(ids: Set<PublicationId>): LocalStoreResult<Int> = LocalStoreResult.Success(0)
+    suspend fun tags(): LocalStoreResult<List<LibraryTag>> = LocalStoreResult.Unavailable
+    suspend fun createTag(name: String): LocalStoreResult<LibraryTag> = LocalStoreResult.Unavailable
+    suspend fun renameTag(id: Long, name: String): LocalStoreResult<Unit> = LocalStoreResult.Unavailable
+    suspend fun deleteTag(id: Long): LocalStoreResult<Unit> = LocalStoreResult.Unavailable
 }
 interface ReadingHistoryRepository {
     suspend fun recordOpened(publication: PublicationSnapshot, atEpochMillis: Long): LocalStoreResult<Unit>
     suspend fun listRecent(limit: Int = 50): LocalStoreResult<List<HistoryEntry>>
     suspend fun remove(id: PublicationId): LocalStoreResult<Unit>
     suspend fun clear(): LocalStoreResult<Unit>
+}
+
+/** Persistent identifiers are independent of the interface language. */
+enum class LibraryReadingState(val key: String) {
+    NOT_STARTED("not_started"), READING("reading"), COMPLETED("completed"), PAUSED("paused"), ABANDONED("abandoned");
+    companion object { fun fromKey(key: String) = entries.single { it.key == key } }
+}
+data class LibraryTag(val id: Long, val name: String)
+/** Nullable fields are unchanged. Add/remove membership deltas avoid stale-dialog overwrites. */
+data class LibraryOrganizationChange(val state: LibraryReadingState? = null, val favorite: Boolean? = null,
+    val addTags: Set<Long> = emptySet(), val removeTags: Set<Long> = emptySet())
+object LibraryOrganizationLimits {
+    const val PUBLICATIONS = 5000
+    const val TAGS = 100
+    const val TAG_NAME = 64
+    const val TAGS_PER_PUBLICATION = 20
 }

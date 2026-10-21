@@ -1,0 +1,22 @@
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- Copyright © 2026 SirOtter0 and INFINILECT contributors.
+-- Non-destructive v1 → v2. Reading positions live in a separate unchanged store.
+ALTER TABLE library_entries ADD COLUMN reading_state TEXT NOT NULL DEFAULT 'not_started';
+ALTER TABLE library_entries ADD COLUMN state_explicit INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE library_entries ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
+UPDATE library_entries SET last_opened_at = (SELECT last_opened_at FROM reading_history h WHERE h.source_id = library_entries.source_id AND h.local_id = library_entries.local_id)
+WHERE last_opened_at IS NULL AND EXISTS (SELECT 1 FROM reading_history h WHERE h.source_id = library_entries.source_id AND h.local_id = library_entries.local_id);
+UPDATE library_entries SET reading_state = 'reading' WHERE last_opened_at IS NOT NULL;
+CREATE TABLE library_tags (
+ id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL,
+ canonical_name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE library_entry_tags (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ tag_id INTEGER NOT NULL,
+ PRIMARY KEY (source_id, local_id, tag_id),
+ FOREIGN KEY (source_id, local_id) REFERENCES library_entries(source_id, local_id) ON DELETE CASCADE,
+ FOREIGN KEY (tag_id) REFERENCES library_tags(id) ON DELETE CASCADE
+);

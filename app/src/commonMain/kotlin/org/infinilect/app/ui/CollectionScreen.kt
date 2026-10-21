@@ -33,10 +33,25 @@ internal fun CollectionScreen(destination: Destination, application: Application
     val error by controller.error.collectAsState()
     val membership by controller.membership.collectAsState()
     val selected by controller.selection.collectAsState()
+    val browser = application.libraryBrowser
+    val browserEntries by browser.result.collectAsState()
+    val query by browser.query.collectAsState()
+    val working by browser.working.collectAsState()
+    val tags by controller.tags.collectAsState()
+    val organizationResult by controller.organizationResult.collectAsState()
     val isLibrary = destination == Destination.LIBRARY
+    LaunchedEffect(isLibrary) { if(isLibrary) browser.activate() }
+    LaunchedEffect(isLibrary, progressRecords) { if(isLibrary) browser.mergeProgress(progressRecords) }
+    LaunchedEffect(isLibrary,tags) {
+        if(isLibrary) {
+            val current = browser.query.value
+            val retained = current.tags.intersect(tags.map {it.id}.toSet())
+            if(retained != current.tags) browser.change(current.copy(tags = retained))
+        }
+    }
     val selecting = isLibrary && selected.isNotEmpty()
-    val entries = remember(isLibrary, library.entries, history.entries) {
-        if (isLibrary) library.entries.map { it.publication } else history.entries.map { it.publication }
+    val entries = remember(isLibrary, browserEntries, history.entries) {
+        if (isLibrary) browserEntries.map { it.publication } else history.entries.map { it.publication }
     }
     val progress = remember(progressRecords) { indexPublicationProgress(progressRecords) }
     val loading = if (isLibrary) library.loading else history.loading
@@ -44,6 +59,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
     var detail by remember(destination) { mutableStateOf<PublicationSnapshot?>(null) }
     var detailFormat by remember(destination) { mutableStateOf<PublicationFormat?>(null) }
     var remove by remember(destination) { mutableStateOf<CollectionRemoval?>(null) }
+    var organize by remember { mutableStateOf<Set<PublicationId>?>(null) }
     var batch by remember(destination) { mutableStateOf<Set<PublicationId>?>(null) }
     val now = Clock.System.now().toEpochMilliseconds()
     val interfaceLanguage = LocalInterfaceLanguage.current
@@ -62,7 +78,8 @@ internal fun CollectionScreen(destination: Destination, application: Application
                         Text(strings.selectedCount(selected.size), style = MaterialTheme.typography.subtitle1,
                             modifier = Modifier.padding(vertical = 16.dp).semantics { liveRegion = LiveRegionMode.Polite; heading() })
                         TextButton(controller::clearSelection, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.UI_CLEAR_SELECTION]) }
-                        TextButton(controller::selectAll, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(strings[UiText.SELECT_ALL]) }
+                        TextButton({ controller.selectAll(browserEntries.map { it.publication.id }.toSet()) }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(if(browserEntries.size > 1000) strings.format(UiText.LIB_SELECT_LIMIT,strings.number(1000)) else strings[UiText.SELECT_ALL]) }
+                        TextButton({ organize = selected.toSet() }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(strings[UiText.LIB_ORGANIZE]) }
                         TextButton({ batch = selected.toSet() }, Modifier.heightIn(min = 48.dp), enabled = !busy && membership.mutating.isEmpty()) {
                             Text(if (busy) strings[UiText.UI_REMOVING] else strings[UiText.UI_REMOVE_FROM_LIBRARY])
                         }
@@ -71,13 +88,24 @@ internal fun CollectionScreen(destination: Destination, application: Application
             }
             LazyVerticalGrid(GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = position,
                 contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(if (isLibrary) 12.dp else 4.dp)) {
+                if (isLibrary && !selecting) item(key = "library-tools", span = { GridItemSpan(maxLineSpan) }) { LibraryTools(browser,tags,controller) }
                 if (loading && entries.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard(strings[UiText.UI_LOADING], strings[UiText.UI_READING_YOUR_SAVED_PUBLICATIONS], busy = true) }
                 if (failed) item(span = { GridItemSpan(maxLineSpan) }) {
                     FeedbackCard(strings[UiText.UI_LOCAL_STORAGE_IS_UNAVAILABLE], strings[UiText.UI_YOUR_SAVED_PUBLICATIONS_HAVE_NOT_BEEN_REMOVED_PLEASE_TRY_AGAIN], error = true,
                         action = strings[UiText.UI_TRY_AGAIN], onAction = { if (isLibrary) controller.refreshLibrary() else controller.refreshHistory() })
                 }
                 error?.let { item(span = { GridItemSpan(maxLineSpan) }) { FeedbackCard(strings[UiText.UI_CHANGE_COULD_NOT_BE_SAVED], strings.status(it), error = true) } }
-                if (entries.isEmpty() && !loading && !failed) item(span = { GridItemSpan(maxLineSpan) }) {
+                if (isLibrary && organizationResult != null) item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(strings[if(organizationResult == true) UiText.LIB_SAVED else UiText.LIB_SAVE_ERROR],
+                        color = if(organizationResult == true) MaterialTheme.colors.onSurface else MaterialTheme.colors.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                }
+                if (isLibrary && entries.isEmpty() && library.entries.isNotEmpty() && !working && !loading && !failed) item(span = { GridItemSpan(maxLineSpan) }) {
+                    FeedbackCard(strings[UiText.LIB_NO_MATCHES],strings[UiText.LIB_NO_MATCHES_HINT],
+                        action = strings[if(query.filtered) UiText.LIB_RESET_FILTERS else UiText.LIB_CLEAR_SEARCH],
+                        onAction = { if(query.filtered) browser.resetFilters() else browser.change(query.copy(text = "")) })
+                }
+                if (entries.isEmpty() && !loading && !failed && (!isLibrary || library.entries.isEmpty())) item(span = { GridItemSpan(maxLineSpan) }) {
                     FeedbackCard(if (isLibrary) strings[UiText.UI_YOUR_LIBRARY_IS_EMPTY] else strings[UiText.UI_NO_READING_HISTORY_YET],
                         if (isLibrary) strings[UiText.UI_IMPORT_A_LOCAL_FILE_OR_SAVE_A_PUBLICATION_FROM_SEARCH_YOUR_READING_POSITIONS_ARE] else strings[UiText.UI_OPEN_A_PUBLICATION_TO_START_READING_RECENT_READS_WILL_APPEAR_HERE],
                         action = strings[UiText.UI_BROWSE_SEARCH], onAction = { application.navigate(Destination.SEARCH) })
@@ -115,9 +143,18 @@ internal fun CollectionScreen(destination: Destination, application: Application
                 if (action.inLibrary == true) { detail = null; remove = CollectionRemoval(publication, history = false) }
                 else controller.toggleCatalogLibrary(publication.displayPublication())
             }, Modifier.heightIn(min = 48.dp), enabled = action.enabled && !busy) { Text(strings.status(action.label)) }
+            if(action.inLibrary == true) {
+                OutlinedButton({ detail = null; organize = setOf(publication.id) }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(strings[UiText.LIB_ORGANIZE]) }
+                val entry = library.entries.firstOrNull { it.publication.id == publication.id }
+                if(entry != null) OutlinedButton({ controller.organize(setOf(publication.id),LibraryOrganizationChange(favorite = !entry.favorite)) }, Modifier.heightIn(min = 48.dp)
+                    .semantics { stateDescription = strings[if(entry.favorite) UiText.UI_SELECTED else UiText.UI_NOT_SELECTED] }, enabled = !busy) {
+                    Text(strings[UiText.LIB_FAVORITE]); Checkbox(entry.favorite,null)
+                }
+            }
             error?.let { Text(strings.status(it), color = MaterialTheme.colors.error) }
         }
     }
+    organize?.let { ids -> LibraryOrganizer(library.entries.filter { it.publication.id in ids },tags,controller) { organize = null } }
     remove?.let { removal ->
         AlertDialog(onDismissRequest = { remove = null },
             title = { Text(if (removal.history) strings[UiText.UI_REMOVE_FROM_HISTORY] else strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM]) },
