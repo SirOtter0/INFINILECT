@@ -33,6 +33,7 @@ class ApplicationSources internal constructor(
     internal val discoveryDiagnostics: (org.infinilect.app.discovery.DiscoveryDiagnostic) -> Unit = {},
     private val releaseSources: () -> Unit,
 ) {
+    internal val libraryDispatcher: CoroutineDispatcher get() = sessionDispatcher ?: Dispatchers.Default
     // Only an explicit debug-platform owner installs this optional, metadata-free sink.
     internal var technicalDiagnostics: org.infinilect.app.diagnostics.TechnicalDiagnostics? = null
     private var session: ApplicationSessionLifetime? = null

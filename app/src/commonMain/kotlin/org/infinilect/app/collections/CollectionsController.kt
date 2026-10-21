@@ -36,6 +36,8 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
     private val scope = CoroutineScope(scope.coroutineContext + job)
     private val mutableLibrary = MutableStateFlow(CollectionList<LibraryEntry>())
     val library = mutableLibrary.asStateFlow()
+    private val mutableTags = MutableStateFlow<List<LibraryTag>>(emptyList())
+    val tags = mutableTags.asStateFlow()
     private val mutableHistory = MutableStateFlow(CollectionList<HistoryEntry>())
     val history = mutableHistory.asStateFlow()
     private val mutableReader = MutableStateFlow(ReaderLibraryState())
@@ -60,8 +62,8 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
         if (closed || busy.value) return
         if (id in selection.value) mutableSelection.value = selection.value - id else select(id)
     }
-    fun selectAll() {
-        if (!closed && !busy.value) mutableSelection.value = library.value.entries.take(1000).map { it.publication.id }.toSet()
+    fun selectAll(ids: Set<PublicationId> = library.value.entries.map { it.publication.id }.toSet()) {
+        if (!closed && !busy.value) mutableSelection.value = ids.intersect(membership.value.saved).take(1000).toSet()
     }
     fun clearSelection() { mutableSelection.value = emptySet() }
 
@@ -150,8 +152,10 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
         libraryRequest = scope.launch {
             try {
                 val result = safe { owner?.library?.list() ?: LocalStoreResult.Unavailable }
+                val tags = safe { owner?.library?.tags() ?: LocalStoreResult.Unavailable }
                 currentCoroutineContext().ensureActive()
                 if (generation != libraryGeneration) return@launch
+                if (tags is LocalStoreResult.Success) mutableTags.value = tags.value
                 mutableLibrary.value = when (result) {
                     is LocalStoreResult.Success -> {
                         libraryLoaded = true
@@ -259,6 +263,38 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
         request.start()
         return request
     }
+    suspend fun reconcileProgressEvidence(ids: Set<PublicationId>) {
+        if(closed || ids.isEmpty()) return
+        val result = safe { owner?.library?.recordProgressEvidence(ids) ?: LocalStoreResult.Unavailable }
+        if(result is LocalStoreResult.Success && result.value > 0) owner?.changed()
+    }
+    private val mutableOrganizationResult = MutableStateFlow<Boolean?>(null)
+    val organizationResult = mutableOrganizationResult.asStateFlow()
+    /** Never optimistic: the repository commits a whole organization batch or nothing. */
+    fun organize(ids: Set<PublicationId>, change: LibraryOrganizationChange): Job? {
+        val keys = ids.toSet()
+        val delta = change.copy(addTags = change.addTags.toSet(),removeTags = change.removeTags.toSet())
+        return organizationMutation { owner?.library?.organize(keys,delta) ?: LocalStoreResult.Unavailable }
+    }
+    fun createTag(name: String) = organizationMutation { owner?.library?.createTag(name) ?: LocalStoreResult.Unavailable }
+    fun renameTag(id: Long, name: String) = organizationMutation { owner?.library?.renameTag(id,name) ?: LocalStoreResult.Unavailable }
+    fun deleteTag(id: Long) = organizationMutation { owner?.library?.deleteTag(id) ?: LocalStoreResult.Unavailable }
+    private fun organizationMutation(action: suspend () -> LocalStoreResult<*>): Job? {
+        if (closed || busy.value || libraryMutations.isNotEmpty()) return null
+        mutableBusy.value = true; mutableOrganizationResult.value = null
+        val request = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val result = safe(action)
+                currentCoroutineContext().ensureActive()
+                mutableOrganizationResult.value = result is LocalStoreResult.Success
+                // Success is announced only after commit. Reconcile even on canceled returns;
+                // the application-owned change flow performs one refresh for this mutation.
+            } finally { mutableBusy.value = false; if(!closed) owner?.changed() }
+        }
+        request.invokeOnCompletion { mutableBusy.value = false }
+        request.start()
+        return request
+    }
     fun removeHistory(id: PublicationId) = mutate("The history change could not be saved on this device.") {
         owner?.flushHistory()
         (owner?.history?.remove(id) ?: LocalStoreResult.Unavailable).also { if (it is LocalStoreResult.Success) removed(id) }
@@ -275,7 +311,7 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
         }
     }
     private fun mutate(message: String, action: suspend () -> LocalStoreResult<Unit>) {
-        if (closed || busy.value) return
+        if (closed || busy.value || libraryMutations.isNotEmpty()) return
         mutableBusy.value=true
         scope.launch {
             try {

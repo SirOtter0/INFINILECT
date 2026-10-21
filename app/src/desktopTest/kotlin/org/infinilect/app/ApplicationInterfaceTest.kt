@@ -66,6 +66,10 @@ class ApplicationInterfaceTest {
             assertEquals(loads, f.coverLoads)
         }
     }
+    // A search field also has text-selection long-click semantics. Target the cover
+    // contract explicitly; keep every existing navigation/selection assertion.
+    private fun isCover(node: SemanticsNode) = node.config.getOrNull(SemanticsActions.OnLongClick) != null &&
+        node.config.getOrNull(SemanticsProperties.ContentDescription)?.any { it.startsWith("Cover for ") } == true
     private class Source(count: Int = 30) : PublicationSource {
         override val id = SourceId("original-ui-fixture")
         val books = List(count) { i ->
@@ -205,7 +209,11 @@ class ApplicationInterfaceTest {
             f.nav(Destination.LIBRARY)
             val scroll=f.nodes().first {it.config.getOrNull(SemanticsActions.ScrollToIndex)!=null}
             assertTrue(scroll.boundsInRoot.height>0)
-            f.reach(29)
+            // Equal added timestamps now follow the real repository's identity tie-break,
+            // and the scrollable organization header occupies one grid item.
+            val target=f.app.libraryBrowser.result.value.indexOfFirst { it.publication.id==f.source.books[29].id }
+            assertTrue(target>=0)
+            f.reach(target+1)
             val title=f.nodes().first {f.has(it,"Original publication 29")}
             assertTrue(title.boundsInRoot.bottom>0 && title.boundsInRoot.top<height)
             val nav=f.nodes().first { f.has(it,"Navigate to Settings") }
@@ -321,7 +329,7 @@ class ApplicationInterfaceTest {
     @Test fun coverGridHasTwoPhoneColumnsAndNoPermanentActionRows() = runTest {
         Fixture(this,count=12).use { f ->
             f.nav(Destination.LIBRARY)
-            fun tile(i:Int)=f.nodes().single { it.config.getOrNull(SemanticsActions.OnLongClick)!=null && it.children.any { n -> f.has(n,"Original publication $i") } }
+            fun tile(i:Int)=f.nodes().single { isCover(it) && it.children.any { n -> f.has(n,"Original publication $i") } }
             val a=tile(0).boundsInRoot;val b=tile(1).boundsInRoot
             assertEquals(a.top,b.top);assertTrue(b.left>=a.right)
             assertEquals(2f/3f,a.width/a.height,.02f)
@@ -340,7 +348,7 @@ class ApplicationInterfaceTest {
     @Test fun longPressAndAccessibleActionsExposeDetailsWithoutAcquisition() = runTest {
         Fixture(this).use { f ->
             f.nav(Destination.LIBRARY)
-            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            val tile=f.nodes().first {isCover(it)}
             assertTrue(tile.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump()
             assertTrue(f.visible("1 selected"));assertEquals(0,f.source.acquisitions)
             assertEquals(setOf(f.source.books[0].id),f.app.collections.selection.value)
@@ -380,7 +388,7 @@ class ApplicationInterfaceTest {
     @Test fun desktopRightClickOpensMenuWithoutOpeningReader() = runTest {
         Fixture(this,1280,800).use {f ->
             f.nav(Destination.LIBRARY)
-            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            val tile=f.nodes().first {isCover(it)}
             val at=tile.boundsInRoot.center
             f.scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press,at,
                 buttons=androidx.compose.ui.input.pointer.PointerButtons(2),button=androidx.compose.ui.input.pointer.PointerButton.Secondary)
@@ -395,11 +403,11 @@ class ApplicationInterfaceTest {
         Fixture(this,1280,800).use {f ->
             f.nav(Destination.LIBRARY)
             repeat(20) {
-                if(f.nodes().none {it.config.getOrNull(SemanticsProperties.Focused)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null}) {
+                if(f.nodes().none {it.config.getOrNull(SemanticsProperties.Focused)==true && isCover(it)}) {
                     f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyUp));f.pump()
                 }
             }
-            assertTrue(f.nodes().any {it.config.getOrNull(SemanticsProperties.Focused)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null})
+            assertTrue(f.nodes().any {it.config.getOrNull(SemanticsProperties.Focused)==true && isCover(it)})
             f.scene.sendKeyEvent(KeyEvent(Key.F10,KeyEventType.KeyDown,isShiftPressed=true));f.pump()
             assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
         }
@@ -441,7 +449,7 @@ class ApplicationInterfaceTest {
     @Test fun longPressSelectionSupportsTapToggleSelectAllAndClearWithoutOpening() = runTest {
         Fixture(this).use { f ->
             f.nav(Destination.LIBRARY)
-            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            val tile=f.nodes().first {isCover(it)}
             assertTrue(tile.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump()
             assertTrue(f.visible("1 selected"));assertEquals(setOf(f.source.books[0].id),f.app.collections.selection.value)
             f.click("Original publication 1");assertTrue(f.visible("2 selected"))
@@ -457,7 +465,7 @@ class ApplicationInterfaceTest {
             f.nav(Destination.LIBRARY);f.reach(20)
             fun offset()=f.nodes().first {it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)!=null}.config[SemanticsProperties.VerticalScrollAxisRange].value()
             val before=offset();val records=f.saved.toList()
-            fun selectVisible() { assertTrue(f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump() }
+            fun selectVisible() { assertTrue(f.nodes().first {isCover(it)}.config[SemanticsActions.OnLongClick].action!!.invoke());f.pump() }
             selectVisible();assertNotNull(f.back).invoke();f.pump()
             assertTrue(f.app.collections.selection.value.isEmpty());assertEquals(Destination.LIBRARY,f.app.destination.value);assertEquals(before,offset())
             selectVisible();f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump()
@@ -521,10 +529,10 @@ class ApplicationInterfaceTest {
     @Test fun selectedCoversHaveAccessibleStateActionsAndBoundedToolbarOnSmallDarkScreen() = runTest {
         Fixture(this,360,480,1.6f,count=12).use { f ->
             f.settings.change(ApplicationThemeMode.DARK);f.pump();f.nav(Destination.LIBRARY)
-            val tile=f.nodes().first {it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            val tile=f.nodes().first {isCover(it)}
             val select=assertNotNull(tile.config.getOrNull(SemanticsActions.CustomActions)).first {it.label=="Select publication"}
             assertTrue(select.action());f.pump()
-            val selected=f.nodes().first {it.config.getOrNull(SemanticsProperties.Selected)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null}
+            val selected=f.nodes().first {it.config.getOrNull(SemanticsProperties.Selected)==true && isCover(it)}
             assertTrue(selected.config[SemanticsProperties.StateDescription].contains("Selected"))
             assertTrue(f.visible("1 selected"));assertTrue(assertNotNull(f.appAppearance).dark)
             val nav=f.nodes().first {f.has(it,"Navigate to Settings")};assertTrue(nav.boundsInRoot.bottom<=480);assertTrue(nav.boundsInRoot.height>=48)
@@ -535,7 +543,7 @@ class ApplicationInterfaceTest {
         Fixture(this,1280,800).use { f ->
             f.nav(Destination.LIBRARY)
             repeat(20) {
-                if(f.nodes().none {it.config.getOrNull(SemanticsProperties.Focused)==true && it.config.getOrNull(SemanticsActions.OnLongClick)!=null}) {
+                if(f.nodes().none {it.config.getOrNull(SemanticsProperties.Focused)==true && isCover(it)}) {
                     f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Tab,KeyEventType.KeyUp));f.pump()
                 }
             }

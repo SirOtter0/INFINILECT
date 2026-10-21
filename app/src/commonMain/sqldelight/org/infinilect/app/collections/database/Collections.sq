@@ -9,6 +9,10 @@ CREATE TABLE library_entries (
  rights TEXT,
  added_at INTEGER NOT NULL CHECK (added_at >= 0),
  last_opened_at INTEGER CHECK (last_opened_at >= 0),
+ reading_state TEXT NOT NULL DEFAULT 'not_started',
+ state_explicit INTEGER NOT NULL DEFAULT 0,
+ favorite INTEGER NOT NULL DEFAULT 0,
+
  PRIMARY KEY (source_id, local_id)
 );
 CREATE TABLE reading_history (
@@ -53,6 +57,19 @@ CREATE TABLE history_languages (
  PRIMARY KEY (source_id, local_id, ordinal),
  FOREIGN KEY (source_id, local_id) REFERENCES reading_history(source_id, local_id) ON DELETE CASCADE
 );
+CREATE TABLE library_tags (
+ id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL,
+ canonical_name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE library_entry_tags (
+ source_id TEXT NOT NULL,
+ local_id TEXT NOT NULL,
+ tag_id INTEGER NOT NULL,
+ PRIMARY KEY (source_id, local_id, tag_id),
+ FOREIGN KEY (source_id, local_id) REFERENCES library_entries(source_id, local_id) ON DELETE CASCADE,
+ FOREIGN KEY (tag_id) REFERENCES library_tags(id) ON DELETE CASCADE
+);
 libraryGet:
 SELECT * FROM library_entries WHERE source_id = ? AND local_id = ?;
 libraryList:
@@ -60,11 +77,11 @@ SELECT * FROM library_entries ORDER BY added_at DESC, source_id ASC, local_id AS
 libraryCount:
 SELECT count(*) FROM library_entries;
 libraryPut:
-INSERT OR REPLACE INTO library_entries VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO library_entries (source_id, local_id, title, semantic_type, source_url, rights, added_at, last_opened_at, reading_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 libraryRemove:
 DELETE FROM library_entries WHERE source_id = ? AND local_id = ?;
 libraryOpened:
-UPDATE library_entries SET last_opened_at = ? WHERE source_id = ? AND local_id = ?;
+UPDATE library_entries SET last_opened_at = ?, reading_state = CASE WHEN state_explicit = 0 AND reading_state = 'not_started' THEN 'reading' ELSE reading_state END WHERE source_id = ? AND local_id = ?;
 historyGet:
 SELECT * FROM reading_history WHERE source_id = ? AND local_id = ?;
 historyList:
@@ -95,3 +112,43 @@ historyLanguages:
 SELECT value FROM history_languages WHERE source_id = ? AND local_id = ? ORDER BY ordinal ASC LIMIT 33;
 historyLanguagesPut:
 INSERT INTO history_languages VALUES (?, ?, ?, ?);
+
+libraryUpdateMetadata:
+UPDATE library_entries SET title = ?, semantic_type = ?, source_url = ?, rights = ? WHERE source_id = ? AND local_id = ?;
+libraryAuthorsClear:
+DELETE FROM library_authors WHERE source_id = ? AND local_id = ?;
+libraryLanguagesClear:
+DELETE FROM library_languages WHERE source_id = ? AND local_id = ?;
+librarySetState:
+UPDATE library_entries SET reading_state = ?, state_explicit = 1 WHERE source_id = ? AND local_id = ?;
+librarySetFavorite:
+UPDATE library_entries SET favorite = ? WHERE source_id = ? AND local_id = ?;
+tagsList:
+SELECT * FROM library_tags ORDER BY canonical_name, id LIMIT 101;
+tagGet:
+SELECT * FROM library_tags WHERE id = ?;
+tagByName:
+SELECT * FROM library_tags WHERE canonical_name = ?;
+tagCreate:
+INSERT INTO library_tags (name, canonical_name) VALUES (?, ?);
+tagRename:
+UPDATE library_tags SET name = ?, canonical_name = ? WHERE id = ?;
+tagDelete:
+DELETE FROM library_tags WHERE id = ?;
+entryTags:
+SELECT library_tags.* FROM library_tags JOIN library_entry_tags ON library_tags.id = library_entry_tags.tag_id
+WHERE source_id = ? AND local_id = ? ORDER BY canonical_name, id;
+allEntryTags:
+SELECT * FROM library_entry_tags ORDER BY source_id, local_id, tag_id;
+entryTagAdd:
+INSERT OR IGNORE INTO library_entry_tags VALUES (?, ?, ?);
+entryTagRemove:
+DELETE FROM library_entry_tags WHERE source_id = ? AND local_id = ? AND tag_id = ?;
+
+libraryInferReading:
+UPDATE library_entries SET reading_state = 'reading' WHERE source_id = ? AND local_id = ? AND state_explicit = 0 AND reading_state = 'not_started';
+
+libraryAllAuthors:
+SELECT * FROM library_authors ORDER BY source_id, local_id, ordinal LIMIT 320001;
+libraryAllLanguages:
+SELECT * FROM library_languages ORDER BY source_id, local_id, ordinal LIMIT 160001;

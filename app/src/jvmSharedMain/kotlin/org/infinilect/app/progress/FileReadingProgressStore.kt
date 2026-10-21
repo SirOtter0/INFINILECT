@@ -54,7 +54,11 @@ internal class FileReadingProgressStore(
     }
 
     override suspend fun recentPublications(ids: List<PublicationId>): List<ReadingProgress> {
-        val requested = ids.take(8).toSet()
+        return summaries(ids.take(8))
+    }
+    override suspend fun librarySummaries(ids: List<PublicationId>): List<ReadingProgress> = summaries(ids.take(LibraryOrganizationLimits.PUBLICATIONS))
+    private suspend fun summaries(ids: List<PublicationId>): List<ReadingProgress> {
+        val requested = ids.toSet()
         if (requested.isEmpty()) return emptyList()
         return operation(Operation.GET, emptyList()) { root, attempt ->
             val found = mutableMapOf<PublicationId, ReadingProgress>()
