@@ -81,3 +81,62 @@ Install the development-signed APK **over** the previous installation. Do not un
 8. Repeat in español, English and català; test font scales 150–180%, portrait/landscape, light/dark, keyboard/TalkBack where available. All panel content must scroll and all close/apply actions remain reachable.
 9. Scroll quickly with warm and pending artwork, then filter/sort repeatedly. Look for duplicated cover requests, jumps, frozen frames or exits. Repeat with the largest existing library; do not import copyrighted test fixtures into the repository.
 10. Exercise EPUB selection/translation, models, Original/Translated, CBZ rapid/RTL/double-page navigation and PDF/TXT reading. Record any position or responsiveness regression. Physical acceptance is required before merge.
+
+## Final verification — 2026-10-21
+
+Code verified: `fd9ce603ce4001804e2681a4112d25ec43376913`.
+
+| Suite | Tests | Failures / errors / skipped |
+|---|---:|---:|
+| Desktop | 1,616 | 0 / 0 / 0 |
+| Android-host | 1,353 | 0 / 0 / 0 |
+| Core JVM | 59 | 0 / 0 / 0 |
+| Core Android-host | 59 | 0 / 0 / 0 |
+| **Total** | **3,087** | **0 / 0 / 0** |
+
+Clean app/Android build outputs were regenerated. Android debug assembly, Desktop compilation, SQLDelight historical migration replay and `verifyDebugLanguageResources` passed. `tools/check_localization.py`: **453 strings + 2 plurals per language**, en/es/ca, presentation literal guard passed. `git diff --check` passed. No tests/assertions were removed or disabled.
+
+The final headless UI fixture includes 5,000-entry scroll/search/tab restoration, 320/360 dp widths, a short 360×400 viewport, Desktop width and font scaling to 180%. It exercises deleted-tag filter/pending-edit cleanup and keyboard modal dismissal. Images are original synthetic previews, not Android device screenshots. A remaining older viewport test was adapted to locate its target publication in the real deterministic sort rather than assuming an insertion-order index; its visibility and navigation assertions remain.
+
+### Reproduce
+
+With the repository's supported JDK and Android SDK:
+
+```sh
+./gradlew :core:jvmTest :core:testAndroidHostTest \
+  :app:desktopTest :app:testAndroidHostTest \
+  :app:verifyCommonMainLocalCollectionsDatabaseMigration \
+  :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources \
+  :desktopApp:compileKotlin
+python3 tools/check_localization.py
+git diff --check
+```
+
+The managed Linux environment used JDK 21, three visible CPUs, the configured proxy/CA wrapper, and an external test init script selecting a verified preinstalled Skiko native library because the home directory is read-only. Test tasks were forced to rerun. This changes environment setup, not test assertions. Pre-existing SDK-location/metrics-home and prebuilt-symbol-stripping warnings were non-fatal. No emulator or physical Android was available.
+
+To collect optional original-fixture host reports, set `INFINILECT_LIBRARY_METRICS` to an **absolute external output directory** and run `LibraryQueryPerformanceTest` / `LibraryOrganizationStoreTest`. `INFINILECT_LIBRARY_PREVIEWS` optionally writes synthetic PNGs outside the repository. Reports use the test task's platform name when supplied as `infinilect.test.platform`; otherwise it is `jvm`. No publication contents or personal data are collected.
+
+### Host measurements
+
+Same Desktop JVM suite, same original metadata fixture, seven repetitions per size, wall-clock milliseconds. These samples include JIT/GC/scheduling effects and are **not Android measurements**. Sorting column measures all five sorts together. Index preparation is reused across query changes.
+
+| Publications | Index median (ms) | Search + AND filters median (ms) | Five sorts median (ms) |
+|---:|---:|---:|---:|
+| 10 | 0.068 | 0.002 | 0.012 |
+| 100 | 0.429 | 0.011 | 0.078 |
+| 1,000 | 2.446 | 0.078 | 0.708 |
+| 5,000 | 10.649 | 0.367 | 2.542 |
+
+At 5,000 rows, search/filter min–max was **0.296–1.670 ms**; index creation **9.792–19.745 ms**. Five real 5,000-row atomic favorite updates took **171.423, 201.127, 166.222, 183.613, 157.520 ms** (median **171.423 ms**), including IO scheduling, validation and FULL synchronous SQLite commits. This tests the repository API; the existing UI selection/removal cap remains 1,000. These results provide reproducible capacity/correctness evidence, not a before/after FPS claim or a guarantee of realme C55 latency.
+
+### Artifact and delivery checks
+
+- Fresh debug APK assembled and aligned for 16 KiB; v2 signature verifies; package remains `org.infinilect.app`, minimum API 26, original four ABIs.
+- Six packaged locale CVR files exactly match generated resources. The historical database fixture, test SQL and test classes are absent from the APK. No private key files are packaged.
+- All **six** packaged native libraries are byte-identical to the previous PR #33 development APK; network notices and public-suffix resource are preserved.
+- No runtime dependency, permission, application ID, release or signing-configuration changes. The only committed `.db` is the intentionally empty historical schema verification input.
+- **Same-certificate APK delivery is pending:** the user's development keystore/password attachments from earlier sessions are no longer present in this execution environment; the retained build-cache debug key has a different certificate. No alternate-key APK is offered as an upgrade and no release or replacement identity was published. Restore the original signing inputs to produce the install-over build; uninstalling or clearing user data is not a workaround.
+
+### Remaining acceptance limits
+
+Physical validation on realme C55, Android-native migration/touch/TalkBack/IME behavior, device frame times and native peak memory remain unverified. The full host suites and compilation do not substitute for that acceptance. The existing progress-file quota, History retention, translation model/cache budgets and cover memory/concurrency bounds remain unchanged; 5,000 Library metadata entries do not increase those independent storage budgets. Query/filter/sort survive tab changes, but are not persistent process-restart preferences. Keep PR #34 Draft until code review and physical acceptance.
