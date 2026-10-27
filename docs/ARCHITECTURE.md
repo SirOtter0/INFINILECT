@@ -461,3 +461,18 @@ The adaptive application shell, metadata cards/dialogs and independent appearanc
 preference are documented in [Application interface](APPLICATION_UI.md).
 Application navigation/session ownership and reader progress remain separate from
 presentation; reader engines and collection schemas are unchanged.
+
+
+## Retained offline copies (PR #36)
+
+The application-owned `OfflineDownloads` manager is independent of Library and
+temporary resource/preparation caches. Explicit opt-in adapters supply authorized
+offers; one bounded transfer validates and atomically publishes a private copy.
+The neutral opener first uses a hash-checked local capability with the original
+publication/resource identity and existing readers/locators. Missing or damaged
+optional storage preserves the original source path. SQLDelight membership,
+organization, History and progress schemas are unchanged.
+
+[Source capabilities, storage bounds, lifecycle/cancellation, recovery, tests and
+physical checklist](OFFLINE_DOWNLOADS.md). Android backgrounding cancels; this is
+not a persistent OS downloader or HTTP range-resume implementation.

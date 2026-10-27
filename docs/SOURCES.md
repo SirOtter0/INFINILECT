@@ -1,5 +1,11 @@
 # Sources
 
+Current retained-download behavior (PR #36): the existing strict explicit-CC0
+Internet Archive adapter supports TXT and PDF retained copies, independently of
+Library membership. Gutenberg remains catalogue-only; imports are not duplicated.
+The initial acquisition experiments below are historical and do not describe the
+new download manager. See [offline acquisition/storage/lifecycle policy](OFFLINE_DOWNLOADS.md).
+
 A source obtains publications and resources; it does not choose how they are read.
 The app routes by stable SourceId. Catalog-local IDs are only unique inside that
 source. Resource keys are opaque and must be resolved by their owning source.

@@ -20,6 +20,14 @@ Android WorkManager would require an independent, restartable source/validation/
 
 Architecture, storage bounds, data-preservation policy and verification are detailed below.
 
+## Primary source-policy references (reviewed 2026-10-27)
+
+- [Internet Archive file permalinks and redirects](https://archive.org/developers/items.html): official individual-file delivery route, not permission to download every item.
+- [Item Metadata API](https://archive.org/developers/md-read.html) and [record fields](https://archive.org/developers/md-record.html): current item/file metadata is checked through the existing adapter; optional/unrecognized authority does not become a grant.
+- [Automated access guidance](https://archive.org/developers/bots.html): retain the application's identifying User-Agent, serialization, limited concurrency and no automatic retry/prefetch. HTTP 429 ends the action; this PR adds no automatic rate-limit retry.
+- [CC0 1.0 legal code](https://creativecommons.org/publicdomain/zero/1.0/legalcode.en): the selected metadata declaration is used conservatively; this is not proof of the uploader's rights or a grant of unrelated rights. No jurisdiction-wide conclusion is inferred from age, language or catalogue presence.
+- [General Archive terms](https://archive.org/about/terms.php): the current page returned a JavaScript shell in both available fetch paths. A complete current general-terms review could not be independently completed here; no new blanket entitlement is claimed. The pre-existing narrow CC0 acquisition rules are reused unchanged. See also the earlier [source audit](INTERNET_ARCHIVE.md).
+
 ## Implemented architecture
 
 `OfflineDownloadProvider` is explicit adapter opt-in. `InternetArchiveSource.downloadOffers` reuses `item`/`ArchiveMetadata.item`, including file-level restrictions and exact original resource identity. Merely requesting offers fetches metadata, not publication bytes. `FileOfflineDownloads.download` refreshes offers and requires the **exact selected resource**, including its revision; `openDownload` delegates to `loadResource`, which checks current authorization again immediately before streaming. Retry never silently chooses a different file of the same format. A new offer/consent is required if the selected resource disappears or changes revision. No arbitrary download URL enters the common manager, persistent record or UI.
@@ -104,4 +112,35 @@ Physical Android checklist (realme C55, pending):
 6. Retry after network interruption; test quota and insufficient-space messages without deleting user files. A failed/incomplete copy must never show the offline checkmark.
 7. Check English/Spanish/Catalan, light/dark, narrow/landscape, 150–180% fonts, TalkBack/keyboard and close/back. Compare Home/Library scrolling with prior APK; no frame-time improvement is claimed by this feature.
 
-Automated totals, final build/artifact results and commit references are recorded after verification below.
+Automated totals, final build/artifact results and commit references follow.
+
+## Final automated verification and APK
+
+Verified executable/test source: `253820cf74a7980a2841feb66bb4bd76271201a1`. The final documentation-only commit may follow it; application/core/platform/build/test source hashes were frozen and checked before signing.
+
+| Suite / check | Result |
+| --- | --- |
+| Desktop | 1681 passed; no failures/errors/skips |
+| Android-host | 1404 passed; no failures/errors/skips |
+| Core JVM | 59 passed; no failures/errors/skips |
+| Core Android-host | 59 passed; no failures/errors/skips |
+| Android debug APK + packaged-language guard | Passed |
+| Desktop compilation | Passed |
+| Localization | 538 strings and 3 plurals in en/es/ca; 188 Kotlin files scanned |
+| git diff --check | Passed |
+
+**3203 test invocations passed, no failures/errors/skips**. This adds 32 unique test cases (28 shared and four Desktop-specific), 60 extra invocations over the merged baseline. The final combined task run completed in 12m18s in the managed Linux environment. An earlier complete run also passed before the last storage-recovery regressions. Initial focused compilation/test failures while developing fixtures were corrected; no existing assertion/test was weakened or disabled.
+
+Reproduce with the repository Gradle tasks:
+
+```sh
+./gradlew --continue :core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources :desktopApp:compileKotlin
+python3 tools/check_localization.py
+git diff --check
+```
+
+The managed run used JDK 21, the installed Android SDK and the existing external headless/native-test configuration; it did not add machine-specific proxy/certificate settings to application code. Neither emulator nor physical Android execution was available. There is no claim of physical offline acceptance or realme frame-time/memory measurements.
+
+Development APK: `INFINILECT-PR36-253820c-development.apk`, 21116470 bytes. SHA-256: `87a302fe3efd6634b29641329769ea663730e837da57a6db12bf3d5b7593165d`. Package `org.infinilect.app`, minSdk 26, unchanged development versionCode 1 / versionName 0.0.1-SNAPSHOT. Certificate SHA-256 matches the existing development installation: `95c708e6cfee94bc13ecf34d2a38cf4f1dc5eab185133f8e139629dd0be470fe`. APK v2 signature and 16 KiB alignment verified; six en/es/ca string/plural payloads match generated resources; six native libraries are byte-identical to the PR #35 baseline. Permissions are unchanged. Signing inputs and new test fixtures are absent from the APK and repository.
+
+The APK is delivered separately in the user's private Drive; readback confirms the exact expected size and owner-only permissions. No public release or public sharing was created. Install over the prior app without uninstalling/clearing data. **Draft remains pending physical acceptance.**
