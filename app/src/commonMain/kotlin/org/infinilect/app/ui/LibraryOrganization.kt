@@ -163,6 +163,7 @@ internal fun LibraryOrganizer(entries: List<LibraryEntry>, tags: List<LibraryTag
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 Text(single.publication.title,style=MaterialTheme.typography.subtitle2)
                 if(single.publication.authors.isNotEmpty()) Text(single.publication.authors.joinToString("; "),style=MaterialTheme.typography.caption)
+                OrganizationToggle(strings[favoriteActionLabel(favorite ?: single.favorite)],LibraryGlyph.HEART,favorite ?: single.favorite,!busy) {favorite=!(favorite ?: single.favorite)}
             }
         } else Text(strings.selectedCount(entries.size))
         if(single == null) Text(strings[UiText.LIB_BATCH_NOTICE],style = MaterialTheme.typography.caption)
@@ -172,12 +173,7 @@ internal fun LibraryOrganizer(entries: List<LibraryEntry>, tags: List<LibraryTag
             LibraryReadingState.entries.forEach { option -> LibraryChip(strings[option.label()],(state ?: single?.readingState)==option,!busy) {state=option} }
         }
         Divider()
-        if(single != null) Row(Modifier.fillMaxWidth().heightIn(min=48.dp),verticalAlignment=Alignment.CenterVertically) {
-            LibraryIcon(LibraryGlyph.HEART,favorite ?: single.favorite)
-            Text(strings[UiText.LIB_FAVORITE],Modifier.weight(1f).padding(horizontal=12.dp))
-            Switch(favorite ?: single.favorite,{favorite=it},enabled=!busy,modifier=Modifier.semantics {contentDescription=strings[UiText.LIB_FAVORITE]})
-        }
-        else {
+        if(single == null) {
             Text(strings[UiText.LIB_FAVORITE],modifier = Modifier.semantics { heading() })
             listOf(null,false,true).forEach { choice ->
                 LibraryChoice(strings[when(choice) { null -> UiText.LIB_UNCHANGED; true -> UiText.LIB_ADD; false -> UiText.LIB_REMOVE }], favorite == choice,!busy) { favorite = choice }

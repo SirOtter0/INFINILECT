@@ -93,8 +93,9 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
     progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
-    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, actions: @Composable () -> Unit) {
+    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, collections: org.infinilect.app.collections.CollectionsController? = null, organizationCovers: org.infinilect.app.covers.PublicationCovers? = null, actions: @Composable () -> Unit) {
     val strings = LocalAppStrings.current
+    val feedback = remember {SnackbarHostState()}
     val focus = remember { FocusRequester() }
     val synopsis by produceState<String?>(null, publication.id, descriptions) {
         try { value = descriptions?.get(publication.id) }
@@ -112,6 +113,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                 if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { dismiss(); true } else false
             }.semantics { paneTitle = strings[UiText.UI_PUBLICATION_DETAILS] },
                 shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large, elevation = 0.dp) {
+                Box {
                 Column {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(strings[UiText.UI_PUBLICATION_DETAILS], style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f).semantics { heading() })
@@ -131,6 +133,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                                 }
                             }
                         }
+                        if(collections!=null) PublicationOrganizationActions(publication,collections,organizationCovers,feedback)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
                         (suppliedSynopsis ?: synopsis)?.let { text ->
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -153,6 +156,8 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                             Text(strings[UiText.UI_AVAILABILITY_DOES_NOT_ESTABLISH_RIGHTS_IN_EVERY_COUNTRY_SAVED_METADATA_DOES_NOT],Modifier.padding(12.dp),style = MaterialTheme.typography.caption)
                         }
                     }
+                }
+                SnackbarHost(feedback,Modifier.align(Alignment.BottomCenter).padding(12.dp).semantics {liveRegion=LiveRegionMode.Polite})
                 }
             }
         }

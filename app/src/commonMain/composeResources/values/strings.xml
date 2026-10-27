@@ -457,4 +457,8 @@
     <string name="lib_favorites">Favorites</string>
     <string name="lib_more">More options</string>
     <string name="lib_ascending">Ascending order</string>
+    <string name="lib_add_favorite">Add to favorites</string>
+    <string name="lib_remove_favorite">Remove from favorites</string>
+    <string name="lib_added_notice">Added to Library</string>
+    <string name="lib_removed_notice">Removed from Library</string>
 </resources>

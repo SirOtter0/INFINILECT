@@ -145,18 +145,11 @@ internal fun CollectionScreen(destination: Destination, application: Application
     }
     detail?.let { publication ->
         val progress = detailsProgress(application, publication.id, progress[publication.id])
-        val action = membership.forPublication(publication.id)
-        val detailsMenu=remember(publication.id) {mutableStateOf(false)}
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
-            progress = progress, close = { detail = null }, dismissOverlay={if(detailsMenu.value) {detailsMenu.value=false;true} else false}, descriptions = application.descriptions, cover = { DetailsCover(publication.displayPublication(), application.covers) }) {
-            val entry=library.entries.firstOrNull {it.publication.id==publication.id}
-            LibraryDetailsActions(progress,action.inLibrary==true,entry?.favorite,action.enabled && !busy,
-                read={detail=null;application.openSaved(publication)},
-                membership={if(action.inLibrary==true) {detail=null;remove=CollectionRemoval(publication,false)} else controller.toggleCatalogLibrary(publication.displayPublication())},
-                organize={detail=null;organize=setOf(publication.id)},
-                favoriteAction={if(entry!=null) controller.organize(setOf(publication.id),LibraryOrganizationChange(favorite=!entry.favorite))},menu=detailsMenu)
-            error?.let { Text(strings.status(it), color = MaterialTheme.colors.error) }
+            progress = progress, close = { detail = null }, descriptions=application.descriptions,
+            collections=controller,organizationCovers=application.covers,cover={DetailsCover(publication.displayPublication(),application.covers)}) {
+            PublicationReadAction(progress) {detail=null;application.openSaved(publication)}
         }
     }
     organize?.let { ids -> LibraryOrganizer(library.entries.filter { it.publication.id in ids },tags,controller,application.covers) { organize = null } }

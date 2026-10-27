@@ -220,3 +220,28 @@ UI checks include real compact search/clear, quick ↔ advanced query synchroniz
 Debug APK audit: **21,366,607 bytes**, SHA-256 `89399771048140fbc95de0453fd9ea6f26ae15302b8125184a7e5b238209906b`, built from the source commit above. Package/minimum API/four ABIs unchanged; v2 signature and 16 KiB alignment verify; all six locale CVRs match generated resources; test/schema fixtures and private key files are absent; all six native libraries match the prior PR #33 development APK byte-for-byte. This artifact is signed by the environment debug key, **not the user's update certificate**, so it is not distributed as an upgrade. Original signing inputs must be reattached to produce the install-over artifact; signing configuration remains unchanged.
 
 These are host tests, build and artifact checks. No physical Android interaction, TalkBack, realme C55 frame timing or native peak-memory measurement was performed. Keep Draft pending the manual checklist and same-certificate delivery; do not uninstall, erase data, merge or publish a release.
+
+## Animated bookmark and favorite actions
+
+The subsequent realme C55 report confirms the compact organization UI works. This follow-up keeps the existing database, repositories, source/acquisition rules and readers unchanged.
+
+`PublicationDetails` now hosts one shared `PublicationOrganizationActions` row for Library, History, local Home, imported publications, discovery and legacy catalog details. A 48 dp bookmark directly adds metadata or opens the existing membership-only removal confirmation; there is no large Add button or duplicate removal menu. The reading action remains full-width and source restrictions still determine whether it exists. A heart and compact Organize icon appear only for an actual Library member with a loaded Library entry.
+
+Both controls use `OrganizationToggle`: original outline vectors, a 220 ms color/fill transition and a short drawing-only scale pulse (activation peak 1.15; deactivation 0.96). The target, focus and surrounding layout never scale. An active bookmark uses the theme accent; an active heart uses coral (`#B93848` in light, `#FF8A91` in dark). Nothing animates indefinitely or pulses on initial composition. Animation is informative only: filled/outline shape and accessible selected state identify the value without color or motion. Compose's public `MotionDurationScale` is respected, including zero; Android supplies its animator-duration policy. Desktop honors a supplied Compose duration scale but no cross-desktop OS preference detector is added.
+
+The details row reads controller membership and committed Library entries directly, without an optimistic Boolean mirror. Existing synchronous controller guards reject duplicate writes before the next frame; the buttons are disabled during pending changes. Favorite is also disabled while a fresh Library snapshot is loading. A successful membership operation produces a short local Snackbar only after its job completes and the committed state agrees; failure keeps the previous icon and persistent localized error. An unavailable store exposes the existing Retry Library action. Controller-owned operations can complete after a dialog is closed, while the dialog-owned feedback observer is canceled. Reopening reads current state, not a stale callback.
+
+In the **single-publication organizer**, the heart lives beside title/cover and edits the nullable pending favorite delta. Closing discards it; Apply commits state, favorite and tag deltas in the same existing transaction. Batch organization retains its explicit unchanged/add/remove choices so mixed values are not flattened accidentally. No new persistence, tables, model, schema or preference is introduced.
+
+Accessible Add/Remove Library and Add/Remove favorites names use reviewed en/es/ca resources, selected-state semantics and public tooltip/focus/keyboard handling. Icon targets remain at least 48×48 dp and large text does not create another permanent row.
+
+### Physical checks for these actions
+
+1. Upgrade with the existing development certificate. Open details from Home, Library, History, Search/discovery and an imported file; verify one primary Read button and compact metadata actions, with rights notices intact.
+2. On an unsaved publication, verify empty bookmark and no heart. Add once, then tap rapidly; only one metadata write should occur. Verify filled bookmark after success, Snackbar, and heart/Organize availability.
+3. Tap filled bookmark: Cancel must keep it filled and retain all data. Confirm removes membership only; the open details must then show an empty bookmark. Check History, original/local imported files and saved position remain.
+4. In saved details, toggle heart, reopen details/organizer and check the committed value and Favorites filter. In organizer toggle heart then Close: discard; repeat with Apply alongside a state/tag change: save all together.
+5. Test offline Library membership, controlled storage failures/Retry if safely available, navigation while pending, external/batch favorite edits and return to details. A failure must not leave a false filled icon.
+6. Check small/large windows, es/en/ca, light/dark and 150–180% text. With Android animations disabled, state changes must remain clear; with animations enabled they should be brief and unobtrusive. Validate TalkBack and keyboard activation. No physical validation of this follow-up is claimed by host captures/tests.
+
+Verification results and the new signed APK are recorded below after checks complete. Earlier APK/capture entries describe their respective older source commits.

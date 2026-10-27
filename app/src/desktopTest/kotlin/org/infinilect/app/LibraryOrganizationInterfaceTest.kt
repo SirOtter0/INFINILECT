@@ -43,6 +43,7 @@ class LibraryOrganizationInterfaceTest {
         val app=owner.applicationSession()
         val position=LazyGridState()
         var destination by mutableStateOf(Destination.LIBRARY)
+        var standalone by mutableStateOf<Publication?>(null)
         val scene=ImageComposeScene(width,height,Density(1f,fontScale),coroutineContext=dispatcher)
         var frame=0L
         init {
@@ -52,6 +53,7 @@ class LibraryOrganizationInterfaceTest {
                 CompositionLocalProvider(LocalAppStrings provides strings,LocalInterfaceLanguage provides strings.localeTag) {
                     ApplicationTheme(if(dark) ApplicationThemeMode.DARK else ApplicationThemeMode.LIGHT) {
                         if(destination==Destination.LIBRARY) CollectionScreen(destination,app,position) else MaterialTheme { }
+                        standalone?.let {pub -> PublicationDetails(pub,"Original",close={standalone=null},collections=app.collections) {} }
                     }
                 }
             };draw()
@@ -67,6 +69,14 @@ class LibraryOrganizationInterfaceTest {
             fun contains(n:SemanticsNode):Boolean = has(n,label)||n.children.any(::contains)
             val control=nodes().last {it.config.getOrNull(SemanticsActions.OnClick)?.action!=null && !it.config.contains(SemanticsProperties.Disabled) && contains(it)}
             assertTrue(control.config[SemanticsActions.OnClick].action!!.invoke());draw();test.advanceTimeBy(200);draw()
+        }
+        fun burst(label:String) {
+            val target=nodes().single {has(it,label) && it.config.contains(SemanticsProperties.Disabled)}.boundsInRoot.center
+            repeat(8) {
+                scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press,target,buttons=androidx.compose.ui.input.pointer.PointerButtons(1),button=androidx.compose.ui.input.pointer.PointerButton.Primary)
+                scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release,target,buttons=androidx.compose.ui.input.pointer.PointerButtons(0),button=androidx.compose.ui.input.pointer.PointerButton.Primary)
+                draw()
+            }
         }
         fun search(value:String) {
             val edit=nodes().single {it.config.getOrNull(SemanticsActions.SetText)?.action!=null}
@@ -85,15 +95,15 @@ class LibraryOrganizationInterfaceTest {
             val reads=f.data.libraryReads
             f.search("CIENCIA");assertTrue(f.visible(f.books[0].title));assertFalse(f.visible(f.books[1].title));assertEquals(reads,f.data.libraryReads)
             f.click(f.strings[UiText.LIB_CLEAR_SEARCH]);assertEquals("",f.app.libraryBrowser.query.value.text)
-            f.click(f.books[0].title);f.click(f.strings[UiText.LIB_ORGANIZE]);f.click(f.strings[UiText.LIB_PAUSED]);f.click(f.strings[UiText.LIB_FAVORITE]);f.click(f.strings[UiText.LIB_APPLY])
+            f.click(f.books[0].title);f.click(f.strings[UiText.LIB_ORGANIZE]);f.click(f.strings[UiText.LIB_PAUSED]);f.click(f.strings[UiText.LIB_ADD_FAVORITE]);f.click(f.strings[UiText.LIB_APPLY])
             assertEquals(LibraryReadingState.PAUSED,f.data.saved.getValue(f.books[0].id).readingState);assertTrue(f.data.saved.getValue(f.books[0].id).favorite)
-            f.click(f.strings[UiText.LIB_MORE]);f.click(f.strings[UiText.LIB_MANAGE_TAGS])
+            f.click(f.strings[UiText.CLOSE]);f.click(f.strings[UiText.LIB_MORE]);f.click(f.strings[UiText.LIB_MANAGE_TAGS])
             val nameField=f.nodes().last {it.config.getOrNull(SemanticsActions.SetText)?.action!=null}
             assertTrue(nameField.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("Fantasía")));f.draw()
             f.click(f.strings[UiText.LIB_CREATE_TAG]);assertEquals(1,f.data.tagValues.size);f.click(f.strings[UiText.CLOSE])
             f.click(f.books[0].title);f.click(f.strings[UiText.LIB_ORGANIZE]);f.click("Fantasía");f.click(f.strings[UiText.LIB_APPLY])
             assertEquals(listOf("Fantasía"),f.data.saved.getValue(f.books[0].id).tags.map {it.name})
-            f.click(f.strings[UiText.LIB_FILTERS]);f.click(f.strings[UiText.LIB_ONLY_FAVORITES]);f.click(f.strings[UiText.CLOSE])
+            f.click(f.strings[UiText.CLOSE]);f.click(f.strings[UiText.LIB_FILTERS]);f.click(f.strings[UiText.LIB_ONLY_FAVORITES]);f.click(f.strings[UiText.CLOSE])
             assertEquals(1,f.app.libraryBrowser.result.value.size)
             f.destination=Destination.SETTINGS;f.app.navigate(f.destination);f.draw();f.destination=Destination.LIBRARY;f.app.navigate(f.destination);f.draw()
             assertTrue(f.app.libraryBrowser.query.value.favorites);assertEquals(1,f.app.libraryBrowser.result.value.size)
@@ -192,11 +202,11 @@ class LibraryOrganizationInterfaceTest {
     @Test fun detailsPrimaryActionAndOverflowPreserveConfirmationAndQuickFavorite()=runTest {
         Fixture(this).use {f ->
             f.click(f.books[0].title)
-            assertFalse(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
-            f.click(f.strings[UiText.LIB_FAVORITE]);assertTrue(f.data.saved.getValue(f.books[0].id).favorite)
+            assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
+            f.click(f.strings[UiText.LIB_ADD_FAVORITE]);assertTrue(f.data.saved.getValue(f.books[0].id).favorite)
             assertTrue(f.visible(f.strings[UiText.UI_START_READING]))
             f.preview("details-dark.png")
-            f.click(f.strings[UiText.LIB_MORE]);f.click(f.strings[UiText.UI_REMOVE_FROM_LIBRARY])
+            f.click(f.strings[UiText.UI_REMOVE_FROM_LIBRARY])
             assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM]));f.click(f.strings[UiText.CANCEL])
             assertEquals(3,f.data.saved.size);assertTrue(f.data.opened.isEmpty())
         }
@@ -229,12 +239,79 @@ class LibraryOrganizationInterfaceTest {
                 f.click(f.strings[UiText.LIB_FILTERS]);f.preview("filters-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
                 f.click(f.strings[UiText.LIB_SORT]);f.preview("sort-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
                 f.click(f.strings[UiText.LIB_MORE]);f.click(f.strings[UiText.LIB_MANAGE_TAGS]);f.preview("tags-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
-                f.click(f.books.last().title);f.preview("details-$language-$dark.png");f.click(f.strings[UiText.LIB_ORGANIZE]);f.preview("organize-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
+                f.click(f.books.last().title);f.preview("details-$language-$dark.png");f.click(f.strings[UiText.LIB_ORGANIZE]);f.preview("organize-$language-$dark.png");f.click(f.strings[UiText.CLOSE]);f.click(f.strings[UiText.CLOSE])
                 f.app.collections.select(f.books.last().id);f.app.collections.toggleSelection(f.books[f.books.lastIndex-1].id);f.draw()
                 f.preview("selection-$language-$dark.png")
                 assertTrue(f.visible(f.strings.selectedCount(2)))
                 f.click(f.strings[UiText.LIB_FAVORITE]);assertTrue(f.data.saved.getValue(f.books.last().id).favorite)
             }
+        }
+    }
+
+    @Test fun bookmarkConfirmsWritesAndFailuresWithoutTouchingHistory()=runTest {
+        Fixture(this).use {f ->
+            val p=f.books[0];f.data.saved.remove(p.id);f.data.opened[p.id]=HistoryEntry(p,123)
+            val history=f.data.opened.toMap()
+            f.app.collections.refreshLibrary();f.draw();f.standalone=p.displayPublication();f.draw()
+            assertTrue(f.visible(f.strings[UiText.UI_ADD_TO_LIBRARY]));assertFalse(f.visible(f.strings[UiText.LIB_ADD_FAVORITE]))
+            assertFalse(f.nodes().any {it.config.getOrNull(SemanticsProperties.Text)?.any {t -> t.text==f.strings[UiText.UI_ADD_TO_LIBRARY]}==true})
+            f.data.fail=true;f.click(f.strings[UiText.UI_ADD_TO_LIBRARY]);assertFalse(p.id in f.data.saved)
+            assertTrue(f.visible(f.strings[UiText.UI_ADD_TO_LIBRARY]));assertNotNull(f.app.collections.error.value)
+            f.data.fail=false;f.click(f.strings[UiText.UI_RETRY_LIBRARY])
+            val barrier=CompletableDeferred<Unit>();var writes=0
+            f.data.beforeWrite={writes++;barrier.await()}
+            f.click(f.strings[UiText.UI_ADD_TO_LIBRARY])
+            assertTrue(p.id in f.app.collections.membership.value.mutating);assertEquals(1,writes)
+            assertTrue(f.nodes().any {f.has(it,f.strings[UiText.UI_ADD_TO_LIBRARY]) && it.config.contains(SemanticsProperties.Disabled)})
+            f.burst(f.strings[UiText.UI_ADD_TO_LIBRARY]);assertEquals(1,writes)
+            barrier.complete(Unit);f.draw();assertEquals(1,writes);f.data.beforeWrite={}
+            assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]));assertTrue(f.visible(f.strings[UiText.LIB_ADD_FAVORITE]))
+            assertTrue(f.visible(f.strings[UiText.LIB_ADDED_NOTICE]))
+            f.click(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]);assertTrue(p.id in f.data.saved)
+            f.click(f.strings[UiText.CANCEL]);assertTrue(p.id in f.data.saved)
+            f.data.fail=true;f.click(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]);f.click(f.strings[UiText.UI_REMOVE]);assertTrue(p.id in f.data.saved)
+            assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
+            f.data.fail=false;f.click(f.strings[UiText.UI_RETRY_LIBRARY]);f.click(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]);f.click(f.strings[UiText.UI_REMOVE]);assertFalse(p.id in f.data.saved)
+            assertTrue(f.visible(f.strings[UiText.UI_ADD_TO_LIBRARY]));assertFalse(f.visible(f.strings[UiText.LIB_ADD_FAVORITE]))
+            assertEquals(history,f.data.opened)
+            f.app.collections.toggleCatalogLibrary(p.displayPublication());f.draw()
+            assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
+            f.standalone=null;f.draw();f.standalone=p.displayPublication();f.draw()
+            assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]));assertEquals(history,f.data.opened)
+        }
+    }
+    @Test fun favoriteFormIsPendingAndDetailsAreConfirmedAndExternalEditsStaySynchronized()=runTest {
+        Fixture(this).use {f ->
+            val id=f.books[0].id;f.standalone=f.books[0].displayPublication();f.draw()
+            f.click(f.strings[UiText.LIB_ORGANIZE]);f.click(f.strings[UiText.LIB_ADD_FAVORITE])
+            assertFalse(f.data.saved.getValue(id).favorite)
+            f.click(f.strings[UiText.CLOSE]);assertFalse(f.data.saved.getValue(id).favorite)
+            assertTrue(f.visible(f.strings[UiText.LIB_ADD_FAVORITE]))
+            val gate=CompletableDeferred<Unit>();var writes=0;f.data.beforeWrite={writes++;gate.await()}
+            f.click(f.strings[UiText.LIB_ADD_FAVORITE]);assertEquals(1,writes)
+            assertTrue(f.nodes().any {f.has(it,f.strings[UiText.LIB_ADD_FAVORITE]) && it.config.contains(SemanticsProperties.Disabled)})
+            f.burst(f.strings[UiText.LIB_ADD_FAVORITE]);assertEquals(1,writes)
+            gate.complete(Unit);f.draw();f.data.beforeWrite={}
+            assertTrue(f.data.saved.getValue(id).favorite);assertTrue(f.visible(f.strings[UiText.LIB_REMOVE_FAVORITE]))
+            f.click(f.strings[UiText.LIB_ORGANIZE]);assertTrue(f.visible(f.strings[UiText.LIB_REMOVE_FAVORITE]));f.click(f.strings[UiText.LIB_PAUSED]);f.click(f.strings[UiText.LIB_APPLY])
+            assertTrue(f.data.saved.getValue(id).favorite);assertEquals(LibraryReadingState.PAUSED,f.data.saved.getValue(id).readingState)
+            f.data.fail=true;f.click(f.strings[UiText.LIB_REMOVE_FAVORITE]);assertTrue(f.data.saved.getValue(id).favorite)
+            assertTrue(f.visible(f.strings[UiText.LIB_SAVE_ERROR]));f.data.fail=false;f.click(f.strings[UiText.UI_RETRY_LIBRARY])
+            f.app.collections.organize(setOf(id),LibraryOrganizationChange(favorite=false));f.draw()
+            assertTrue(f.visible(f.strings[UiText.LIB_ADD_FAVORITE]))
+            f.app.libraryBrowser.change(LibraryQuery(favorites=true));f.draw();assertTrue(f.app.libraryBrowser.result.value.isEmpty())
+            f.standalone=null;f.draw();f.standalone=f.books[0].displayPublication();f.draw()
+            assertTrue(f.visible(f.strings[UiText.LIB_ADD_FAVORITE]));assertEquals(3,f.data.saved.size)
+        }
+    }
+    @Test fun navigatingAwayDuringBookmarkWriteDoesNotPublishStaleFeedbackOrCancelTheCommit()=runTest {
+        Fixture(this).use {f ->
+            val p=f.books[0];f.data.saved.remove(p.id);f.app.collections.refreshLibrary();f.draw()
+            f.standalone=p.displayPublication();f.draw();val gate=CompletableDeferred<Unit>();f.data.beforeWrite={gate.await()}
+            f.click(f.strings[UiText.UI_ADD_TO_LIBRARY]);f.standalone=null;f.destination=Destination.SETTINGS;f.app.navigate(f.destination);f.draw()
+            gate.complete(Unit);f.draw();assertTrue(p.id in f.data.saved)
+            f.standalone=p.displayPublication();f.draw();assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
+            assertFalse(f.visible(f.strings[UiText.LIB_ADDED_NOTICE]))
         }
     }
 

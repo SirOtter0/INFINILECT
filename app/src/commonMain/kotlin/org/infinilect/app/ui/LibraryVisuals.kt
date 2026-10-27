@@ -18,12 +18,12 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.PopupPositionProvider
 
-internal enum class LibraryGlyph { FILTER, SORT, TAG, HEART, MORE, CLOSE, CHECK, EDIT, DELETE, BOOK, UP, DOWN }
+internal enum class LibraryGlyph { FILTER, SORT, TAG, HEART, BOOKMARK, MORE, CLOSE, CHECK, EDIT, DELETE, BOOK, UP, DOWN }
 
 /** Original lightweight vectors. No image request, persistent color or extra icon dependency. */
 @Composable
-internal fun LibraryIcon(glyph: LibraryGlyph, active: Boolean = false, modifier: Modifier = Modifier) {
-    val color = if (active) MaterialTheme.colors.primary else LocalContentColor.current.copy(alpha = LocalContentAlpha.current)
+internal fun LibraryIcon(glyph: LibraryGlyph, active: Boolean = false, modifier: Modifier = Modifier, colorOverride: Color? = null, fill: Float = if(active) 1f else 0f) {
+    val color = colorOverride ?: if (active) MaterialTheme.colors.primary else LocalContentColor.current.copy(alpha = LocalContentAlpha.current)
     Canvas(modifier.size(22.dp).clearAndSetSemantics {}) {
         val s = size.minDimension / 24f
         fun p(x: Float,y: Float) = Offset(x*s,y*s)
@@ -36,7 +36,11 @@ internal fun LibraryIcon(glyph: LibraryGlyph, active: Boolean = false, modifier:
             LibraryGlyph.CHECK -> { line(4f,12f,10f,18f);line(10f,18f,21f,5f) }
             LibraryGlyph.HEART -> {
                 val path=Path().apply { moveTo(12*s,21*s);cubicTo(9*s,18*s,2*s,13*s,2*s,7*s);cubicTo(2*s,1*s,10*s,1*s,12*s,7*s);cubicTo(14*s,1*s,22*s,1*s,22*s,7*s);cubicTo(22*s,13*s,15*s,18*s,12*s,21*s);close() }
-                if(active) drawPath(path,color) else drawPath(path,color,style=Stroke(1.8f*s))
+                drawPath(path,color.copy(alpha=color.alpha*fill.coerceIn(0f,1f)));drawPath(path,color,style=Stroke(1.8f*s))
+            }
+            LibraryGlyph.BOOKMARK -> {
+                val path=Path().apply {moveTo(5*s,3*s);lineTo(19*s,3*s);lineTo(19*s,21*s);lineTo(12*s,17*s);lineTo(5*s,21*s);close()}
+                drawPath(path,color.copy(alpha=color.alpha*fill.coerceIn(0f,1f)));drawPath(path,color,style=Stroke(1.8f*s))
             }
             LibraryGlyph.TAG -> { val path=Path().apply {moveTo(3*s,3*s);lineTo(13*s,3*s);lineTo(22*s,12*s);lineTo(12*s,22*s);lineTo(3*s,13*s);close()};drawPath(path,color,style=Stroke(1.8f*s));drawCircle(color,1.5f*s,p(8f,8f)) }
             LibraryGlyph.EDIT -> { line(5f,19f,19f,5f);line(16f,3f,21f,8f);line(5f,19f,4f,22f);line(4f,22f,8f,21f) }
@@ -49,7 +53,7 @@ internal fun LibraryIcon(glyph: LibraryGlyph, active: Boolean = false, modifier:
 
 @Composable
 internal fun LibraryIconButton(label: String, glyph: LibraryGlyph, enabled: Boolean = true, active: Boolean = false,
-    modifier: Modifier = Modifier, click: () -> Unit) {
+    modifier: Modifier = Modifier, icon: (@Composable () -> Unit)? = null, click: () -> Unit) {
     val position=remember { object: PopupPositionProvider {
         override fun calculatePosition(anchorBounds: IntRect,windowSize: IntSize,layoutDirection: LayoutDirection,popupContentSize: IntSize) =
             IntOffset((anchorBounds.center.x-popupContentSize.width/2).coerceIn(0,(windowSize.width-popupContentSize.width).coerceAtLeast(0)),
@@ -57,7 +61,7 @@ internal fun LibraryIconButton(label: String, glyph: LibraryGlyph, enabled: Bool
     } }
     BasicTooltipBox(positionProvider=position,state=rememberBasicTooltipState(),focusable=false,
         tooltip={Surface(shape=MaterialTheme.shapes.small){Text(label,Modifier.padding(8.dp))}}) {
-        IconButton(click,modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics {contentDescription=label},enabled=enabled) { LibraryIcon(glyph,active) }
+        IconButton(click,modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics {contentDescription=label},enabled=enabled) { if(icon!=null) icon() else LibraryIcon(glyph,active) }
     }
 }
 
@@ -74,39 +78,14 @@ internal fun LibraryChip(label: String, selected: Boolean, enabled: Boolean = tr
     }
 }
 
-/** One primary reading action; destructive membership action belongs to the overflow. */
+/** Primary reading action stays separate from compact metadata actions. */
 @Composable
-internal fun LibraryDetailsActions(progress: org.infinilect.core.ReadingProgress?, inLibrary: Boolean, favorite: Boolean?, enabled: Boolean,
-    read: () -> Unit, membership: () -> Unit, organize: () -> Unit, favoriteAction: () -> Unit, menu: MutableState<Boolean>) {
+internal fun PublicationReadAction(progress: org.infinilect.core.ReadingProgress?, enabled: Boolean = true, read: () -> Unit) {
     val strings=LocalAppStrings.current
-    var more by menu
-    val menuFocus=remember {FocusRequester()}
-    LaunchedEffect(more) {if(more) {withFrameNanos {};menuFocus.requestFocus()}}
-    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-        Button(read,Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(12.dp)) {
-            LibraryIcon(LibraryGlyph.BOOK)
-            Spacer(Modifier.width(10.dp))
-            Text(strings.status(readingAction(progress)),style=MaterialTheme.typography.button)
-        }
-        if(inLibrary) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-            if(favorite!=null) OutlinedButton(favoriteAction,Modifier.weight(1f).heightIn(min=64.dp).semantics {stateDescription=strings[if(favorite) UiText.UI_SELECTED else UiText.UI_NOT_SELECTED]},enabled=enabled,contentPadding=PaddingValues(8.dp)) {
-                Column(horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {LibraryIcon(LibraryGlyph.HEART,favorite);Spacer(Modifier.height(4.dp));Text(strings[UiText.LIB_FAVORITE],style=MaterialTheme.typography.caption)}
-            }
-            OutlinedButton(organize,Modifier.weight(1f).heightIn(min=64.dp),enabled=enabled,contentPadding=PaddingValues(8.dp)) {
-                Column(horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {LibraryIcon(LibraryGlyph.TAG);Spacer(Modifier.height(4.dp));Text(strings[UiText.LIB_ORGANIZE],style=MaterialTheme.typography.caption)}
-            }
-            Box {
-                LibraryIconButton(strings[UiText.LIB_MORE],LibraryGlyph.MORE,enabled=enabled) {more=true}
-                DropdownMenu(more,{more=false},modifier=Modifier.onPreviewKeyEvent {
-                    if(it.type==KeyEventType.KeyDown && it.key==Key.Escape) {more=false;true} else false
-                }) {
-                    DropdownMenuItem({more=false;membership()},modifier=Modifier.focusRequester(menuFocus),enabled=enabled) {Text(strings[UiText.UI_REMOVE_FROM_LIBRARY])}
-                }
-            }
-        } else OutlinedButton(membership,Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=enabled) {Text(strings[UiText.UI_ADD_TO_LIBRARY])}
+    Button(read,Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=enabled,contentPadding=PaddingValues(12.dp)) {
+        LibraryIcon(LibraryGlyph.BOOK);Spacer(Modifier.width(10.dp));Text(strings.status(readingAction(progress)))
     }
 }
-
 
 @Composable
 internal fun LibrarySelectionBar(count: Int,total: Int,enabled: Boolean,allFavorite: Boolean,

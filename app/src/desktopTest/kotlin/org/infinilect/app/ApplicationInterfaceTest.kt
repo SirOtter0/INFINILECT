@@ -364,10 +364,10 @@ class ApplicationInterfaceTest {
         Fixture(this).use { f ->
             val record=ReadingProgress(ReadingProgressId(f.source.books[0].id,"text",PublicationFormat.TEXT),ReadingLocator.Text(8,10),.8,1)
             f.progress.submit(record);f.pump();f.nav(Destination.LIBRARY)
-            f.click("Original publication 0");f.click("More options");f.click("Remove from Library")
+            f.click("Original publication 0");f.click("Remove from Library")
             assertTrue(f.visible("Remove from Library?"));assertEquals(3,f.data.saved.size)
-            f.click("Cancel");assertEquals(3,f.data.saved.size)
-            f.click("Original publication 0");f.click("More options");f.click("Remove from Library");f.click("Remove")
+            f.click("Cancel");assertEquals(3,f.data.saved.size);f.click("Close")
+            f.click("Original publication 0");f.click("Remove from Library");f.click("Remove")
             assertEquals(2,f.data.saved.size);assertEquals(3,f.source.books.take(3).size);assertEquals(record,f.saved.last())
         }
     }
@@ -501,9 +501,8 @@ class ApplicationInterfaceTest {
             val id=f.source.books[2].id;f.data.saved.remove(id);f.app.collections.refreshLibrary();f.pump();f.nav(Destination.HISTORY)
             f.click("Details for Original publication 2");assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
             assertTrue(f.visible("Add to Library"));f.click("Add to Library");assertEquals(3,f.data.saved.size)
-            assertEquals(1,f.data.saved.values.count {it.publication.id==id});f.click("More options");assertTrue(f.visible("Remove from Library"));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump()
-            advanceTimeBy(250);f.pump() // Finish the real Material popup exit transition on the virtual clock.
-            assertTrue(f.visible("Publication details"))
+            assertEquals(1,f.data.saved.values.count {it.publication.id==id});assertTrue(f.visible("Remove from Library"))
+            assertFalse(f.visible("More options"));assertTrue(f.visible("Publication details"))
             f.click("Close");f.click("Original publication 2");assertIs<OpenPublicationState.Ready>(f.app.opening.value)
             assertEquals(id,assertNotNull(assertIs<OpenPublicationState.Ready>(f.app.opening.value).publication).id)
         }
@@ -665,8 +664,8 @@ class ApplicationInterfaceTest {
             f.app.collections.refreshLibrary();f.pump();f.reach(2)
             val before=f.saved.toList();f.click("Details for Original publication 2")
             assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
-            f.click("More options");f.click("Remove from Library");assertTrue(f.visible("Remove from Library?"));f.click("Cancel")
-            assertEquals(3,f.data.saved.size);f.click("More options");f.click("Remove from Library");f.click("Remove")
+            f.click("Remove from Library");assertTrue(f.visible("Remove from Library?"));f.click("Cancel")
+            assertEquals(3,f.data.saved.size);f.click("Remove from Library");f.click("Remove")
             assertEquals(2,f.data.saved.size);assertEquals(3,f.data.opened.size);assertEquals(before,f.saved)
             assertIs<OpenPublicationState.Idle>(f.app.opening.value)
         }
@@ -806,7 +805,8 @@ class ApplicationInterfaceTest {
                 f.nav(Destination.LIBRARY)
                 f.preview("compact-library-$width-$dark.png")
                 f.click("Original publication 10")
-                assertTrue(f.visible("Continue reading"));assertFalse(f.visible("Remove from Library"))
+                assertTrue(f.visible("Continue reading"));assertTrue(f.visible("Remove from Library"))
+                assertFalse(f.nodes().any {it.config.getOrNull(SemanticsProperties.Text)?.any {t -> t.text=="Remove from Library" || t.text=="Add to Library"}==true})
                 f.preview("compact-details-$width-$dark.png")
                 assertTrue(f.nodes().any {it.config.getOrNull(SemanticsProperties.Text)?.any {t -> t.text.startsWith("Availability does not establish")}==true})
                 f.click("Close");assertEquals(12,f.data.saved.size)

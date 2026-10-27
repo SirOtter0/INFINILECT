@@ -8,6 +8,10 @@ import org.jetbrains.compose.resources.StringResource
 
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
+    LIB_ADD_FAVORITE(Res.string.lib_add_favorite, "Add to favorites"),
+    LIB_REMOVE_FAVORITE(Res.string.lib_remove_favorite, "Remove from favorites"),
+    LIB_ADDED_NOTICE(Res.string.lib_added_notice, "Added to Library"),
+    LIB_REMOVED_NOTICE(Res.string.lib_removed_notice, "Removed from Library"),
     LIB_ALL(Res.string.lib_all, "All"),
     LIB_FAVORITES(Res.string.lib_favorites, "Favorites"),
     LIB_MORE(Res.string.lib_more, "More options"),
