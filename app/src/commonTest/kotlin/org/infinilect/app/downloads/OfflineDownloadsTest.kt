@@ -12,6 +12,7 @@ import kotlin.test.*
 class OfflineDownloadsTest {
     private class Backend: DownloadBackend {
         val rows=linkedMapOf<PublicationId,DownloadEntry>();var revision=0L;var starts=0;var active=0;var peak=0;var authorizations=0;var closed=false
+        var pendingGate: CompletableDeferred<Unit>?=null
         var gate=CompletableDeferred<Unit>();var nonCooperative=false;var failure: DownloadFailure?=null;var writeFailure=false
         var completing: suspend ()->Unit={}
         fun offer(key: String="a"): DownloadOffer {
@@ -23,7 +24,7 @@ class OfflineDownloadsTest {
         override suspend fun load()=snapshot()
         override suspend fun snapshot()=DownloadSnapshot(rows.values.toList(),revision=revision)
         override suspend fun offers(id: PublicationId): List<DownloadOffer> {authorizations++;return listOf(offer(id.localId))}
-        override suspend fun pending(offer: DownloadOffer): DownloadEntry {if(writeFailure) throw DownloadException(DownloadFailure.STORAGE);return save(DownloadEntry(offer.publication,offer.resource.format,DownloadStatus.PENDING,offer.resource))}
+        override suspend fun pending(offer: DownloadOffer): DownloadEntry {pendingGate?.await();if(writeFailure) throw DownloadException(DownloadFailure.STORAGE);return save(DownloadEntry(offer.publication,offer.resource.format,DownloadStatus.PENDING,offer.resource))}
         override suspend fun download(entry: DownloadEntry,started: suspend (DownloadEntry)->Unit,progress: suspend (DownloadProgress)->Unit): DownloadEntry {
             starts++;active++;peak=maxOf(peak,active)
             try {
@@ -92,5 +93,12 @@ class OfflineDownloadsTest {
         backend.failure=null;owner.retry(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.DOWNLOADED,owner.status())
         owner.remove(backend.offer().publication.id);runCurrent();assertNull(owner.status());assertTrue(owner.available.value.isEmpty())
         owner.close();owner.awaitClosed()
+    }
+
+    @Test fun backgroundDuringPendingRecordWritePublishesCancelledInsteadOfHidingTheRecord()=runTest {
+        val backend=Backend().also {it.pendingGate=CompletableDeferred()};val owner=OfflineDownloads(backend,StandardTestDispatcher(testScheduler));runCurrent()
+        owner.enqueue(backend.offer());runCurrent();owner.pause();backend.pendingGate!!.complete(Unit);runCurrent()
+        assertEquals(DownloadStatus.CANCELLED,owner.status());assertEquals(0,backend.starts);assertTrue(owner.catalogue.value.busy.isEmpty())
+        owner.resume();runCurrent();assertEquals(0,backend.starts);owner.close();owner.awaitClosed()
     }
 }

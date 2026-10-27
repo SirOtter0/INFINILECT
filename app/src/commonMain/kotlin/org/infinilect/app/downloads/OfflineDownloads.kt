@@ -119,7 +119,7 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
         progress(id)
         mutate(id) {
             val row=backend.pending(offer)
-            if(!foreground || closed.value) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED);return@mutate}
+            if(!foreground || closed.value) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish);return@mutate}
             publish(row)
             if(!commands.trySend(id).isSuccess) backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.LIMIT)?.let(::publish)
         }
@@ -132,7 +132,7 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
             val previous=entry(id) ?: return@mutate
             val offer=backend.offers(id).firstOrNull {it.resource==previous.resource} ?: throw DownloadException(DownloadFailure.NOT_ALLOWED)
             val row=backend.pending(offer);progress(id)
-            if(!foreground || closed.value) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED);return@mutate}
+            if(!foreground || closed.value) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish);return@mutate}
             publish(row);if(!commands.trySend(id).isSuccess) backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.LIMIT)?.let(::publish)
         }
     }
