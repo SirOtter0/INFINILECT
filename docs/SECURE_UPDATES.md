@@ -107,7 +107,31 @@ No uninstall, data clearing, package/signing change, data migration or reader/st
 
 Deterministic tests use MockEngine, barriers and original synthetic bytes. Manifest signatures use real RSA-3072 keys generated only in test memory; APK inspection/handoff is mocked on host. There is no trusted third-party APK fixture and no live-service dependency in unit tests. Headless shared Compose tests exercise actual Settings/notes at 320×440 dp, en/es/ca, light/dark, 100/180% font sizes, accessible actions and the disabled public-install boundary. They are not Android/TalkBack/device evidence.
 
-Final automated counts, builds and artifact results are recorded after verification. Initial research's official GitHub API response was HTTP 200 / `[]`; no release or APK was published to manufacture a success scenario.
+Verified runtime/test source: `01137f67823632f69275d79bf66e258893397d8e`. The final combined run completed successfully in **13m28s**:
+
+| Suite | Passed | Failures / errors / skipped |
+| --- | ---: | --- |
+| App Desktop | 1,649 | 0 / 0 / 0 |
+| App Android-host | 1,376 | 0 / 0 / 0 |
+| Core JVM | 59 | 0 / 0 / 0 |
+| Core Android-host | 59 | 0 / 0 / 0 |
+| **Total** | **3,143** | **0 / 0 / 0** |
+
+Command tasks: `:core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources :desktopApp:compileKotlin`, using the environment's verified Skiko path and forced execution of all test tasks. Android debug and Desktop compile passed in that run. The localization guard passes with **506 strings and 3 plurals per en/es/ca**; `git diff --check` passes. No existing test/assertion was deleted, weakened or disabled. Development guards caught acceptance of a non-JSON `NaN` literal and a resource-table/enum synchronization issue during editing; the parser/resources were corrected before this frozen-source run.
+
+The update coverage adds 24 Desktop and 23 Android-host cases: structured versions/channels, persisted/dismissed/last-check state, opt-in throttling, duplicate presses, cancellation and a temporarily non-cooperative provider, retry, strict JSON, real synthetic RSA signatures/revocation/expiry, package/code/SDK/ABI/certificate mismatches, full-byte hash/tamper checks, unsupported redirects, rate/HTTP/TLS/connection/timeout failures, interrupted transfer cleanup, storage errors, cross-owner candidate protection and actual narrow/large-font shared UI in three languages and both themes. Existing collection/progress/migration/reader/translation/source/security regressions also ran.
+
+The opt-in `:app:githubUpdateCheck` then passed in **16s**, executing the real Desktop Java-engine production metadata path, not MockEngine: official repository, Stable channel, **no newer release, trusted installation false, zero asset requests**. The initial API inspection likewise returned HTTP 200 / `[]`. These host calls used the managed environment's proxy and CA trust (forwarded by an external init script, not application code); they do **not** establish physical Android networking behavior. No release or APK was published to manufacture a success scenario. Unit tests remain independent of live availability.
+
+### Development APK
+
+`INFINILECT-PR35-01137f6-development.apk`, **21,001,782 bytes**, SHA-256 `1a2bd39df6d0d935b2f5622a8a9e3e4cf4d1c815337fedbe0a4abf2bb05dce85`, built from the verified source above. It is signed outside the unchanged Gradle configuration with the original supplied development certificate; signer equality, one signer, v2 verification and 16 KiB alignment pass. Package, version name/code, minimum API 26 and all four ABIs remain unchanged. All six packaged language CVRs match generated resources; all six native libraries match the preceding PR #34 artifact byte-for-byte. Signing inputs and synthetic test/integration fixtures are absent. The only effective permission additions are the two documented above. No runtime dependency or license change was introduced.
+
+Private Drive delivery was read back with exact uploaded size and owner-only permission. No keystore/password was uploaded or committed; no release or public sharing was created. This is an install-over development artifact, **not a trusted public update**. Its hash helps identify this delivered file; a hash on a release alone is still not an independent authenticity root.
+
+### Remaining boundaries
+
+Public update installation is intentionally unavailable until the reviewed real key/certificate/publishing and development-to-public-signing strategy exist. Android PackageManager/PackageInstaller, permission screens, cancellation callbacks, actual install-over data preservation, TalkBack and realme C55 performance remain physically unverified; host inspector/handoff fixtures do not execute those Android APIs. Desktop has no installer. Checks are bounded/opportunistic rather than a background timer, clock/expiry and offline revocation have the limits above, and this initial catalogue policy rejects any listed asset metadata outside 1 byte–256 MiB (including unrelated assets); a publisher needing larger Desktop assets must review that metadata policy independently of the APK transfer budget. No current release exists to validate a complete public end-to-end update. Keep Draft pending physical review.
 
 ## Physical acceptance checklist
 
