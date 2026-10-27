@@ -77,9 +77,9 @@ internal fun LibraryChip(label: String, selected: Boolean, enabled: Boolean = tr
 /** One primary reading action; destructive membership action belongs to the overflow. */
 @Composable
 internal fun LibraryDetailsActions(progress: org.infinilect.core.ReadingProgress?, inLibrary: Boolean, favorite: Boolean?, enabled: Boolean,
-    read: () -> Unit, membership: () -> Unit, organize: () -> Unit, favoriteAction: () -> Unit) {
+    read: () -> Unit, membership: () -> Unit, organize: () -> Unit, favoriteAction: () -> Unit, menu: MutableState<Boolean>) {
     val strings=LocalAppStrings.current
-    var more by remember {mutableStateOf(false)}
+    var more by menu
     val menuFocus=remember {FocusRequester()}
     LaunchedEffect(more) {if(more) {withFrameNanos {};menuFocus.requestFocus()}}
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -104,5 +104,36 @@ internal fun LibraryDetailsActions(progress: org.infinilect.core.ReadingProgress
                 }
             }
         } else OutlinedButton(membership,Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=enabled) {Text(strings[UiText.UI_ADD_TO_LIBRARY])}
+    }
+}
+
+
+@Composable
+internal fun LibrarySelectionBar(count: Int,total: Int,enabled: Boolean,allFavorite: Boolean,
+    clear: () -> Unit,selectAll: () -> Unit,organize: () -> Unit,favorite: () -> Unit,remove: () -> Unit,menu: MutableState<Boolean>) {
+    val strings=LocalAppStrings.current
+    var more by menu
+    val menuFocus=remember {FocusRequester()}
+    val triggerFocus=remember {FocusRequester()}
+    var restoreFocus by remember {mutableStateOf(false)}
+    LaunchedEffect(more) {
+        if(more) {withFrameNanos {};menuFocus.requestFocus()}
+        else if(restoreFocus) {restoreFocus=false;withFrameNanos {};triggerFocus.requestFocus()}
+    }
+    Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+        LibraryIconButton(strings[UiText.UI_CLEAR_SELECTION],LibraryGlyph.CLOSE,click=clear)
+        Text(strings.selectedCount(count),Modifier.weight(1f).semantics {heading();liveRegion=LiveRegionMode.Polite},
+            style=MaterialTheme.typography.subtitle2,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        LibraryIconButton(strings[UiText.LIB_ORGANIZE],LibraryGlyph.TAG,enabled=enabled,click=organize)
+        LibraryIconButton(strings[UiText.LIB_FAVORITE],LibraryGlyph.HEART,enabled=enabled,active=allFavorite,click=favorite)
+        Box {
+            LibraryIconButton(strings[UiText.LIB_MORE],LibraryGlyph.MORE,modifier=Modifier.focusRequester(triggerFocus)) {more=true}
+            DropdownMenu(more,{more=false},modifier=Modifier.onPreviewKeyEvent {
+                if(it.type==KeyEventType.KeyDown && it.key==Key.Escape) {restoreFocus=true;more=false;true} else false
+            }) {
+                DropdownMenuItem({more=false;selectAll()},modifier=Modifier.focusRequester(menuFocus),enabled=enabled) {Text(if(total>1000) strings.format(UiText.LIB_SELECT_LIMIT,strings.number(1000)) else strings[UiText.SELECT_ALL])}
+                DropdownMenuItem({more=false;remove()},enabled=enabled) {Text(strings[UiText.UI_REMOVE_FROM_LIBRARY])}
+            }
+        }
     }
 }

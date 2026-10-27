@@ -93,7 +93,7 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
     progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
-    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), actions: @Composable () -> Unit) {
+    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, actions: @Composable () -> Unit) {
     val strings = LocalAppStrings.current
     val focus = remember { FocusRequester() }
     val synopsis by produceState<String?>(null, publication.id, descriptions) {
@@ -103,12 +103,13 @@ internal fun PublicationDetails(publication: Publication, source: String, format
     }
     var expanded by remember(publication.id) { mutableStateOf(false) }
     val scroll = remember(publication.id) { androidx.compose.foundation.ScrollState(0) }
-    Dialog(close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    val dismiss = { if(dismissOverlay?.invoke()!=true) close() }
+    Dialog(dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
             val compact = maxWidth < 600.dp
             val frame = if (compact) Modifier.fillMaxSize() else Modifier.widthIn(max = 600.dp).fillMaxWidth(.94f).heightIn(max = maxHeight - 24.dp)
             Surface(frame.onKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { close(); true } else false
+                if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { dismiss(); true } else false
             }.semantics { paneTitle = strings[UiText.UI_PUBLICATION_DETAILS] },
                 shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large, elevation = 0.dp) {
                 Column {

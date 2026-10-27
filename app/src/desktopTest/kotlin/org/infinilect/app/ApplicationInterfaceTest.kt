@@ -457,7 +457,7 @@ class ApplicationInterfaceTest {
             assertTrue(f.visible("1 selected"));assertEquals(setOf(f.source.books[0].id),f.app.collections.selection.value)
             f.click("Original publication 1");assertTrue(f.visible("2 selected"))
             f.click("Original publication 0");assertEquals(setOf(f.source.books[1].id),f.app.collections.selection.value)
-            f.click("Select all");assertTrue(f.visible("3 selected"))
+            f.click("More options");f.click("Select all");assertTrue(f.visible("3 selected"))
             assertIs<OpenPublicationState.Idle>(f.app.opening.value);assertEquals(0,f.source.acquisitions)
             assertFalse(f.visible("Mark as read"));assertFalse(f.visible("Mark as unread"))
             f.click("Clear selection");assertTrue(f.app.collections.selection.value.isEmpty());assertFalse(f.visible("3 selected"))
@@ -478,10 +478,10 @@ class ApplicationInterfaceTest {
     @Test fun batchConfirmationCancelAndCommitKeepHistoryFilesAndSemanticProgress() = runTest {
         Fixture(this,artwork=true).use { f ->
             f.nav(Destination.LIBRARY);val records=f.saved.toList()
-            f.app.collections.select(f.source.books[0].id);f.pump();f.click("Select all");f.click("Remove from Library")
+            f.app.collections.select(f.source.books[0].id);f.pump();f.click("More options");f.click("Select all");f.click("More options");f.click("Remove from Library")
             assertTrue(f.visible("Remove 3 from Library?"));assertEquals(3,f.data.saved.size)
             f.click("Cancel");assertEquals(3,f.data.saved.size);assertTrue(f.visible("3 selected"))
-            f.click("Remove from Library");f.click("Remove")
+            f.click("More options");f.click("Remove from Library");f.click("Remove")
             assertTrue(f.data.saved.isEmpty());assertEquals(3,f.data.opened.size);assertEquals(records,f.saved)
             assertEquals(30,f.source.books.size);assertTrue(f.visible("Your Library is empty"));assertEquals(0,f.source.acquisitions)
         }
@@ -489,10 +489,10 @@ class ApplicationInterfaceTest {
     @Test fun partialBatchFailureKeepsFailedCoverSelectedAndRetryAvailable() = runTest {
         Fixture(this).use { f ->
             f.nav(Destination.LIBRARY);f.data.failedLibraryRemovals+=f.source.books[1].id
-            f.app.collections.selectAll();f.pump();f.click("Remove from Library");f.click("Remove")
+            f.app.collections.selectAll();f.pump();f.click("More options");f.click("Remove from Library");f.click("Remove")
             assertEquals(setOf(f.source.books[1].id),f.data.saved.keys);assertTrue(f.visible("1 selected"))
             assertTrue(f.visible("2 removed; 1 could not be removed. Remaining items are kept. Try again."))
-            f.data.failedLibraryRemovals.clear();f.click("Remove from Library");f.click("Remove")
+            f.data.failedLibraryRemovals.clear();f.click("More options");f.click("Remove from Library");f.click("Remove")
             assertTrue(f.data.saved.isEmpty());assertEquals(3,f.data.opened.size)
         }
     }
@@ -502,6 +502,8 @@ class ApplicationInterfaceTest {
             f.click("Details for Original publication 2");assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
             assertTrue(f.visible("Add to Library"));f.click("Add to Library");assertEquals(3,f.data.saved.size)
             assertEquals(1,f.data.saved.values.count {it.publication.id==id});f.click("More options");assertTrue(f.visible("Remove from Library"));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump()
+            advanceTimeBy(250);f.pump() // Finish the real Material popup exit transition on the virtual clock.
+            assertTrue(f.visible("Publication details"))
             f.click("Close");f.click("Original publication 2");assertIs<OpenPublicationState.Ready>(f.app.opening.value)
             assertEquals(id,assertNotNull(assertIs<OpenPublicationState.Ready>(f.app.opening.value).publication).id)
         }

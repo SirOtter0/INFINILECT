@@ -154,6 +154,7 @@ Design guide: 12 dp grid edge, 8 dp gutters, 10 dp row gaps, aspect-preserving 2
 | Persistent organization-success row shifts content | Short accessible Snackbar overlay, no fake Undo; failures remain persistent |
 | Reading/removal/organization/favorite compete | Full-width primary reading action; heart and organization secondaries; confirmed removal in overflow |
 | Long radio/checkbox sections | Wrapping state/tag chips and independent favorite switch; batch deltas stay atomic |
+| Wrapping selection toolbar with long text actions | Count and quick organization/favorite icons; select-all and confirmed removal in overflow |
 | Two action rows per tag | Name/count and two labeled icon actions; global rename/delete behavior unchanged |
 
 Filters remain immediate and use the same session `LibraryQuery`; quick Reading/Completed toggle the state component, Favorites toggles its independent flag, All clears filters while preserving search/sort. Selected tags still use AND and Untagged excludes named-tag filters. Sort and deterministic ties are unchanged. Library/History details and local Home details share the action hierarchy; provider acquisition restrictions and notices remain intact. Synopsis, source rights/reference and jurisdiction notice remain scrollable and unchanged in meaning.

@@ -59,6 +59,8 @@ internal fun CollectionScreen(destination: Destination, application: Application
         }
     }
     val selecting = isLibrary && selected.isNotEmpty()
+    val selectionMenu=remember {mutableStateOf(false)}
+    LaunchedEffect(selecting) {if(!selecting) selectionMenu.value=false}
     val entries = remember(isLibrary, browserEntries, history.entries) {
         if (isLibrary) browserEntries.map { it.publication } else history.entries.map { it.publication }
     }
@@ -76,7 +78,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
         if (isLibrary) emptyMap() else history.entries.groupBy { historyDay(it.lastOpenedAtEpochMillis, now) }
     }
     BoxWithConstraints(Modifier.fillMaxSize().semantics { paneTitle = if (isLibrary) strings[UiText.LIBRARY] else strings[UiText.HISTORY] }.onPreviewKeyEvent {
-        if (selecting && it.type == KeyEventType.KeyDown && it.key == Key.Escape) { controller.clearSelection(); true } else false
+        if (selecting && it.type == KeyEventType.KeyDown && it.key == Key.Escape) { if(selectionMenu.value) selectionMenu.value=false else controller.clearSelection(); true } else false
     }) {
         val barMaxHeight = maxHeight / 2
         val columns = if (isLibrary) libraryColumns(maxWidth.value, LocalDensity.current.fontScale) else 1
@@ -84,19 +86,13 @@ internal fun CollectionScreen(destination: Destination, application: Application
         Column(Modifier.fillMaxSize()) {
             if (selecting) Surface(color = MaterialTheme.colors.primary.copy(alpha = .10f)) {
                 Column(Modifier.fillMaxWidth().heightIn(max = barMaxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
-                        LibraryIconButton(strings[UiText.UI_CLEAR_SELECTION],LibraryGlyph.CLOSE) {controller.clearSelection()}
-                        Text(strings.selectedCount(selected.size), style = MaterialTheme.typography.subtitle2,
-                            modifier = Modifier.padding(vertical = 14.dp).semantics { liveRegion = LiveRegionMode.Polite; heading() })
-                        TextButton({ controller.selectAll(browserEntries.map { it.publication.id }.toSet()) }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(if(browserEntries.size > 1000) strings.format(UiText.LIB_SELECT_LIMIT,strings.number(1000)) else strings[UiText.SELECT_ALL]) }
-                        LibraryIconButton(strings[UiText.LIB_ORGANIZE],LibraryGlyph.TAG,enabled=!busy) {organize=selected.toSet()}
-                        LibraryIconButton(strings[UiText.LIB_FAVORITE],LibraryGlyph.HEART,enabled=!busy,
-                            active=library.entries.filter {it.publication.id in selected}.all {it.favorite}) {
+                    LibrarySelectionBar(selected.size,browserEntries.size,!busy && membership.mutating.isEmpty(),
+                        library.entries.filter {it.publication.id in selected}.all {it.favorite},
+                        clear=controller::clearSelection,selectAll={controller.selectAll(browserEntries.map {it.publication.id}.toSet())},
+                        organize={organize=selected.toSet()},favorite={
                             val allFavorite=library.entries.filter {it.publication.id in selected}.all {it.favorite}
                             controller.organize(selected.toSet(),LibraryOrganizationChange(favorite=!allFavorite))
-                        }
-                        LibraryIconButton(strings[UiText.UI_REMOVE_FROM_LIBRARY],LibraryGlyph.DELETE,enabled=!busy && membership.mutating.isEmpty()) {batch=selected.toSet()}
-                    }
+                        },remove={batch=selected.toSet()},menu=selectionMenu)
                 }
             }
             LazyVerticalGrid(GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = position,
@@ -150,15 +146,16 @@ internal fun CollectionScreen(destination: Destination, application: Application
     detail?.let { publication ->
         val progress = detailsProgress(application, publication.id, progress[publication.id])
         val action = membership.forPublication(publication.id)
+        val detailsMenu=remember(publication.id) {mutableStateOf(false)}
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
-            progress = progress, close = { detail = null }, descriptions = application.descriptions, cover = { DetailsCover(publication.displayPublication(), application.covers) }) {
+            progress = progress, close = { detail = null }, dismissOverlay={if(detailsMenu.value) {detailsMenu.value=false;true} else false}, descriptions = application.descriptions, cover = { DetailsCover(publication.displayPublication(), application.covers) }) {
             val entry=library.entries.firstOrNull {it.publication.id==publication.id}
             LibraryDetailsActions(progress,action.inLibrary==true,entry?.favorite,action.enabled && !busy,
                 read={detail=null;application.openSaved(publication)},
                 membership={if(action.inLibrary==true) {detail=null;remove=CollectionRemoval(publication,false)} else controller.toggleCatalogLibrary(publication.displayPublication())},
                 organize={detail=null;organize=setOf(publication.id)},
-                favoriteAction={if(entry!=null) controller.organize(setOf(publication.id),LibraryOrganizationChange(favorite=!entry.favorite))})
+                favoriteAction={if(entry!=null) controller.organize(setOf(publication.id),LibraryOrganizationChange(favorite=!entry.favorite))},menu=detailsMenu)
             error?.let { Text(strings.status(it), color = MaterialTheme.colors.error) }
         }
     }

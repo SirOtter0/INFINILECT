@@ -156,15 +156,16 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     detail?.let { publication ->
         val record=detailsProgress(application,publication.id,publicationProgress(progress,publication.id))
         val action=membership.forPublication(publication.id)
+        val detailsMenu=remember(publication.id) {mutableStateOf(false)}
         PublicationDetails(publication.displayPublication(),application.sourceName(publication.id.sourceId),
             formats=record?.let {listOf(it.id.format)}?:format?.let {listOf(it)}?:emptyList(),progress=record,close={detail=null},
-            descriptions=application.descriptions, cover={DetailsCover(publication.displayPublication(),application.covers)}) {
+            dismissOverlay={if(detailsMenu.value) {detailsMenu.value=false;true} else false}, descriptions=application.descriptions, cover={DetailsCover(publication.displayPublication(),application.covers)}) {
             val entry=library.entries.firstOrNull {it.publication.id==publication.id}
             LibraryDetailsActions(record,action.inLibrary==true,entry?.favorite,action.enabled && !organizationBusy,
                 read={detail=null;application.openSaved(publication)},
                 membership={if(action.inLibrary==true) confirmRemoval=true else application.collections.toggleCatalogLibrary(publication.displayPublication())},
                 organize={detail=null;organize=publication.id},
-                favoriteAction={if(entry!=null) application.collections.organize(setOf(publication.id),LibraryOrganizationChange(favorite=!entry.favorite))})
+                favoriteAction={if(entry!=null) application.collections.organize(setOf(publication.id),LibraryOrganizationChange(favorite=!entry.favorite))},menu=detailsMenu)
             error?.let {Text(strings.status(it),color=MaterialTheme.colors.error)}
         }
         if (confirmRemoval) AlertDialog(onDismissRequest={confirmRemoval=false},title={Text(strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM])},

@@ -155,6 +155,13 @@ class LibraryOrganizationInterfaceTest {
             f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Enter,KeyEventType.KeyUp));f.draw()
             assertTrue(f.data.saved.values.all {it.readingState==LibraryReadingState.NOT_STARTED})
             assertFalse(f.visible(f.strings[UiText.LIB_APPLY]))
+            f.click(f.strings[UiText.LIB_MORE]);assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
+            f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.draw()
+            advanceTimeBy(250);f.draw() // Material popup exit transition, not a real-time sleep.
+            assertEquals(3,f.app.collections.selection.value.size)
+            assertFalse(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
+            f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.draw()
+            assertTrue(f.app.collections.selection.value.isEmpty())
         }
     }
     @Test fun batchOrganizationKeepsUntouchedFieldsAndFailuresAreVisible()=runTest {
