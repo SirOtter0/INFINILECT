@@ -116,7 +116,7 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
         val id=offer.publication.id
         if(closed.value || !foreground || !catalogue.value.loaded || entry(id)?.status in setOf(DownloadStatus.PENDING,DownloadStatus.DOWNLOADING,DownloadStatus.DOWNLOADED)) return
         if(catalogue.value.entries.count {it.status in setOf(DownloadStatus.PENDING,DownloadStatus.DOWNLOADING)}+catalogue.value.busy.size>=8) {fail(DownloadFailure.LIMIT);return}
-        progress(id)
+        progress.getOrPut(id) {MutableStateFlow(DownloadProgress())}.value=DownloadProgress(total=offer.size)
         mutate(id) {
             val row=backend.pending(offer)
             if(!foreground || closed.value) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish);return@mutate}
@@ -131,7 +131,7 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
         mutate(id) {
             val previous=entry(id) ?: return@mutate
             val offer=backend.offers(id).firstOrNull {it.resource==previous.resource} ?: throw DownloadException(DownloadFailure.NOT_ALLOWED)
-            val row=backend.pending(offer);progress(id)
+            val row=backend.pending(offer);progress.getOrPut(id) {MutableStateFlow(DownloadProgress())}.value=DownloadProgress(total=offer.size)
             if(!foreground || closed.value) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish);return@mutate}
             publish(row);if(!commands.trySend(id).isSuccess) backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.LIMIT)?.let(::publish)
         }

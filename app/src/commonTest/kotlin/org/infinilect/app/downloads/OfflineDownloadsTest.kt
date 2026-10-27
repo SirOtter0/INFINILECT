@@ -90,7 +90,8 @@ class OfflineDownloadsTest {
         val backend=Backend().also {it.failure=DownloadFailure.CONNECTION;it.gate.complete(Unit)}
         val owner=OfflineDownloads(backend,StandardTestDispatcher(testScheduler));runCurrent();owner.enqueue(backend.offer());runCurrent()
         assertEquals(DownloadStatus.ERROR,owner.status());assertTrue(owner.available.value.isEmpty())
-        backend.failure=null;owner.retry(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.DOWNLOADED,owner.status())
+        val seen=mutableListOf<Long>();val observation=backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {owner.progress(backend.offer().publication.id).collect {seen+=it.bytes}}
+        backend.failure=null;owner.retry(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.DOWNLOADED,owner.status());assertTrue(0L in seen,"Retry resets old byte counters");observation.cancel()
         owner.remove(backend.offer().publication.id);runCurrent();assertNull(owner.status());assertTrue(owner.available.value.isEmpty())
         owner.close();owner.awaitClosed()
     }
