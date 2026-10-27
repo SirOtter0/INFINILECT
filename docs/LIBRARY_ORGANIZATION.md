@@ -246,7 +246,7 @@ Accessible Add/Remove Library and Add/Remove favorites names use reviewed en/es/
 5. Test offline Library membership, controlled storage failures/Retry if safely available, navigation while pending, external/batch favorite edits and return to details. A failure must not leave a false filled icon.
 6. Check small/large windows, es/en/ca, light/dark and 150–180% text. With Android animations disabled, state changes must remain clear; with animations enabled they should be brief and unobtrusive. Validate TalkBack and keyboard activation. No physical validation of this follow-up is claimed by host captures/tests.
 
-Verification results and the new signed APK are recorded below after checks complete. Earlier APK/capture entries describe their respective older source commits.
+Verification results and the new signed APK are recorded below. Earlier APK/capture entries describe their respective older source commits; the current signed delivery resolves the earlier missing-signing-input limitation.
 
 ### Captures of the compact actions
 
@@ -259,3 +259,29 @@ These are real shared-Compose **headless renders with original synthetic data**,
 | Single organizer with header heart | Catalan, 320 dp / 180% text |
 | --- | --- |
 | ![Organizer](previews/pr34-actions/organizer-es-dark.png) | ![Large Catalan organizer](previews/pr34-actions/organizer-ca-large.png) |
+
+### Verification and install-over artifact
+
+Verified runtime source: `0f99f07acc8634b0a2ae3c218a43fce019d18874`. Subsequent commits contain documentation and captures only.
+
+The focused shared-UI and animation run passed **80 tests**. Coverage includes real pointer bursts during blocked writes, confirmation/cancellation, add/remove persistence failures and Retry, external membership/favorite updates, reopening after a commit, preserved History, organizer Close versus atomic Apply, Favorites filter synchronization, and navigation while writes remain pending. Animation checks compare rendered pixels, stable target bounds and selected semantics for both icons, light/dark themes, large fonts and zero/default motion duration scales.
+
+The complete Android-host suite passed **1,353 tests**, Core JVM **59**, and Core Android-host **59**, with no failures, errors or skips. Android debug assembly, Desktop compilation and packaged-language verification passed in the same combined run. The localization guard passes with **461 strings and 3 plurals per en/es/ca**. `git diff --check` passes; dependencies, permissions, signing configuration, reader engines and persistent schema remain unchanged.
+
+The first combined run (11m53s, using Gradle `--continue`) failed one Desktop test: `PageSpreadLayoutTest.fastEdgeSwipesDoNotNeedRepeatedAttemptsWhenFinalMovementArrivesOnPointerUp`, at fixture initialization (`Spread 0 must be fully presented`), before its gesture assertion. The unchanged test passed in isolation (45s), then the **complete Desktop suite passed in 9m42s**. No timeout, assertion or reader code was modified. The cause of the initial host timing failure is not established; this is not evidence of a physical Android failure or fix. Both outcomes are retained rather than reporting the first combined run as successful.
+
+Final suite reports, with no source changes between these runs:
+
+| Suite | Passed | Failures / errors / skips |
+| --- | ---: | --- |
+| App Desktop | 1,625 | 0 / 0 / 0 |
+| App Android-host | 1,353 | 0 / 0 / 0 |
+| Core JVM | 59 | 0 / 0 / 0 |
+| Core Android-host | 59 | 0 / 0 / 0 |
+| **Total** | **3,096** | **0 / 0 / 0** |
+
+Reproduction tasks: `:core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources :desktopApp:compileKotlin`; the final full repeat ran `:app:desktopTest`. Tests were forced to execute with the managed environment's verified Skiko native path; no tests were excluded or skipped.
+
+The new **same-development-certificate** APK includes these actions and the preceding Library redesign: `INFINILECT-PR34-512cabe-development.apk`, **21,386,806 bytes**, SHA-256 `76e565cc076324bd9474126128f1854ce0ef565214a5318a68e475cff0d0233e`. It was built at documentation checkpoint `512cabef3c54f796da99d74bc88443a3fd275716`, whose runtime source is the commit above. The signer matches the original supplied certificate; v2 signature and 16 KiB alignment verify. Package `org.infinilect.app`, minimum API 26 and all four existing ABIs are unchanged. All six packaged locale CVRs match generated resources; all six native libraries match the preceding PR #33 artifact. Test fixtures and private signing inputs are absent from the APK and repository. Private Drive delivery was verified by uploaded size and owner-only permissions; no release or public sharing was created.
+
+These results establish host behavior, compilation and artifact integrity. Physical Android touch/TalkBack, realme C55 performance and the install-over flow still require the checklist above. Keep the PR in Draft; do not uninstall, erase data or merge for this delivery.
