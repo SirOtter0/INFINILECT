@@ -31,6 +31,7 @@ class ApplicationSources internal constructor(
     internal val translation: org.infinilect.app.reader.epub.EpubTranslationService? = null,
     private val sessionDispatcher: CoroutineDispatcher? = null,
     internal val discoveryDiagnostics: (org.infinilect.app.discovery.DiscoveryDiagnostic) -> Unit = {},
+    internal val updates: org.infinilect.app.updates.UpdateController? = null,
     private val releaseSources: () -> Unit,
 ) {
     internal val libraryDispatcher: CoroutineDispatcher get() = sessionDispatcher ?: Dispatchers.Default
@@ -66,11 +67,11 @@ class ApplicationSources internal constructor(
     }
 
     fun flushProgress() { session?.flushProgress(); epubSettings?.flush(); pageSettings?.flush() }
-    fun pauseDiscovery() { (session as? ApplicationSession)?.pauseDiscovery() }
-    fun resumeDiscovery() { (session as? ApplicationSession)?.resumeDiscovery() }
+    fun pauseDiscovery() { (session as? ApplicationSession)?.pauseDiscovery(); updates?.background() }
+    fun resumeDiscovery() { (session as? ApplicationSession)?.resumeDiscovery(); updates?.foreground() }
 
     /** Join the independent preference writer before a Desktop process intentionally exits. */
-    suspend fun awaitPreferencesClosed() { epubSettings?.awaitClosed(); pageSettings?.awaitClosed(); appearance?.awaitClosed() }
+    suspend fun awaitPreferencesClosed() { epubSettings?.awaitClosed(); pageSettings?.awaitClosed(); appearance?.awaitClosed(); updates?.awaitClosed() }
 
     suspend fun awaitProgressClosed() { translation?.awaitClosed(); awaitPreferencesClosed(); covers?.awaitClosed(); descriptions?.awaitClosed(); progress?.awaitClosed(); collections?.awaitClosed(); localImports?.awaitClosed(); textPreparer.awaitClosed(); epubPreparer?.awaitClosed(); pagePreparer?.awaitClosed(); pdfPreparer?.awaitClosed() }
 
@@ -93,6 +94,7 @@ class ApplicationSources internal constructor(
         pagePreparer?.close()
         pdfPreparer?.close()
         translation?.close()
+        updates?.close()
         releaseSources()
     }
 }

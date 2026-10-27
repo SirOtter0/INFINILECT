@@ -12,7 +12,7 @@ fun createApplicationSources(): ApplicationSources {
     val progress = desktopProgressDirectory()
     val cache = desktopCacheDirectory()
     val store = SqlCollectionsStore({ desktopCollectionsDriver(desktopCollectionsFile(progress)) })
-    return createSources(DiskResourceCache(cache), progress,
+    return createSources(DiskResourceCache(cache), progress, updates = org.infinilect.app.updates.createDesktopUpdates(cache?.resolve("updates-v1"),progress?.parent?.resolve("updates-v1")),
         collections = ApplicationCollections(store.library,store.history,release = store::close),
         developmentEpubEnabled = System.getProperty("infinilect.epubDemo") == "true" || System.getenv("INFINILECT_EPUB_DEMO") == "1",
         developmentComicEnabled = System.getProperty("infinilect.comicDemo") == "true" || System.getenv("INFINILECT_COMIC_DEMO") == "1",

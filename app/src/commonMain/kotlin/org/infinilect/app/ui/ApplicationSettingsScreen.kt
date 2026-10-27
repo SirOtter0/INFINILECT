@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun ApplicationSettingsScreen(mode: ApplicationThemeMode, change: (ApplicationThemeMode) -> Unit, failed: Boolean, profile: LocalProfile = LocalProfile(), editProfile: () -> Unit = {}, profileReady: Boolean = true, discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences(), changeDiscovery: ((org.infinilect.app.discovery.DiscoveryPreferences) -> Unit)? = null,
-    preferences: ApplicationAppearancePreferences? = null, translation: org.infinilect.app.reader.epub.EpubTranslationService? = null, developmentSettings: @Composable () -> Unit = {}) {
+    preferences: ApplicationAppearancePreferences? = null, translation: org.infinilect.app.reader.epub.EpubTranslationService? = null, developmentSettings: @Composable () -> Unit = {}, updates: org.infinilect.app.updates.UpdateController? = null) {
     val strings = LocalAppStrings.current
     var languages by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().semantics { paneTitle=strings[UiText.SETTINGS] }.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -61,6 +61,7 @@ internal fun ApplicationSettingsScreen(mode: ApplicationThemeMode, change: (Appl
         if (changeDiscovery != null && profileReady) org.infinilect.app.discovery.DiscoveryPreferenceControls(discovery, changeDiscovery)
         FeedbackCard(strings[UiText.READING_PREFS], strings[UiText.READING_PREFS_NOTICE])
         Text(strings[UiText.FREE_READING], style = MaterialTheme.typography.caption)
+        updates?.let { org.infinilect.app.updates.UpdateSettings(it) }
         developmentSettings()
     }
     if (languages && preferences != null) LanguageTranslationPanel(preferences, translation) { languages = false }

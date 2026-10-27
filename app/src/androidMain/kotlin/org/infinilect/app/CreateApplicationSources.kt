@@ -26,7 +26,7 @@ fun createApplicationSources(context: Context, developmentSourcesEnabled: Boolea
     val debuggable = context.applicationContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     val store = SqlCollectionsStore({ androidCollectionsDriver(appContext) },
         onFailure = androidCollectionsDiagnostics(debuggable))
-    return createSources(DiskResourceCache(directory), progressDirectory, progressDiagnostics = { failure ->
+    return createSources(DiskResourceCache(directory), progressDirectory, updates = org.infinilect.app.updates.createAndroidUpdates(appContext), progressDiagnostics = { failure ->
         if (debuggable) Log.w("INFINILECTProgress", "${failure.operation}/${failure.stage}/${failure.reason}")
     }, collections = ApplicationCollections(store.library,store.history,release = store::close),
         textDirectory = org.infinilect.app.reader.androidTextDirectory(appContext.cacheDir.toPath()),

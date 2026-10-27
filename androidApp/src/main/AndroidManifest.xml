@@ -4,6 +4,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Opt-in foreground update checks respect metering; no background service. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Used only after a trusted APK and explicit install consent; never silent. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Foxlet is loaded only on API 28+ ARM64; original readers retain API 26+. -->
     <uses-sdk tools:overrideLibrary="io.github.yinvoker.foxlet" />
     <application android:label="@string/app_name"
@@ -28,5 +32,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver android:name="org.infinilect.app.updates.UpdateInstallReceiver" android:exported="false" />
     </application>
 </manifest>
