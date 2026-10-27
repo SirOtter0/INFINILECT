@@ -453,4 +453,8 @@
     <string name="lib_saved">Organització desada</string>
     <string name="lib_batch_notice">Només s’aplicaran els canvis triats a totes les publicacions seleccionades. Se’n conservarà la resta de l’organització.</string>
     <string name="lib_select_limit">Selecciona les primeres %1$s coincidències</string>
+    <string name="lib_all">Tots</string>
+    <string name="lib_favorites">Preferits</string>
+    <string name="lib_more">Més opcions</string>
+    <string name="lib_ascending">Ordre ascendent</string>
 </resources>

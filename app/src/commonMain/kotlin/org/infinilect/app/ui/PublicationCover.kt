@@ -26,7 +26,11 @@ import org.infinilect.app.covers.*
 import org.infinilect.core.*
 
 internal const val COVER_TITLE_MIN_SCRIM = .72f
-internal fun libraryColumns(widthDp: Float): Int = if (widthDp < 320) 1 else maxOf(2, ((widthDp - 20) / 180).toInt())
+/** Minimum title width grows with accessible text; no forced three-column layout. */
+internal fun libraryColumns(widthDp: Float, fontScale: Float = 1f): Int {
+    val minimum = (if (widthDp >= 600f) 144f else 104f) * fontScale.coerceIn(1f, 1.8f)
+    return maxOf(if(widthDp>=320f) 2 else 1, ((widthDp - 24f + 8f) / (minimum + 8f)).toInt())
+}
 internal fun coverPaletteIndex(id: PublicationId): Int = (id.resultCoverKey().hashCode() and Int.MAX_VALUE) % 4
 internal fun coverInitial(title: String): String {
     val text = title.trimStart()
@@ -76,11 +80,10 @@ private fun CoverArtwork(publication: Publication, state: CoverState, modifier: 
 @Composable
 internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
     selected: Boolean, selecting: Boolean, enabled: Boolean,
-    open: () -> Unit, details: (PublicationFormat?) -> Unit, select: () -> Unit, toggle: () -> Unit, remove: () -> Unit) {
+    open: () -> Unit, details: (PublicationFormat?) -> Unit, select: () -> Unit, toggle: () -> Unit, remove: () -> Unit, favorite: Boolean = false, completed: Boolean = false, artworkHeight: androidx.compose.ui.unit.Dp? = null) {
     val strings = LocalAppStrings.current
     val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
     val cover = coverState(publication.id, covers, viewport)
-    val titleBrush = remember { Brush.verticalGradient(coverTitleColors) }
     val showDetails = { details(cover.format) }
     var menu by remember(publication.id) { mutableStateOf(false) }
     val interaction = Modifier.combinedClickable(
@@ -104,31 +107,27 @@ internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, 
             this.selected = selected
             contentDescription = strings.format(UiText.UI_COVER_FOR_1_S, publication.title)
             stateDescription = listOfNotNull(if (selected) strings[UiText.UI_SELECTED] else if (selecting) strings[UiText.UI_NOT_SELECTED] else null,
+                if (favorite) strings[UiText.LIB_FAVORITE] else null, if(completed) strings[UiText.LIB_COMPLETED] else null,
                 progress?.let { strings.format(UiText.UI_1_S_READ, (it.progression * 100).toInt()) }).joinToString(" · ")
             customActions = listOf(CustomAccessibilityAction(if (selected) strings[UiText.UI_DESELECT_PUBLICATION] else strings[UiText.UI_SELECT_PUBLICATION]) { toggle(); true },
                 CustomAccessibilityAction(strings[UiText.UI_PUBLICATION_DETAILS]) { showDetails(); true },
                 CustomAccessibilityAction(strings[UiText.CONTINUE_READING]) { open(); true })
         }
-    Surface(Modifier.fillMaxWidth().then(viewport?.modifier ?: Modifier), shape = MaterialTheme.shapes.small, color = MaterialTheme.colors.surface) {
-        Box(Modifier.aspectRatio(2f / 3f).then(interaction)) {
-            CoverArtwork(publication, cover, Modifier.fillMaxSize())
-            Text(publication.title, color = Color.White, style = MaterialTheme.typography.subtitle2, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .background(titleBrush)
-                    .padding(12.dp, 12.dp, 12.dp, 16.dp))
+    Column(Modifier.fillMaxWidth().then(viewport?.modifier ?: Modifier).then(interaction), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.fillMaxWidth().then(artworkHeight?.let {Modifier.height(it)} ?: Modifier.aspectRatio(2f/3f)).clip(MaterialTheme.shapes.small)) {
+            CoverArtwork(publication, cover, Modifier.fillMaxSize(),compact=true)
             progress?.let { LinearProgressIndicator(it.progression.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-                color = Color(0xffa8e6d5), backgroundColor = Color.Black.copy(alpha = .5f)) }
-            if (selected) {
-                Box(Modifier.fillMaxSize().border(3.dp, MaterialTheme.colors.primary, MaterialTheme.shapes.small))
-                Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp).background(MaterialTheme.colors.primary, MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
-                    Text("✓", color = MaterialTheme.colors.onPrimary, modifier = Modifier.clearAndSetSemantics {})
-                }
+                color = MaterialTheme.colors.primary, backgroundColor = Color.Black.copy(alpha = .5f)) }
+            if (favorite || completed || selected) Row(Modifier.align(Alignment.TopEnd).padding(4.dp)
+                .background(MaterialTheme.colors.surface.copy(alpha=.94f),MaterialTheme.shapes.small).padding(3.dp), horizontalArrangement=Arrangement.spacedBy(3.dp)) {
+                if (favorite) LibraryIcon(LibraryGlyph.HEART,true,Modifier.size(16.dp))
+                if (completed) LibraryIcon(LibraryGlyph.CHECK,true,Modifier.size(16.dp))
+                if (selected) LibraryIcon(LibraryGlyph.CHECK,true,Modifier.size(20.dp))
             }
-            // Secondary-pointer/keyboard menu is available without permanent cover chrome.
-            Box(Modifier.align(Alignment.TopEnd)) {
-                CoverContextMenu(menu, { menu = false }, enabled, select, open, showDetails, remove)
-            }
+            if (selected) Box(Modifier.fillMaxSize().border(3.dp, MaterialTheme.colors.primary, MaterialTheme.shapes.small))
+            Box(Modifier.align(Alignment.TopEnd)) { CoverContextMenu(menu, { menu = false }, enabled, select, open, showDetails, remove) }
         }
+        Text(publication.title, style = MaterialTheme.typography.caption, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

@@ -270,6 +270,7 @@ internal class CollectionsController(private val owner: ApplicationCollections?,
     }
     private val mutableOrganizationResult = MutableStateFlow<Boolean?>(null)
     val organizationResult = mutableOrganizationResult.asStateFlow()
+    fun dismissOrganizationSuccess() { mutableOrganizationResult.compareAndSet(true,null) }
     /** Never optimistic: the repository commits a whole organization batch or nothing. */
     fun organize(ids: Set<PublicationId>, change: LibraryOrganizationChange): Job? {
         val keys = ids.toSet()

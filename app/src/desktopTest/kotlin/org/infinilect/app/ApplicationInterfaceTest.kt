@@ -326,13 +326,16 @@ class ApplicationInterfaceTest {
         }
     }
 
-    @Test fun coverGridHasTwoPhoneColumnsAndNoPermanentActionRows() = runTest {
+    @Test fun coverGridHasThreePhoneColumnsWithSeparateTitlesAndNoPermanentActionRows() = runTest {
         Fixture(this,count=12).use { f ->
             f.nav(Destination.LIBRARY)
             fun tile(i:Int)=f.nodes().single { isCover(it) && it.children.any { n -> f.has(n,"Original publication $i") } }
             val a=tile(0).boundsInRoot;val b=tile(1).boundsInRoot
             assertEquals(a.top,b.top);assertTrue(b.left>=a.right)
-            assertEquals(2f/3f,a.width/a.height,.02f)
+            // The tile includes two caption lines below its 2:3 artwork now.
+            val artwork=tile(0).children.first {it.boundsInRoot.height>100}.boundsInRoot
+            assertEquals(2f/3f,artwork.width/artwork.height,.02f)
+            assertTrue(a.height>artwork.height)
             assertFalse(f.visible("Open"));assertFalse(f.visible("Remove"));assertFalse(f.visible("Publication details"))
             assertFalse(f.visible("Actions for Original publication 0"));assertFalse(f.visible("EPUB"));assertFalse(f.visible("CBZ"))
         }
@@ -361,10 +364,10 @@ class ApplicationInterfaceTest {
         Fixture(this).use { f ->
             val record=ReadingProgress(ReadingProgressId(f.source.books[0].id,"text",PublicationFormat.TEXT),ReadingLocator.Text(8,10),.8,1)
             f.progress.submit(record);f.pump();f.nav(Destination.LIBRARY)
-            f.click("Original publication 0");f.click("Remove from Library")
+            f.click("Original publication 0");f.click("More options");f.click("Remove from Library")
             assertTrue(f.visible("Remove from Library?"));assertEquals(3,f.data.saved.size)
             f.click("Cancel");assertEquals(3,f.data.saved.size)
-            f.click("Original publication 0");f.click("Remove from Library");f.click("Remove")
+            f.click("Original publication 0");f.click("More options");f.click("Remove from Library");f.click("Remove")
             assertEquals(2,f.data.saved.size);assertEquals(3,f.source.books.take(3).size);assertEquals(record,f.saved.last())
         }
     }
@@ -498,7 +501,7 @@ class ApplicationInterfaceTest {
             val id=f.source.books[2].id;f.data.saved.remove(id);f.app.collections.refreshLibrary();f.pump();f.nav(Destination.HISTORY)
             f.click("Details for Original publication 2");assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
             assertTrue(f.visible("Add to Library"));f.click("Add to Library");assertEquals(3,f.data.saved.size)
-            assertEquals(1,f.data.saved.values.count {it.publication.id==id});assertTrue(f.visible("Remove from Library"))
+            assertEquals(1,f.data.saved.values.count {it.publication.id==id});f.click("More options");assertTrue(f.visible("Remove from Library"));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyDown));f.scene.sendKeyEvent(KeyEvent(Key.Escape,KeyEventType.KeyUp));f.pump()
             f.click("Close");f.click("Original publication 2");assertIs<OpenPublicationState.Ready>(f.app.opening.value)
             assertEquals(id,assertNotNull(assertIs<OpenPublicationState.Ready>(f.app.opening.value).publication).id)
         }
@@ -660,8 +663,8 @@ class ApplicationInterfaceTest {
             f.app.collections.refreshLibrary();f.pump();f.reach(2)
             val before=f.saved.toList();f.click("Details for Original publication 2")
             assertTrue(f.visible("Publication details"));assertEquals(0,f.source.acquisitions)
-            f.click("Remove from Library");assertTrue(f.visible("Remove from Library?"));f.click("Cancel")
-            assertEquals(3,f.data.saved.size);f.click("Remove from Library");f.click("Remove")
+            f.click("More options");f.click("Remove from Library");assertTrue(f.visible("Remove from Library?"));f.click("Cancel")
+            assertEquals(3,f.data.saved.size);f.click("More options");f.click("Remove from Library");f.click("Remove")
             assertEquals(2,f.data.saved.size);assertEquals(3,f.data.opened.size);assertEquals(before,f.saved)
             assertIs<OpenPublicationState.Idle>(f.app.opening.value)
         }
@@ -791,6 +794,21 @@ class ApplicationInterfaceTest {
             val noAuthor=f.source.books[1].copy(authors=emptyList());f.source.books[1]=noAuthor;f.data.saved[noAuthor.id]=LibraryEntry(PublicationSnapshot.from(noAuthor),1)
             f.app.collections.refreshLibrary();f.pump();f.click(noAuthor.title)
             assertFalse(f.visible("Fixture author 1"));assertFalse(f.visible("Unknown author"));assertTrue(f.visible("Start reading"))
+        }
+    }
+
+    @Test fun compactLibraryFullShellPreviewsKeepOriginalCoversAndProgress()=runTest {
+        for((width,dark) in listOf(390 to true,390 to false,1280 to true)) {
+            Fixture(this,width,850,count=12,artwork=true).use {f ->
+                if(dark) f.settings.change(ApplicationThemeMode.DARK)
+                f.nav(Destination.LIBRARY)
+                f.preview("compact-library-$width-$dark.png")
+                f.click("Original publication 10")
+                assertTrue(f.visible("Continue reading"));assertFalse(f.visible("Remove from Library"))
+                f.preview("compact-details-$width-$dark.png")
+                assertTrue(f.nodes().any {it.config.getOrNull(SemanticsProperties.Text)?.any {t -> t.text.startsWith("Availability does not establish")}==true})
+                f.click("Close");assertEquals(12,f.data.saved.size)
+            }
         }
     }
 

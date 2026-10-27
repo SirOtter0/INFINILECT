@@ -6,6 +6,7 @@ import org.infinilect.app.generated.resources.*
 import org.jetbrains.compose.resources.PluralStringResource
 
 internal enum class UiPlural(val resource: PluralStringResource, val english: List<String>) {
+    PUBLICATIONS(Res.plurals.publication_count, listOf("%1\$s publication", "%1\$s publications")),
     SELECTED(Res.plurals.selected_count, listOf("%1\$s selected", "%1\$s selected")),
     SOURCES(Res.plurals.source_count, listOf("%1\$s source selected", "%1\$s sources selected")),
 }

@@ -83,9 +83,10 @@ class PublicationCoversTest {
         } finally { cache.close(); cache.awaitClosed() }
         assertEquals(0, cache.retainedEntries())
     }
-    @Test fun phonesUseTwoColumnsAndDesktopColumnsGrowWithoutHugeCovers() {
-        assertEquals(1, libraryColumns(280f)); assertEquals(2, libraryColumns(360f)); assertEquals(2, libraryColumns(420f))
-        assertEquals(4, libraryColumns(800f)); assertEquals(6, libraryColumns(1120f))
+    @Test fun phonesAdaptBetweenTwoAndThreeColumnsWithoutSacrificingLargeFonts() {
+        assertEquals(2, libraryColumns(280f)); assertEquals(2, libraryColumns(320f)); assertEquals(3, libraryColumns(360f)); assertEquals(3, libraryColumns(420f))
+        assertEquals(5, libraryColumns(800f)); assertEquals(7, libraryColumns(1120f))
+        assertEquals(2,libraryColumns(360f,1.5f)); assertEquals(2,libraryColumns(320f,1.8f))
         for (width in listOf(600f,800f,1120f)) assertTrue((width - 32 - 12 * (libraryColumns(width)-1)) / libraryColumns(width) < 220)
     }
     @Test fun fallbackColorsAreDeterministicAndPublicationSpecific() {

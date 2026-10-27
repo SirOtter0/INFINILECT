@@ -30,6 +30,9 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     importAction: (() -> Unit)?, editProfile: () -> Unit, settingsFailed: Boolean = false) {
     val strings = LocalAppStrings.current
     val library by application.collections.library.collectAsState()
+    val tags by application.collections.tags.collectAsState()
+    val organizationBusy by application.collections.busy.collectAsState()
+    var organize by remember {mutableStateOf<PublicationId?>(null)}
     val history by application.collections.history.collectAsState()
     val progressById = remember(progress) { indexPublicationProgress(progress) }
     val continued = remember(history.entries, progress) { homeContinue(history.entries,progress) }
@@ -156,9 +159,12 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
         PublicationDetails(publication.displayPublication(),application.sourceName(publication.id.sourceId),
             formats=record?.let {listOf(it.id.format)}?:format?.let {listOf(it)}?:emptyList(),progress=record,close={detail=null},
             descriptions=application.descriptions, cover={DetailsCover(publication.displayPublication(),application.covers)}) {
-            Button({detail=null;application.openSaved(publication)},Modifier.heightIn(min=48.dp)) { Text(strings.status(readingAction(record))) }
-            OutlinedButton({ if(action.inLibrary==true) confirmRemoval=true else application.collections.toggleCatalogLibrary(publication.displayPublication()) },
-                Modifier.heightIn(min=48.dp),enabled=action.enabled) { Text(strings.status(action.label)) }
+            val entry=library.entries.firstOrNull {it.publication.id==publication.id}
+            LibraryDetailsActions(record,action.inLibrary==true,entry?.favorite,action.enabled && !organizationBusy,
+                read={detail=null;application.openSaved(publication)},
+                membership={if(action.inLibrary==true) confirmRemoval=true else application.collections.toggleCatalogLibrary(publication.displayPublication())},
+                organize={detail=null;organize=publication.id},
+                favoriteAction={if(entry!=null) application.collections.organize(setOf(publication.id),LibraryOrganizationChange(favorite=!entry.favorite))})
             error?.let {Text(strings.status(it),color=MaterialTheme.colors.error)}
         }
         if (confirmRemoval) AlertDialog(onDismissRequest={confirmRemoval=false},title={Text(strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM])},
@@ -166,6 +172,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
             confirmButton={TextButton({confirmRemoval=false;application.collections.removeLibrary(publication.id);detail=null},Modifier.heightIn(min=48.dp),enabled=action.enabled){Text(strings[UiText.UI_REMOVE])}},
             dismissButton={TextButton({confirmRemoval=false},Modifier.heightIn(min=48.dp)){Text(strings[UiText.CANCEL])}})
     }
+    organize?.let {id -> LibraryOrganizer(library.entries.filter {it.publication.id==id},tags,application.collections,application.covers) {organize=null}}
 }
 
 @Composable

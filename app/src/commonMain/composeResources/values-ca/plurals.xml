@@ -8,4 +8,8 @@
         <item quantity="one">%1$s font seleccionada</item>
         <item quantity="other">%1$s fonts seleccionades</item>
     </plurals>
+    <plurals name="publication_count">
+        <item quantity="one">%1$s publicació</item>
+        <item quantity="other">%1$s publicacions</item>
+    </plurals>
 </resources>

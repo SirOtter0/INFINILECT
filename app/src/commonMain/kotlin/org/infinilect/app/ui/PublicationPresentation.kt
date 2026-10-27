@@ -107,7 +107,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
             val compact = maxWidth < 600.dp
             val frame = if (compact) Modifier.fillMaxSize() else Modifier.widthIn(max = 600.dp).fillMaxWidth(.94f).heightIn(max = maxHeight - 24.dp)
-            Surface(frame.onPreviewKeyEvent {
+            Surface(frame.onKeyEvent {
                 if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { close(); true } else false
             }.semantics { paneTitle = strings[UiText.UI_PUBLICATION_DETAILS] },
                 shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large, elevation = 0.dp) {
@@ -116,12 +116,18 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         Text(strings[UiText.UI_PUBLICATION_DETAILS], style = MaterialTheme.typography.subtitle1, modifier = Modifier.weight(1f).semantics { heading() })
                         TextButton(close, Modifier.focusRequester(focus).heightIn(min = 48.dp)) { Text(strings[UiText.CLOSE]) }
                     }
-                    Column(Modifier.weight(1f, fill = false).verticalScroll(scroll).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(scroll).padding(horizontal=16.dp,vertical=8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                             cover?.invoke()
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(publication.title, style = MaterialTheme.typography.h5)
-                                if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "))
+                                if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "),style=MaterialTheme.typography.body2)
+                                if(formats.isNotEmpty()) Text(publicationFormat(formats),style=MaterialTheme.typography.caption)
+                                if(publication.languages.isNotEmpty()) Text(publication.languages.joinToString(", "),style=MaterialTheme.typography.caption)
+                                if(progress!=null) {
+                                    Text(strings.format(UiText.UI_1_S_READ,(progress.progression*100).toInt()),style=MaterialTheme.typography.caption)
+                                    LinearProgressIndicator(progress.progression.toFloat(),Modifier.fillMaxWidth().height(3.dp),backgroundColor=MaterialTheme.colors.onSurface.copy(alpha=.12f))
+                                }
                             }
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
@@ -142,7 +148,9 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         if (progress != null) DetailLine(strings[UiText.UI_READING_PROGRESS], strings.format(UiText.UI_1_S_READ, (progress.progression * 100).toInt()))
                         publication.rights?.let { DetailLine(strings[UiText.UI_SOURCE_RIGHTS_STATEMENT], it) }
                         publication.sourceUrl?.let { DetailLine(strings[UiText.UI_SOURCE_REFERENCE], it) }
-                        Text(strings[UiText.UI_AVAILABILITY_DOES_NOT_ESTABLISH_RIGHTS_IN_EVERY_COUNTRY_SAVED_METADATA_DOES_NOT], style = MaterialTheme.typography.caption)
+                        Surface(color=MaterialTheme.colors.onSurface.copy(alpha=.05f),shape=MaterialTheme.shapes.small) {
+                            Text(strings[UiText.UI_AVAILABILITY_DOES_NOT_ESTABLISH_RIGHTS_IN_EVERY_COUNTRY_SAVED_METADATA_DOES_NOT],Modifier.padding(12.dp),style = MaterialTheme.typography.caption)
+                        }
                     }
                 }
             }
@@ -153,8 +161,8 @@ internal fun PublicationDetails(publication: Publication, source: String, format
 
 @Composable
 private fun DetailLine(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.subtitle2)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.caption,color=MaterialTheme.colors.onSurface.copy(alpha=.72f))
         Text(value, style = MaterialTheme.typography.body2)
     }
 }

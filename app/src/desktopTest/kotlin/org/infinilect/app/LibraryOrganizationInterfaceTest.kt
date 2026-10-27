@@ -87,7 +87,7 @@ class LibraryOrganizationInterfaceTest {
             f.click(f.strings[UiText.LIB_CLEAR_SEARCH]);assertEquals("",f.app.libraryBrowser.query.value.text)
             f.click(f.books[0].title);f.click(f.strings[UiText.LIB_ORGANIZE]);f.click(f.strings[UiText.LIB_PAUSED]);f.click(f.strings[UiText.LIB_FAVORITE]);f.click(f.strings[UiText.LIB_APPLY])
             assertEquals(LibraryReadingState.PAUSED,f.data.saved.getValue(f.books[0].id).readingState);assertTrue(f.data.saved.getValue(f.books[0].id).favorite)
-            f.click(f.strings[UiText.LIB_MANAGE_TAGS])
+            f.click(f.strings[UiText.LIB_MORE]);f.click(f.strings[UiText.LIB_MANAGE_TAGS])
             val nameField=f.nodes().last {it.config.getOrNull(SemanticsActions.SetText)?.action!=null}
             assertTrue(nameField.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("Fantasía")));f.draw()
             f.click(f.strings[UiText.LIB_CREATE_TAG]);assertEquals(1,f.data.tagValues.size);f.click(f.strings[UiText.CLOSE])
@@ -165,4 +165,70 @@ class LibraryOrganizationInterfaceTest {
             assertTrue(f.visible(f.strings[UiText.LIB_SAVE_ERROR]));assertTrue(f.data.saved.values.none {it.favorite})
         }
     }
+    @Test fun quickChipsShareAdvancedFiltersAndSortWithoutReloadingLibrary()=runTest {
+        Fixture(this).use {f ->
+            val reads=f.data.libraryReads
+            f.click(f.strings[UiText.LIB_READING]);assertEquals(LibraryReadingState.READING,f.app.libraryBrowser.query.value.state)
+            f.click(f.strings[UiText.LIB_FILTERS])
+            fun includes(n:SemanticsNode):Boolean=f.has(n,f.strings[UiText.LIB_READING]) || n.children.any(::includes)
+            val choice=f.nodes().last {includes(it) && it.config.getOrNull(SemanticsProperties.Selected)==true}
+            assertTrue(choice.boundsInRoot.width>0)
+            f.click(f.strings[UiText.LIB_PAUSED]);f.click(f.strings[UiText.CLOSE])
+            assertEquals(LibraryReadingState.PAUSED,f.app.libraryBrowser.query.value.state)
+            f.click(f.strings[UiText.LIB_FAVORITES]);assertTrue(f.app.libraryBrowser.query.value.favorites)
+            f.click(f.strings[UiText.LIB_ALL]);assertFalse(f.app.libraryBrowser.query.value.filtered)
+            f.click(f.strings[UiText.LIB_SORT]);f.click(f.strings[UiText.LIB_TITLE]);f.click(f.strings[UiText.LIB_ASCENDING]);f.click(f.strings[UiText.CLOSE])
+            assertEquals(LibrarySort.TITLE,f.app.libraryBrowser.query.value.sort);assertFalse(f.app.libraryBrowser.query.value.descending)
+            assertEquals(reads,f.data.libraryReads);assertTrue(f.data.opened.isEmpty())
+        }
+    }
+    @Test fun detailsPrimaryActionAndOverflowPreserveConfirmationAndQuickFavorite()=runTest {
+        Fixture(this).use {f ->
+            f.click(f.books[0].title)
+            assertFalse(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY]))
+            f.click(f.strings[UiText.LIB_FAVORITE]);assertTrue(f.data.saved.getValue(f.books[0].id).favorite)
+            assertTrue(f.visible(f.strings[UiText.UI_START_READING]))
+            f.preview("details-dark.png")
+            f.click(f.strings[UiText.LIB_MORE]);f.click(f.strings[UiText.UI_REMOVE_FROM_LIBRARY])
+            assertTrue(f.visible(f.strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM]));f.click(f.strings[UiText.CANCEL])
+            assertEquals(3,f.data.saved.size);assertTrue(f.data.opened.isEmpty())
+        }
+    }
+    @Test fun savedConfirmationIsAnOverlayAndExpiresWithoutMovingTheGrid()=runTest {
+        Fixture(this,count=30).use {f ->
+            val before=f.position.firstVisibleItemIndex to f.position.firstVisibleItemScrollOffset
+            f.app.collections.organize(setOf(f.books[0].id),LibraryOrganizationChange(favorite=true));f.draw()
+            assertTrue(f.visible(f.strings[UiText.LIB_SAVED]))
+            assertEquals(before,f.position.firstVisibleItemIndex to f.position.firstVisibleItemScrollOffset)
+            f.preview("saved-overlay.png")
+            advanceTimeBy(6000);f.draw();assertFalse(f.visible(f.strings[UiText.LIB_SAVED]))
+            assertNull(f.app.collections.organizationResult.value)
+            f.destination=Destination.HISTORY;f.app.navigate(f.destination);f.draw();f.destination=Destination.LIBRARY;f.app.navigate(f.destination);f.draw()
+            assertFalse(f.visible(f.strings[UiText.LIB_SAVED]));assertTrue(f.data.saved.getValue(f.books[0].id).favorite)
+        }
+    }
+    @Test fun compactScreensAndOrganizationPreviewsUseRealUiInBothThemesAndThreeLanguages()=runTest {
+        val resources=tables()
+        for(language in listOf("es","en","ca")) for(dark in listOf(false,true)) {
+            Fixture(this,360,1f,resources.getValue(language),dark,height=800,count=12).use {f ->
+                f.app.collections.createTag("Estudi 📚");f.draw()
+                val tag=f.app.collections.tags.value.single()
+                f.app.collections.organize(setOf(f.books[8].id,f.books[9].id),LibraryOrganizationChange(LibraryReadingState.COMPLETED,true,addTags=setOf(tag.id)));f.draw()
+                advanceTimeBy(6000);f.draw()
+                assertEquals(3,libraryColumns(360f))
+                val first=f.nodes().first {it.config.getOrNull(SemanticsProperties.ContentDescription)?.any {it.startsWith(f.strings.format(UiText.UI_COVER_FOR_1_S,""))}==true}
+                assertTrue(first.boundsInRoot.width<120)
+                f.preview("library-$language-$dark.png")
+                f.click(f.strings[UiText.LIB_FILTERS]);f.preview("filters-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
+                f.click(f.strings[UiText.LIB_SORT]);f.preview("sort-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
+                f.click(f.strings[UiText.LIB_MORE]);f.click(f.strings[UiText.LIB_MANAGE_TAGS]);f.preview("tags-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
+                f.click(f.books.last().title);f.preview("details-$language-$dark.png");f.click(f.strings[UiText.LIB_ORGANIZE]);f.preview("organize-$language-$dark.png");f.click(f.strings[UiText.CLOSE])
+                f.app.collections.select(f.books.last().id);f.app.collections.toggleSelection(f.books[f.books.lastIndex-1].id);f.draw()
+                f.preview("selection-$language-$dark.png")
+                assertTrue(f.visible(f.strings.selectedCount(2)))
+                f.click(f.strings[UiText.LIB_FAVORITE]);assertTrue(f.data.saved.getValue(f.books.last().id).favorite)
+            }
+        }
+    }
+
 }

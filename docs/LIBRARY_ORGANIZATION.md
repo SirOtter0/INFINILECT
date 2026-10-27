@@ -140,3 +140,38 @@ At 5,000 rows, search/filter min–max was **0.296–1.670 ms**; index creation 
 ### Remaining acceptance limits
 
 Physical validation on realme C55, Android-native migration/touch/TalkBack/IME behavior, device frame times and native peak memory remain unverified. The full host suites and compilation do not substitute for that acceptance. The existing progress-file quota, History retention, translation model/cache budgets and cover memory/concurrency bounds remain unchanged; 5,000 Library metadata entries do not increase those independent storage budgets. Query/filter/sort survive tab changes, but are not persistent process-restart preferences. Keep PR #34 Draft until code review and physical acceptance.
+
+## Compact visual refinement after realme C55 acceptance
+
+The supplied seven-panel reference is a composition guide, not catalog data. No book artwork, invented progress, tag colors or sample titles from it are bundled. Existing `CollectionScreen`, `LibraryTools`/`LibraryOrganizer`, cover leases, `PublicationDetails` and theme resources are reused; there is no new persistence or visual framework.
+
+Design guide: 12 dp grid edge, 8 dp gutters, 10 dp row gaps, aspect-preserving 2:3 artwork, two-line caption titles below artwork; no Library title scrim. Original 22 dp outline glyphs have 48 dp action targets and public Foundation tooltips. Existing theme colors provide the turquoise accent and light/dark contrast. Quick filter chips have wrapping text; the four shortcuts scroll horizontally. The tools header remains a lazy full-span grid item so it cannot starve covers on short windows. Normal 360 dp phones use three columns, 320 dp uses two; minimum tile width grows with font scale and Desktop uses wider tiles. Below 320 dp a single column is permitted when needed. At 320 dp and above, at least two columns remain available even with 180% text. Artwork height is capped on short viewports (image stays fitted, never stretched) so the two-line title remains reachable. Tile dimensions are computed once by the grid, without per-tile constraint subcomposition.
+
+| Before | After |
+| --- | --- |
+| Large labeled search and three text actions | Placeholder search, four quick chips, count and icon tools; tags in overflow |
+| Two large covers with overlaid title scrims | Adaptive denser grid, full fitted artwork, two-line title below |
+| Persistent organization-success row shifts content | Short accessible Snackbar overlay, no fake Undo; failures remain persistent |
+| Reading/removal/organization/favorite compete | Full-width primary reading action; heart and organization secondaries; confirmed removal in overflow |
+| Long radio/checkbox sections | Wrapping state/tag chips and independent favorite switch; batch deltas stay atomic |
+| Two action rows per tag | Name/count and two labeled icon actions; global rename/delete behavior unchanged |
+
+Filters remain immediate and use the same session `LibraryQuery`; quick Reading/Completed toggle the state component, Favorites toggles its independent flag, All clears filters while preserving search/sort. Selected tags still use AND and Untagged excludes named-tag filters. Sort and deterministic ties are unchanged. Library/History details and local Home details share the action hierarchy; provider acquisition restrictions and notices remain intact. Synopsis, source rights/reference and jurisdiction notice remain scrollable and unchanged in meaning.
+
+No reader, schema, model, network/cache/concurrency budget, permission or dependency is changed. Grid items remain keyed by publication identity, use existing viewport-aware cover leases, and retain the caller-owned scroll state. Tag usage counts derive once per committed Library snapshot with no database queries in composition. Favorites and explicit completion are separate subtle artwork-corner indicators; unknown progress never implies completion.
+
+Verification and current APK information for this refinement are recorded below when complete. Previews are raster captures of the actual shared Compose UI with original synthetic test data, not generated designs or physical Android evidence. realme C55 touch, TalkBack, gesture navigation and perceived performance remain physical acceptance requirements.
+
+### Physical visual acceptance checklist — realme C55
+
+1. Upgrade in place with the original development certificate; keep Library, History, organization and saved positions. Never uninstall or clear data to test this PR.
+2. At normal font size, inspect the compact search, four quick chips, count/icon toolbar and approximately three columns. Check full artwork and titles beneath it; no title scrims or permanent menus on covers.
+3. Search locally, clear, combine Reading + Favorites + tag filters, then change advanced state and reset. The quick chips must agree and reset must preserve the search/sort.
+4. Change each sort/direction; return from details and from another tab. Scroll and query should be retained. Repeat while covers are pending/failing and recommendations load on Home.
+5. Open an unread and a previously read publication. Check Start/Continue, actual progress, favorite/organization controls, removal only via overflow and confirmation. Cancel removal and verify the source file and progress remain intact.
+6. Change state, favorite and tags individually and in a multiple selection. Save once; verify the short overlay disappears without moving the grid. Trigger an invalid tag name/storage failure if safely available and verify the persistent error is readable and no partial change is saved.
+7. Create a Unicode tag, assign it to two books, check the usage count, rename globally and delete the tag. Both books and positions must remain.
+8. Repeat in es/en/ca, light/dark, portrait/landscape and 150%/180% fonts. Scroll dialogs to their end, keep close/apply reachable with keyboard visible, check icon labels with TalkBack and Desktop Tab/Enter/Escape.
+9. Open EPUB/CBZ/PDF/TEXT and return; verify positions, EPUB selection/translation and History. Confirm all source-rights and jurisdiction notices remain reachable in details.
+
+Same-certificate delivery for this new visual refinement requires the original signing attachments to be available in the execution environment. The earlier signed APK documented above predates this redesign and must not be represented as its test artifact. Debug compilation alone does not establish upgrade signing or physical acceptance.

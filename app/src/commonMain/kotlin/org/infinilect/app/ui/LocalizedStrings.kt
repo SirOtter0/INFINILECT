@@ -8,6 +8,10 @@ import org.jetbrains.compose.resources.StringResource
 
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
+    LIB_ALL(Res.string.lib_all, "All"),
+    LIB_FAVORITES(Res.string.lib_favorites, "Favorites"),
+    LIB_MORE(Res.string.lib_more, "More options"),
+    LIB_ASCENDING(Res.string.lib_ascending, "Ascending order"),
     LIB_SELECT_LIMIT(Res.string.lib_select_limit, "Select first %1\$s matches"),
     LIB_SEARCH(Res.string.lib_search, "Search Library"),
     LIB_SEARCH_HINT(Res.string.lib_search_hint, "Title, author or tag"),

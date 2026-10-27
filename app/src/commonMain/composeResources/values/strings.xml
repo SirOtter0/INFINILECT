@@ -453,4 +453,8 @@
     <string name="lib_saved">Organization saved</string>
     <string name="lib_batch_notice">Only the chosen changes apply to every selected publication. Other organization is kept.</string>
     <string name="lib_select_limit">Select first %1$s matches</string>
+    <string name="lib_all">All</string>
+    <string name="lib_favorites">Favorites</string>
+    <string name="lib_more">More options</string>
+    <string name="lib_ascending">Ascending order</string>
 </resources>

@@ -453,4 +453,8 @@
     <string name="lib_saved">Organización guardada</string>
     <string name="lib_batch_notice">Solo se aplicarán los cambios elegidos a todas las publicaciones seleccionadas. Se conservará el resto de su organización.</string>
     <string name="lib_select_limit">Seleccionar las primeras %1$s coincidencias</string>
+    <string name="lib_all">Todos</string>
+    <string name="lib_favorites">Favoritos</string>
+    <string name="lib_more">Más opciones</string>
+    <string name="lib_ascending">Orden ascendente</string>
 </resources>
