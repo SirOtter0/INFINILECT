@@ -144,7 +144,13 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
     fun setQuota(bytes: Long) {mutate {backend.quota(bytes);refresh()}}
     fun reload() {mutate {backend.load();refresh()}}
     suspend fun acquire(id: PublicationId): OfflineReadingCopy? {
-        try {return backend.acquire(id)} catch(e: DownloadException) {refresh();throw e}
+        try {return backend.acquire(id)} catch(e: DownloadException) {
+            // A damaged/unavailable optional retained store must not disable the original
+            // online reader. Invalid bytes never escape; the source will reauthorize anew.
+            try {refresh()} catch(cancelled: CancellationException) {throw cancelled} catch(_: DownloadException) { }
+            fail(e.failure)
+            return null
+        }
     }
     fun pause() {foreground=false;active?.second?.cancel();catalogue.value.entries.filter {it.status==DownloadStatus.PENDING}.forEach {cancel(it.id)}}
     fun resume() {if(!closed.value) foreground=true}

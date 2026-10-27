@@ -109,4 +109,13 @@ class OfflineReaderIntegrationTest {
             owner.download(p);source.online=false;assertIs<OpenPublicationState.Ready>(owner.open(p));owner.session.back()
         } finally {owner.close();root.toFile().deleteRecursively()}
     }
+
+    @Test fun damagedOptionalDownloadStorageDoesNotBlockOriginalOnlineReader()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("offline-optional-storage");val source=OfflineFixtureSource();val p=source.add(PublicationFormat.TEXT)
+        Files.createDirectories(root.resolve("files/$OFFLINE_DIRECTORY"));Files.write(root.resolve("files/$OFFLINE_DIRECTORY/quota"),byteArrayOf(1,2))
+        val owner=OfflineReaderOwner(root,source,this)
+        try {
+            assertIs<OpenPublicationState.Ready>(owner.open(p));assertEquals(1,source.opens);assertEquals(DownloadFailure.STORAGE,owner.downloads.catalogue.value.failure);owner.session.back()
+        } finally {owner.close();root.toFile().deleteRecursively()}
+    }
 }
