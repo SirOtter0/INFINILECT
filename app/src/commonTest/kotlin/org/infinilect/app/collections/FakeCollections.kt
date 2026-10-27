@@ -7,6 +7,8 @@ import org.infinilect.core.*
 internal class FakeCollections {
     val saved=linkedMapOf<PublicationId,LibraryEntry>()
     val opened=linkedMapOf<PublicationId,HistoryEntry>()
+    val tagValues=linkedMapOf<Long,LibraryTag>()
+    private var tagSequence=0L
     var fail=false
     var libraryReads=0
     var historyReads=0
@@ -23,6 +25,36 @@ internal class FakeCollections {
             beforeWrite(); if(fail) return LocalStoreResult.Unavailable
             val entry=LibraryEntry(publication,saved[publication.id]?.addedAtEpochMillis ?: atEpochMillis)
             saved[publication.id]=entry;return LocalStoreResult.Success(entry)
+        }
+        override suspend fun tags() = result(tagValues.values.toList())
+        override suspend fun createTag(name: String): LocalStoreResult<LibraryTag> {
+            beforeWrite();if(fail) return LocalStoreResult.Unavailable
+            if(name.isBlank()) return LocalStoreResult.InvalidInput
+            val existing=tagValues.values.firstOrNull {it.name.equals(name.trim(),ignoreCase=true)}
+            val tag=existing ?: LibraryTag(++tagSequence,name.trim()).also { tagValues[it.id]=it }
+            return LocalStoreResult.Success(tag)
+        }
+        override suspend fun renameTag(id: Long,name: String): LocalStoreResult<Unit> {
+            beforeWrite();if(fail) return LocalStoreResult.Unavailable
+            if(id !in tagValues || name.isBlank()) return LocalStoreResult.InvalidInput
+            val tag=LibraryTag(id,name.trim());tagValues[id]=tag
+            for((key,entry) in saved.toMap()) saved[key]=entry.copy(tags=entry.tags.map {if(it.id==id) tag else it})
+            return LocalStoreResult.Success(Unit)
+        }
+        override suspend fun deleteTag(id: Long): LocalStoreResult<Unit> {
+            beforeWrite();if(fail) return LocalStoreResult.Unavailable
+            tagValues.remove(id);for((key,entry) in saved.toMap()) saved[key]=entry.copy(tags=entry.tags.filter {it.id!=id})
+            return LocalStoreResult.Success(Unit)
+        }
+        override suspend fun organize(ids: Set<PublicationId>,change: LibraryOrganizationChange): LocalStoreResult<Unit> {
+            beforeWrite();if(fail) return LocalStoreResult.Unavailable
+            if(ids.any {it !in saved} || (change.addTags+change.removeTags).any {it !in tagValues}) return LocalStoreResult.InvalidInput
+            for(id in ids) {
+                val entry=saved.getValue(id)
+                saved[id]=entry.copy(readingState=change.state ?: entry.readingState,stateIsExplicit=entry.stateIsExplicit || change.state!=null,
+                    favorite=change.favorite ?: entry.favorite,tags=(entry.tags.filter {it.id !in change.removeTags} + change.addTags.map {tagValues.getValue(it)}).distinctBy {it.id})
+            }
+            return LocalStoreResult.Success(Unit)
         }
         override suspend fun remove(id: PublicationId): LocalStoreResult<Unit> {
             beforeWrite(); libraryRemovals += id

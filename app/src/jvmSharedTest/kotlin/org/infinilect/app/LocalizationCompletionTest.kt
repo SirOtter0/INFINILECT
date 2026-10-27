@@ -38,7 +38,7 @@ class LocalizationCompletionTest {
             val e=plurals.item(i) as Element; val items=e.getElementsByTagName("item")
             val entries=(0 until items.length).associate { j -> val item=items.item(j) as Element; item.getAttribute("quantity") to item.textContent }
             assertEquals(setOf("one","other"),entries.keys)
-            val key=when(e.getAttribute("name")) { "selected_count" -> UiPlural.SELECTED; "source_count" -> UiPlural.SOURCES; else -> error("Unregistered plural") }
+            val key=when(e.getAttribute("name")) { "selected_count" -> UiPlural.SELECTED; "source_count" -> UiPlural.SOURCES; "publication_count" -> UiPlural.PUBLICATIONS; else -> error("Unregistered plural") }
             forms[key]=listOf(entries.getValue("one"),entries.getValue("other"))
         }
         assertEquals(UiPlural.entries.toSet(),forms.keys)
@@ -72,9 +72,13 @@ class LocalizationCompletionTest {
             for (quantity in listOf(0,1,2,5,1000)) {
                 assertTrue(strings.selectedCount(quantity).startsWith(quantity.toString()))
                 assertTrue(strings.sourceCount(quantity).startsWith(quantity.toString()))
+                assertTrue(strings.quantity(UiPlural.PUBLICATIONS,quantity).startsWith(quantity.toString()))
             }
             assertFailsWith<IllegalArgumentException> { strings.sourceCount(-1) }
         }
+        assertEquals("1 publicación",table("es").quantity(UiPlural.PUBLICATIONS,1));assertEquals("2 publicaciones",table("es").quantity(UiPlural.PUBLICATIONS,2))
+        assertEquals("1 publicació",table("ca").quantity(UiPlural.PUBLICATIONS,1));assertEquals("0 publicacions",table("ca").quantity(UiPlural.PUBLICATIONS,0))
+        assertEquals("1 publication",table("en").quantity(UiPlural.PUBLICATIONS,1));assertEquals("5 publications",table("en").quantity(UiPlural.PUBLICATIONS,5))
         assertEquals("1 fuente seleccionada",table("es").sourceCount(1));assertEquals("2 fuentes seleccionadas",table("es").sourceCount(2))
         assertEquals("1 seleccionat",table("ca").selectedCount(1));assertEquals("2 seleccionats",table("ca").selectedCount(2))
         assertEquals("1,5",table("es").number(1.5,1));assertEquals("1,5",table("ca").number(1.5,1));assertEquals("1.5",table("en").number(1.5,1))

@@ -6,5 +6,6 @@ import org.infinilect.core.*
 
 /** Bounded read-only summary lookup; never opens content or writes a locator. */
 internal interface PublicationProgressLookup {
+    suspend fun librarySummaries(ids: List<PublicationId>): List<ReadingProgress> = recentPublications(ids)
     suspend fun recentPublications(ids: List<PublicationId>): List<ReadingProgress>
 }

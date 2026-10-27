@@ -170,24 +170,15 @@ internal fun DiscoveryTile(entry: DiscoveryEntry, application: ApplicationSessio
 @Composable
 internal fun DiscoveryDetails(entry: DiscoveryEntry, application: ApplicationSession, close: () -> Unit) {
     val strings = LocalAppStrings.current
-    val membership by application.collections.membership.collectAsState()
-    val error by application.collections.error.collectAsState()
-    var confirmRemoval by remember(entry.publication.id) { mutableStateOf(false) }
     val record = detailsProgress(application, entry.publication.id, null)
     PublicationDetails(entry.publication, application.sourceName(entry.publication.id.sourceId), entry.publication.resources.map { it.format },
         record, close, cover = { DetailsCover(entry.publication, if (entry.thumbnail != null || entry.publication.id.sourceId.value == "local-imports") application.covers else null) },
-        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects) {
-        if (application.canRetry(entry.publication)) Button({ close(); application.openDiscovered(entry.publication) }, Modifier.heightIn(min = 48.dp)) { Text(strings.status(readingAction(record))) }
+        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,organizationCovers=application.covers) {
+        if (application.canRetry(entry.publication)) PublicationReadAction(record) { close(); application.openDiscovered(entry.publication) }
         else Text(strings[UiText.UI_CATALOG_METADATA_ONLY_ACQUISITION_IS_UNAVAILABLE_FOR_THIS_SOURCE], style = MaterialTheme.typography.body2)
         if (entry.publication.rights == null) Text(strings[UiText.UI_NO_SOURCE_RIGHTS_STATEMENT_WAS_SUPPLIED_LEGAL_AVAILABILITY_IS_UNDETERMINED], style = MaterialTheme.typography.caption)
-        val action = membership.forPublication(entry.publication.id)
-        OutlinedButton({ if (action.inLibrary == true) confirmRemoval = true else application.collections.toggleCatalogLibrary(entry.publication) }, Modifier.heightIn(min = 48.dp), enabled = action.enabled) { Text(strings.status(action.label)) }
-        error?.let { Text(strings.status(it), color = MaterialTheme.colors.error) }
     }
-    if (confirmRemoval) AlertDialog(onDismissRequest = { confirmRemoval = false }, title = { Text(strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM]) },
-        text = { Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_SOURCE_FILES_HISTORY_AND_READING_POSITIONS_AR]) },
-        confirmButton = { TextButton({ confirmRemoval = false; application.collections.removeLibrary(entry.publication.id) }) { Text(strings[UiText.UI_REMOVE]) } },
-        dismissButton = { TextButton({ confirmRemoval = false }) { Text(strings[UiText.CANCEL]) } })
+
 }
 
 @Composable

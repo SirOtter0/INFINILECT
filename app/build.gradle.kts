@@ -137,10 +137,8 @@ sqldelight {
         create("LocalCollectionsDatabase") {
             packageName.set("org.infinilect.app.collections.database")
             schemaOutputDirectory.set(layout.buildDirectory.dir("sqldelight/schema").get().asFile)
-            // Initial schema only: no historical migration/database baseline yet.
-            // SQL definition verification stays enabled. The first schema change
-            // must introduce a historical baseline and enable migration replay.
-            verifyMigrations.set(false)
+            // Schema-only v1 baseline and additive v2 migration are replayed by SQLDelight.
+            verifyMigrations.set(true)
         }
     }
 }

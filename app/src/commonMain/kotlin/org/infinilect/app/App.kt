@@ -319,8 +319,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                                     Text(if (session.pdfReadingEnabled) strings[UiText.UI_OPEN] else if (session.pageReadingEnabled) strings[UiText.UI_OPEN_PAGES] else if (session.epubReadingEnabled && !session.textReadingEnabled) strings[UiText.UI_OPEN_EPUB] else strings[UiText.UI_OPEN_TEXT])
                                 }
                             }
-                            CatalogLibraryAction(membership.forPublication(publication.id), onToggle = { collections.toggleCatalogLibrary(publication) })
-                        }
+                                        }
                     }
                 }
                 if (displayed?.page?.nextPageToken != null) {
@@ -338,11 +337,10 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         val known = publicationProgress(progressRecords, publication.id)
         val record = if (applicationSession != null) detailsProgress(applicationSession, publication.id, known) else known
         PublicationDetails(publication, sources[selected].name, publication.resources.map { it.format },
-            record, close = { detail = null }, descriptions = descriptions) {
+            record, close = { detail = null }, descriptions = descriptions, collections=collections,organizationCovers=applicationSession?.covers) {
             if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
-                Button(enabled = !loading, onClick = { detail = null; onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.status(readingAction(record))) }
+                PublicationReadAction(record,enabled=!loading) {detail=null;onOpen(publication)}
             }
-            CatalogLibraryAction(membership.forPublication(publication.id), onToggle = { collections.toggleCatalogLibrary(publication) })
         }
     }
 }
@@ -350,13 +348,6 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
 @Composable
 private fun LibraryAction(state: LibraryActionState, onToggle: () -> Unit) {
     Button(enabled=state.enabled,onClick=onToggle) {
-        Text(LocalAppStrings.current.status(state.label))
-    }
-}
-
-@Composable
-private fun CatalogLibraryAction(state: LibraryActionState, onToggle: () -> Unit) {
-    androidx.compose.material.OutlinedButton(enabled = state.enabled, onClick = onToggle, modifier = Modifier.heightIn(min = 48.dp)) {
         Text(LocalAppStrings.current.status(state.label))
     }
 }

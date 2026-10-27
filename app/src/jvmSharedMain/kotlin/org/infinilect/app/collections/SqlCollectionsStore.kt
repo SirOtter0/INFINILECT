@@ -45,7 +45,7 @@ internal fun collectionsScalar(driver: SqlDriver, sql: String): Long =
 internal class SqlCollectionsStore(
     private val createDriver: () -> SqlDriver,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val libraryLimit: Int = 1000,
+    private val libraryLimit: Int = LibraryOrganizationLimits.PUBLICATIONS,
     private val historyLimit: Int = 500,
     private val beforeCommit: () -> Unit = {},
     private val onFailure: (CollectionsStorageFailure) -> Unit = {},
@@ -99,11 +99,14 @@ internal class SqlCollectionsStore(
         require(time >= 0); publication.validate()
         publication.copy(authors = publication.authors.toList(), languages = publication.languages.toList())
     } catch (_: IllegalArgumentException) { null }
-    private fun LocalCollectionsDatabase.libraryEntry(row: Library_entries): LibraryEntry {
+    private fun LocalCollectionsDatabase.libraryEntry(row: Library_entries, tags: List<LibraryTag>? = null, authors: List<String>? = null, languages: List<String>? = null): LibraryEntry {
         val q = collectionsQueries
+        check(row.state_explicit in 0L..1L && row.favorite in 0L..1L)
         return LibraryEntry(PublicationSnapshot(PublicationId(SourceId(row.source_id), row.local_id), row.title,
-            PublicationType.valueOf(row.semantic_type), q.libraryAuthors(row.source_id,row.local_id).executeAsList(),
-            q.libraryLanguages(row.source_id,row.local_id).executeAsList(), row.source_url, row.rights), row.added_at, row.last_opened_at)
+            PublicationType.valueOf(row.semantic_type), authors ?: q.libraryAuthors(row.source_id,row.local_id).executeAsList(),
+            languages ?: q.libraryLanguages(row.source_id,row.local_id).executeAsList(), row.source_url, row.rights), row.added_at, row.last_opened_at,
+            LibraryReadingState.fromKey(row.reading_state), row.state_explicit == 1L, row.favorite == 1L,
+            tags ?: q.entryTags(row.source_id, row.local_id).executeAsList().map { LibraryTag(it.id, it.name) })
     }
     private fun LocalCollectionsDatabase.historyEntry(row: Reading_history): HistoryEntry {
         val q = collectionsQueries
@@ -121,7 +124,17 @@ internal class SqlCollectionsStore(
             else -> failure(result)
         }
         override suspend fun list(): LocalStoreResult<List<LibraryEntry>> = operation(Operation.LIBRARY_LIST) { db, _ ->
-            db.collectionsQueries.libraryList(libraryLimit.toLong()).executeAsList().map { db.libraryEntry(it) }
+            val q = db.collectionsQueries
+            val tags = q.tagsList().executeAsList().associate { it.id to LibraryTag(it.id,it.name) }
+            val memberships = q.allEntryTags().executeAsList().groupBy { PublicationId(SourceId(it.source_id),it.local_id) }
+            val authors = q.libraryAllAuthors().executeAsList().groupBy { PublicationId(SourceId(it.source_id),it.local_id) }
+            val languages = q.libraryAllLanguages().executeAsList().groupBy { PublicationId(SourceId(it.source_id),it.local_id) }
+            q.libraryList(libraryLimit.toLong()).executeAsList().map { row ->
+                val key = PublicationId(SourceId(row.source_id),row.local_id)
+                db.libraryEntry(row, memberships[PublicationId(SourceId(row.source_id),row.local_id)].orEmpty()
+                    .mapNotNull { tags[it.tag_id] }.sortedBy { canonicalTagName(it.name) },
+                    authors[key].orEmpty().map { it.value_ }, languages[key].orEmpty().map { it.value_ })
+            }
         }
         override suspend fun put(publication: PublicationSnapshot, atEpochMillis: Long): LocalStoreResult<LibraryEntry> {
             val p = snapshot(publication,atEpochMillis) ?: return LocalStoreResult.InvalidInput
@@ -130,8 +143,15 @@ internal class SqlCollectionsStore(
                     val q = db.collectionsQueries
                     val previous = q.libraryGet(p.id.sourceId.value,p.id.localId).executeAsOneOrNull()
                     if (previous == null && q.libraryCount().executeAsOne() >= libraryLimit) return@transactionWithResult null
-                    q.libraryPut(p.id.sourceId.value,p.id.localId,p.title,p.type.name,p.sourceUrl,p.rights,
-                        previous?.added_at ?: atEpochMillis,previous?.last_opened_at)
+                    if (previous == null) {
+                        val opened = q.historyGet(p.id.sourceId.value,p.id.localId).executeAsOneOrNull()?.last_opened_at
+                        q.libraryPut(p.id.sourceId.value,p.id.localId,p.title,p.type.name,p.sourceUrl,p.rights,
+                            atEpochMillis,opened,if (opened != null) LibraryReadingState.READING.key else LibraryReadingState.NOT_STARTED.key)
+                    } else {
+                        q.libraryUpdateMetadata(p.title,p.type.name,p.sourceUrl,p.rights,p.id.sourceId.value,p.id.localId)
+                        q.libraryAuthorsClear(p.id.sourceId.value,p.id.localId)
+                        q.libraryLanguagesClear(p.id.sourceId.value,p.id.localId)
+                    }
                     p.authors.forEachIndexed { index, value -> q.libraryAuthorsPut(p.id.sourceId.value,p.id.localId,index.toLong(),value) }
                     p.languages.forEachIndexed { index, value -> q.libraryLanguagesPut(p.id.sourceId.value,p.id.localId,index.toLong(),value) }
                     collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() }
@@ -146,6 +166,85 @@ internal class SqlCollectionsStore(
         override suspend fun remove(id: PublicationId): LocalStoreResult<Unit> {
             if (!valid(id)) return LocalStoreResult.InvalidInput
             return operation(Operation.LIBRARY_REMOVE) { db, context -> db.transaction { db.collectionsQueries.libraryRemove(id.sourceId.value,id.localId); collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() } } }
+        }
+
+        override suspend fun recordProgressEvidence(ids: Set<PublicationId>): LocalStoreResult<Int> {
+            if(ids.size > LibraryOrganizationLimits.PUBLICATIONS || ids.any { !valid(it) }) return LocalStoreResult.InvalidInput
+            val keys = ids.toList()
+            return edit { db, context ->
+                val q = db.collectionsQueries
+                var changed = 0
+                for(id in keys) {
+                    context.ensureActive()
+                    val row = q.libraryGet(id.sourceId.value,id.localId).executeAsOneOrNull() ?: continue
+                    if(row.reading_state == LibraryReadingState.NOT_STARTED.key && row.state_explicit == 0L) {
+                        q.libraryInferReading(id.sourceId.value,id.localId); changed++
+                    }
+                }
+                if(changed > 0) collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() }
+                LocalStoreResult.Success(changed)
+            }
+        }
+        override suspend fun tags(): LocalStoreResult<List<LibraryTag>> = operation(Operation.LIBRARY_LIST) { db, _ ->
+            db.collectionsQueries.tagsList().executeAsList().map { LibraryTag(it.id,it.name) }
+        }
+        override suspend fun createTag(name: String): LocalStoreResult<LibraryTag> {
+            val label = tagLabel(name) ?: return LocalStoreResult.InvalidInput
+            return edit { db, context ->
+                val q = db.collectionsQueries
+                val canonical = canonicalTagName(label)
+                q.tagByName(canonical).executeAsOneOrNull()?.let { return@edit LocalStoreResult.Success(LibraryTag(it.id,it.name)) }
+                if (q.tagsList().executeAsList().size >= LibraryOrganizationLimits.TAGS) return@edit LocalStoreResult.CapacityReached
+                q.tagCreate(label,canonical)
+                collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() }
+                val tag = q.tagByName(canonical).executeAsOne()
+                LocalStoreResult.Success(LibraryTag(tag.id,tag.name))
+            }
+        }
+        override suspend fun renameTag(id: Long, name: String): LocalStoreResult<Unit> {
+            val label = tagLabel(name) ?: return LocalStoreResult.InvalidInput
+            return edit { db, context ->
+                val q = db.collectionsQueries
+                if (q.tagGet(id).executeAsOneOrNull() == null) return@edit LocalStoreResult.InvalidInput
+                val canonical = canonicalTagName(label)
+                if (q.tagByName(canonical).executeAsOneOrNull()?.id?.let { it != id } == true) return@edit LocalStoreResult.InvalidInput
+                q.tagRename(label,canonical,id)
+                collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() }
+                LocalStoreResult.Success(Unit)
+            }
+        }
+        override suspend fun deleteTag(id: Long): LocalStoreResult<Unit> = edit { db, context ->
+            if (db.collectionsQueries.tagGet(id).executeAsOneOrNull() == null) return@edit LocalStoreResult.InvalidInput
+            db.collectionsQueries.tagDelete(id)
+            collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() }
+            LocalStoreResult.Success(Unit)
+        }
+        override suspend fun organize(ids: Set<PublicationId>, change: LibraryOrganizationChange): LocalStoreResult<Unit> {
+            if (ids.isEmpty() || ids.size > LibraryOrganizationLimits.PUBLICATIONS || ids.any { !valid(it) } ||
+                change.addTags.size > LibraryOrganizationLimits.TAGS || change.removeTags.size > LibraryOrganizationLimits.TAGS ||
+                change.addTags.intersect(change.removeTags).isNotEmpty()) return LocalStoreResult.InvalidInput
+            // Snapshot caller-owned collections before suspending.
+            val keys = ids.toList(); val add = change.addTags.toSet(); val remove = change.removeTags.toSet()
+            return edit { db, context ->
+                val q = db.collectionsQueries
+                if ((add + remove).any { q.tagGet(it).executeAsOneOrNull() == null }) return@edit LocalStoreResult.InvalidInput
+                for (id in keys) {
+                    context.ensureActive()
+                    if (q.libraryGet(id.sourceId.value,id.localId).executeAsOneOrNull() == null) return@edit LocalStoreResult.InvalidInput
+                    val tags = q.entryTags(id.sourceId.value,id.localId).executeAsList().map { it.id }.toSet()
+                    if (((tags - remove) + add).size > LibraryOrganizationLimits.TAGS_PER_PUBLICATION) return@edit LocalStoreResult.CapacityReached
+                }
+                // Validation precedes every write: partial batches cannot commit.
+                for (id in keys) {
+                    context.ensureActive()
+                    change.state?.let { q.librarySetState(it.key,id.sourceId.value,id.localId) }
+                    change.favorite?.let { q.librarySetFavorite(if(it) 1L else 0L,id.sourceId.value,id.localId) }
+                    remove.forEach { q.entryTagRemove(id.sourceId.value,id.localId,it) }
+                    add.forEach { q.entryTagAdd(id.sourceId.value,id.localId,it) }
+                }
+                collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() }
+                LocalStoreResult.Success(Unit)
+            }
         }
     }
     val history: ReadingHistoryRepository = object : ReadingHistoryRepository {
@@ -176,6 +275,17 @@ internal class SqlCollectionsStore(
         }
         override suspend fun clear(): LocalStoreResult<Unit> = operation(Operation.HISTORY_CLEAR) { db, context -> db.transaction { db.collectionsQueries.historyClear(); collectionsStage(Stage.PRE_COMMIT) { beforeCommit(); context.ensureActive() } } }
     }
+    private fun tagLabel(raw: String): String? {
+        if (raw.length > 256 || raw.any { it.isISOControl() }) return null
+        val label = java.text.Normalizer.normalize(raw.trim().replace(Regex("\\s+"), " "),java.text.Normalizer.Form.NFC)
+        return label.takeIf { it.isNotEmpty() && it.codePointCount(0,it.length) <= LibraryOrganizationLimits.TAG_NAME }
+    }
+    private fun canonicalTagName(name: String) = java.text.Normalizer.normalize(name,java.text.Normalizer.Form.NFC).lowercase(java.util.Locale.ROOT)
+    private suspend fun <T> edit(block: (LocalCollectionsDatabase,kotlin.coroutines.CoroutineContext) -> LocalStoreResult<T>): LocalStoreResult<T> =
+        when (val result = operation(Operation.LIBRARY_ORGANIZE,block)) {
+            is LocalStoreResult.Success -> result.value
+            else -> failure(result)
+        }
     private fun report(operation: Operation, stage: Stage, error: Exception) {
         val marked = error as? CollectionsStorageException
         val failure = CollectionsStorageFailure(operation, marked?.stage ?: stage,
@@ -190,5 +300,5 @@ internal class SqlCollectionsStore(
             finally { driver = null }
         }
     } }
-    init { require(libraryLimit in 1..1000 && historyLimit in 1..500) }
+    init { require(libraryLimit in 1..LibraryOrganizationLimits.PUBLICATIONS && historyLimit in 1..500) }
 }

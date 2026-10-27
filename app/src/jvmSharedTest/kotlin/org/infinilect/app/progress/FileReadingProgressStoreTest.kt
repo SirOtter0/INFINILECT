@@ -207,4 +207,17 @@ class FileReadingProgressStoreTest {
         assertTrue(job.isCancelled);assertContentEquals(bytes,Files.readAllBytes(outside))
     }
 
+    @Test fun librarySummaryLookupIncludesMoreThanEightPublicationsWithoutChangingOrMixingLocators()=runTest {
+        val records=(0..15).map {progress(id.copy(publicationId=id.publicationId.copy(localId="$it")),time=it.toLong()+1,offset=(it%10).toLong())}
+        records.forEach {assertTrue(store().save(it))}
+        val before=files().associate {it.fileName.toString() to Files.readAllBytes(it).toList()}
+        val summaries=store().librarySummaries(records.map {it.id.publicationId})
+        assertEquals(records.toSet(),summaries.toSet())
+        assertEquals(before,files().associate {it.fileName.toString() to Files.readAllBytes(it).toList()})
+        assertTrue(store().librarySummaries(listOf(id.publicationId.copy(sourceId=SourceId("unrelated")))).isEmpty())
+        val canceled=launch {store().librarySummaries(records.map {it.id.publicationId});fail("Canceled Library lookup must not complete")}
+        canceled.cancel();runCurrent();canceled.join();assertTrue(canceled.isCancelled)
+        records.forEach {assertEquals(it,store().get(it.id))}
+    }
+
 }

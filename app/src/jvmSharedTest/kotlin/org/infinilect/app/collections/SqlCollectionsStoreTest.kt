@@ -141,7 +141,7 @@ class SqlCollectionsStoreTest {
         assertEquals(position,FileReadingProgressStore(progressDir).get(key));assertTrue(Files.exists(file))
     }
     @Test fun schemaVersionAndForeignKeysAreActiveAcrossIoThreads()=runTest {
-        assertEquals(1L,LocalCollectionsDatabase.Schema.version)
+        assertEquals(2L,LocalCollectionsDatabase.Schema.version)
         val store=SqlCollectionsStore(::driver)
         value(store.library.put(snapshot(),1));withContext(Dispatchers.Default){value(store.library.put(snapshot(authors=listOf("Changed")),2))}
         assertEquals(listOf("Changed"),value(store.library.get(id))?.publication?.authors)

@@ -8,4 +8,8 @@
         <item quantity="one">%1$s fuente seleccionada</item>
         <item quantity="other">%1$s fuentes seleccionadas</item>
     </plurals>
+    <plurals name="publication_count">
+        <item quantity="one">%1$s publicación</item>
+        <item quantity="other">%1$s publicaciones</item>
+    </plurals>
 </resources>

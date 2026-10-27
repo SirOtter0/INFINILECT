@@ -40,6 +40,12 @@ internal class ApplicationSession(
     suspend fun savedPublicationProgress(id: PublicationId) = sources.progress?.publicationSummaries(listOf(id))
         ?.filter { it.id.publicationId == id }?.maxByOrNull { it.updatedAtEpochMillis }
     val collections=CollectionsController(sources.collections,this.scope,clock) { sources.covers?.invalidate(it) }
+    val libraryBrowser = org.infinilect.app.collections.LibraryBrowser(this.scope, collections.library, sources.libraryDispatcher,
+        loadProgress = {
+            val records = sources.progress?.librarySummaries(it).orEmpty()
+            collections.reconcileProgressEvidence(records.map { it.id.publicationId }.toSet())
+            records
+        })
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
         sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer,sources.translation) { publication ->
         collections.enteredReader(publication)

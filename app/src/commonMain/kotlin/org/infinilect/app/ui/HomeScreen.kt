@@ -59,9 +59,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     val recommendations = remember(online.rows, interests, library.entries, inferred) { rankRecommendations(online.rows.flatMap { it.entries }, interests,
         library.entries.map { it.publication.id }.toSet(), inferred) }
     var detail by remember { mutableStateOf<PublicationSnapshot?>(null) }
-    var confirmRemoval by remember { mutableStateOf(false) }
     var format by remember { mutableStateOf<PublicationFormat?>(null) }
-    val membership by application.collections.membership.collectAsState()
     val error by application.collections.error.collectAsState()
     LazyColumn(Modifier.fillMaxSize().semantics { paneTitle=strings[UiText.HOME] }, state=position, contentPadding=PaddingValues(horizontal=16.dp, vertical=8.dp), verticalArrangement=Arrangement.spacedBy(16.dp)) {
         item(key="greeting") {
@@ -152,19 +150,12 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
     onlineDetail?.let { DiscoveryDetails(it,application) { onlineDetail=null } }
     detail?.let { publication ->
         val record=detailsProgress(application,publication.id,publicationProgress(progress,publication.id))
-        val action=membership.forPublication(publication.id)
         PublicationDetails(publication.displayPublication(),application.sourceName(publication.id.sourceId),
             formats=record?.let {listOf(it.id.format)}?:format?.let {listOf(it)}?:emptyList(),progress=record,close={detail=null},
-            descriptions=application.descriptions, cover={DetailsCover(publication.displayPublication(),application.covers)}) {
-            Button({detail=null;application.openSaved(publication)},Modifier.heightIn(min=48.dp)) { Text(strings.status(readingAction(record))) }
-            OutlinedButton({ if(action.inLibrary==true) confirmRemoval=true else application.collections.toggleCatalogLibrary(publication.displayPublication()) },
-                Modifier.heightIn(min=48.dp),enabled=action.enabled) { Text(strings.status(action.label)) }
-            error?.let {Text(strings.status(it),color=MaterialTheme.colors.error)}
+            collections=application.collections,organizationCovers=application.covers,descriptions=application.descriptions,
+            cover={DetailsCover(publication.displayPublication(),application.covers)}) {
+            PublicationReadAction(record) {detail=null;application.openSaved(publication)}
         }
-        if (confirmRemoval) AlertDialog(onDismissRequest={confirmRemoval=false},title={Text(strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM])},
-            text={Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_FILES_HISTORY_AND_SAVED_READING_POSITIONS_ARE])},
-            confirmButton={TextButton({confirmRemoval=false;application.collections.removeLibrary(publication.id);detail=null},Modifier.heightIn(min=48.dp),enabled=action.enabled){Text(strings[UiText.UI_REMOVE])}},
-            dismissButton={TextButton({confirmRemoval=false},Modifier.heightIn(min=48.dp)){Text(strings[UiText.CANCEL])}})
     }
 }
 
