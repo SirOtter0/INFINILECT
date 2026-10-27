@@ -143,6 +143,16 @@ sqldelight {
     }
 }
 
+// Explicit metadata-only smoke check; never part of deterministic test/check/build.
+tasks.register<JavaExec>("githubUpdateCheck") {
+    group = "verification"
+    description = "Read the official GitHub release list without downloading or installing assets."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.updates.UpdateIntegrationCheck")
+}
+
 // Opt-in live check: never a dependency of test/check/build.
 tasks.register<JavaExec>("gutenbergSearchCheck") {
     group = "verification"

@@ -65,6 +65,7 @@ fun App(
     developmentSettings: @Composable () -> Unit = {},
 ) {
     val application=remember(applicationSources) { applicationSources.applicationSession() }
+    LaunchedEffect(applicationSources) {applicationSources.updates?.foreground()}
     val appearanceState by (applicationSources.appearance?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(ApplicationAppearanceState()) }).collectAsState()
     var profileEditor by remember { mutableStateOf(false) }
     val homePosition = rememberLazyListState()
@@ -142,6 +143,7 @@ fun App(
                                 Column(Modifier.fillMaxWidth().heightIn(max = feedbackMaxHeight).verticalScroll(rememberScrollState())) {
                                     if (importing.busy) FeedbackCard(strings[UiText.UI_IMPORTING], strings[UiText.UI_COPYING_AND_VALIDATING_YOUR_PUBLICATION_IN_PRIVATE_STORAGE], busy = true,
                                         action = strings[UiText.CANCEL], onAction = application::back, modifier = Modifier.padding(horizontal = 24.dp))
+                                    applicationSources.updates?.let { org.infinilect.app.updates.UpdateNotice(it) {application.navigate(Destination.SETTINGS)} }
                                     importing.message?.let { FeedbackCard(strings[UiText.UI_IMPORT_COULD_NOT_FINISH], strings.status(it), error = true, modifier = Modifier.padding(horizontal = 24.dp)) }
                                 }
                                 androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
@@ -153,7 +155,7 @@ fun App(
                                         Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, collectionProgress)
-                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation, developmentSettings)
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation, developmentSettings, applicationSources.updates)
                                     } }
                                 }
                             }
