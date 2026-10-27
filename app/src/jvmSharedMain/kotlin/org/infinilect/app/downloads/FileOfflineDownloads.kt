@@ -166,7 +166,7 @@ internal class FileOfflineDownloads(private val directory: Path?,providers: List
         try {return withContext(io) {
             val offer=offers(entry.id).firstOrNull {it.resource==entry.resource} ?: fail(DownloadFailure.NOT_ALLOWED)
             val cap=locked {
-                initialize();if(entry.id in active || rows[entry.id]?.status!=DownloadStatus.PENDING) fail(DownloadFailure.BUSY)
+                initialize();if(active.isNotEmpty() || rows[entry.id]?.status!=DownloadStatus.PENDING) fail(DownloadFailure.BUSY)
                 val remaining=quota-used()
                 val maximum=minOf(limit(entry.format),remaining)
                 if(maximum<=0 || offer.size?.let {it>maximum}==true) fail(DownloadFailure.LIMIT)

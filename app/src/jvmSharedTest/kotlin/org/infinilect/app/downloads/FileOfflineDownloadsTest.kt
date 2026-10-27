@@ -148,4 +148,15 @@ class FileOfflineDownloadsTest {
             assertNotNull(store.acquire(p.id)).close()
         } finally {store.close();owner.close();root.toFile().deleteRecursively()}
     }
+
+    @Test fun storageAlsoRejectsConcurrentWritersBeforeTheyCanShareTheQuotaBudget()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("offline-concurrent-budget");val source=OfflineFixtureSource();val a=source.add(PublicationFormat.TEXT,"a");val b=source.add(PublicationFormat.TEXT,"b");val owner=OfflineFixtureOwner(root,source);val store=owner.store()
+        val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
+        try {
+            store.load();val first=store.pending(store.offers(a.id).first());val second=store.pending(store.offers(b.id).first());source.beforeRead={entered.complete(Unit);release.await()}
+            val job=async {store.download(first,{},{})};entered.await()
+            assertEquals(DownloadFailure.BUSY,assertFailsWith<DownloadException> {store.download(second,{},{})}.failure);assertEquals(1,source.opens)
+            release.complete(Unit);assertEquals(DownloadStatus.DOWNLOADED,job.await().status)
+        } finally {release.complete(Unit);store.close();owner.close();root.toFile().deleteRecursively()}
+    }
 }
