@@ -13,7 +13,7 @@ class OfflineDownloadsTest {
     private class Backend: DownloadBackend {
         val rows=linkedMapOf<PublicationId,DownloadEntry>();var revision=0L;var starts=0;var active=0;var peak=0;var authorizations=0;var closed=false
         var pendingGate: CompletableDeferred<Unit>?=null
-        var gate=CompletableDeferred<Unit>();var nonCooperative=false;var failure: DownloadFailure?=null;var writeFailure=false
+        var gate=CompletableDeferred<Unit>();var nonCooperative=false;var failure: DownloadFailure?=null;var writeFailure=false;var settleFailure=false;var removeFailure=false
         var completing: suspend ()->Unit={}
         fun offer(key: String="a"): DownloadOffer {
             val id=PublicationId(SourceId("fixture"),key);val r=PublicationResource(id,"original",PublicationFormat.TEXT,"text/plain")
@@ -35,8 +35,8 @@ class OfflineDownloadsTest {
                 val result=save(rows.getValue(entry.id).copy(status=DownloadStatus.DOWNLOADED));completing();return result
             } finally {active--}
         }
-        override suspend fun settle(id: PublicationId,status: DownloadStatus,failure: DownloadFailure?): DownloadEntry? = rows[id]?.let {if(it.status==DownloadStatus.DOWNLOADED) it else save(it.copy(status=status,failure=failure))}
-        override suspend fun remove(id: PublicationId) {rows.remove(id);revision++}
+        override suspend fun settle(id: PublicationId,status: DownloadStatus,failure: DownloadFailure?): DownloadEntry? = if(settleFailure) throw DownloadException(DownloadFailure.STORAGE) else rows[id]?.let {if(it.status==DownloadStatus.DOWNLOADED) it else save(it.copy(status=status,failure=failure))}
+        override suspend fun remove(id: PublicationId) {rows.remove(id);revision++;if(removeFailure) throw DownloadException(DownloadFailure.STORAGE)}
         override suspend fun acquire(id: PublicationId): OfflineReadingCopy?=null
         override suspend fun quota(bytes: Long)=Unit
         override suspend fun close() {closed=true}
@@ -100,5 +100,14 @@ class OfflineDownloadsTest {
         owner.enqueue(backend.offer());runCurrent();owner.pause();backend.pendingGate!!.complete(Unit);runCurrent()
         assertEquals(DownloadStatus.CANCELLED,owner.status());assertEquals(0,backend.starts);assertTrue(owner.catalogue.value.busy.isEmpty())
         owner.resume();runCurrent();assertEquals(0,backend.starts);owner.close();owner.awaitClosed()
+    }
+
+    @Test fun failedCancellationAndPartialDeletionCanRecoverWithoutStaleReadyOrPermanentSpinner()=runTest {
+        val backend=Backend();val owner=OfflineDownloads(backend,StandardTestDispatcher(testScheduler));runCurrent();owner.enqueue(backend.offer());runCurrent()
+        backend.settleFailure=true;owner.cancel(backend.offer().publication.id);runCurrent();assertEquals(DownloadFailure.STORAGE,owner.catalogue.value.failure)
+        backend.settleFailure=false;owner.cancel(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.CANCELLED,owner.status())
+        backend.gate.complete(Unit);owner.retry(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.DOWNLOADED,owner.status())
+        backend.removeFailure=true;owner.remove(backend.offer().publication.id);runCurrent();assertTrue(owner.available.value.isEmpty());assertNull(owner.status());assertEquals(DownloadFailure.STORAGE,owner.catalogue.value.failure)
+        owner.close();owner.awaitClosed()
     }
 }

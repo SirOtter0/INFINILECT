@@ -138,9 +138,9 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
     }
     fun cancel(id: PublicationId) {
         if(active?.first==id) {active?.second?.cancel();return}
-        if(entry(id)?.status==DownloadStatus.PENDING) mutate(id) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish)}
+        if(entry(id)?.status in setOf(DownloadStatus.PENDING,DownloadStatus.DOWNLOADING)) mutate(id) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish)}
     }
-    fun remove(id: PublicationId) {mutate(id) {backend.remove(id);refresh();progress.remove(id)}}
+    fun remove(id: PublicationId) {mutate(id) {try {backend.remove(id)} finally {refresh()};progress.remove(id)}}
     fun setQuota(bytes: Long) {mutate {backend.quota(bytes);refresh()}}
     fun reload() {mutate {backend.load();refresh()}}
     suspend fun acquire(id: PublicationId): OfflineReadingCopy? {
