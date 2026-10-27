@@ -38,10 +38,11 @@ internal class ReadingSession(
     val pdfReadingEnabled: Boolean = false,
     pdfPreparer: org.infinilect.app.reader.pdf.PdfPreparer? = null,
     translation: org.infinilect.app.reader.epub.EpubTranslationService? = null,
+    offline: org.infinilect.app.downloads.OfflineDownloads? = null,
     onOpened: (Publication) -> Unit = {},
 ) : ApplicationSessionLifetime {
     val search = SearchController(source)
-    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, preparer, epubPreparer = if (epubReadingEnabled) epubPreparer else null, epubSettings = epubSettings, pagePreparer = if (pageReadingEnabled) pagePreparer else null, pageSettings = pageSettings, pdfPreparer = if (pdfReadingEnabled) pdfPreparer else null, translation = translation, onOpened = onOpened)
+    val opening = OpenPublicationController(source, loader, scope, decodingDispatcher, progress, preparer, epubPreparer = if (epubReadingEnabled) epubPreparer else null, epubSettings = epubSettings, pagePreparer = if (pageReadingEnabled) pagePreparer else null, pageSettings = pageSettings, pdfPreparer = if (pdfReadingEnabled) pdfPreparer else null, translation = translation, onOpened = onOpened,offline=offline)
     private val mutableQuery = MutableStateFlow("")
     val query: StateFlow<String> = mutableQuery.asStateFlow()
     private var searchJob: Job? = null

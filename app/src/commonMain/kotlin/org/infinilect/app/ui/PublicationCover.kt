@@ -80,7 +80,7 @@ private fun CoverArtwork(publication: Publication, state: CoverState, modifier: 
 @Composable
 internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, progress: ReadingProgress?,
     selected: Boolean, selecting: Boolean, enabled: Boolean,
-    open: () -> Unit, details: (PublicationFormat?) -> Unit, select: () -> Unit, toggle: () -> Unit, remove: () -> Unit, favorite: Boolean = false, completed: Boolean = false, artworkHeight: androidx.compose.ui.unit.Dp? = null) {
+    open: () -> Unit, details: (PublicationFormat?) -> Unit, select: () -> Unit, toggle: () -> Unit, remove: () -> Unit, favorite: Boolean = false, completed: Boolean = false, artworkHeight: androidx.compose.ui.unit.Dp? = null,offline: Boolean = false) {
     val strings = LocalAppStrings.current
     val viewport = remember(publication.id, covers) { covers?.let { CoverViewport() } }
     val cover = coverState(publication.id, covers, viewport)
@@ -107,7 +107,7 @@ internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, 
             this.selected = selected
             contentDescription = strings.format(UiText.UI_COVER_FOR_1_S, publication.title)
             stateDescription = listOfNotNull(if (selected) strings[UiText.UI_SELECTED] else if (selecting) strings[UiText.UI_NOT_SELECTED] else null,
-                if (favorite) strings[UiText.LIB_FAVORITE] else null, if(completed) strings[UiText.LIB_COMPLETED] else null,
+                if(offline) strings[UiText.DL_AVAILABLE] else null, if (favorite) strings[UiText.LIB_FAVORITE] else null, if(completed) strings[UiText.LIB_COMPLETED] else null,
                 progress?.let { strings.format(UiText.UI_1_S_READ, (it.progression * 100).toInt()) }).joinToString(" · ")
             customActions = listOf(CustomAccessibilityAction(if (selected) strings[UiText.UI_DESELECT_PUBLICATION] else strings[UiText.UI_SELECT_PUBLICATION]) { toggle(); true },
                 CustomAccessibilityAction(strings[UiText.UI_PUBLICATION_DETAILS]) { showDetails(); true },
@@ -124,6 +124,7 @@ internal fun LibraryCover(publication: Publication, covers: PublicationCovers?, 
                 if (completed) LibraryIcon(LibraryGlyph.CHECK,true,Modifier.size(16.dp))
                 if (selected) LibraryIcon(LibraryGlyph.CHECK,true,Modifier.size(20.dp))
             }
+            if(offline && !selecting) Box(Modifier.align(Alignment.BottomStart).padding(start=4.dp,bottom=8.dp).background(MaterialTheme.colors.surface.copy(alpha=.94f),MaterialTheme.shapes.small).padding(3.dp)) {LibraryIcon(LibraryGlyph.DOWNLOAD,true,Modifier.size(16.dp))}
             if (selected) Box(Modifier.fillMaxSize().border(3.dp, MaterialTheme.colors.primary, MaterialTheme.shapes.small))
             Box(Modifier.align(Alignment.TopEnd)) { CoverContextMenu(menu, { menu = false }, enabled, select, open, showDetails, remove) }
         }

@@ -37,8 +37,14 @@ internal class InternetArchiveSource(
     private val userAgent: String = PROJECT_USER_AGENT,
     private val observe: (ArchiveHttpEvidence) -> Unit = {},
     streamDispatcher: CoroutineDispatcher = Dispatchers.IO,
-) : PublicationSource, DiscoverySource, AutoCloseable {
+) : PublicationSource, DiscoverySource, org.infinilect.app.downloads.OfflineDownloadProvider, AutoCloseable {
     override val id = ARCHIVE_ID
+    override val downloadSourceId get() = id
+    override suspend fun downloadOffers(id: PublicationId): List<org.infinilect.app.downloads.DownloadOffer> {
+        owns(id)
+        return userFacing { item(id)?.let { item -> item.files.map { org.infinilect.app.downloads.DownloadOffer(item.publication,it.resource,it.size) } }.orEmpty() }
+    }
+    override suspend fun openDownload(offer: org.infinilect.app.downloads.DownloadOffer): ResourceContent = loadResource(offer.resource)
     private val lock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + streamDispatcher)
     private val closed = AtomicBoolean()

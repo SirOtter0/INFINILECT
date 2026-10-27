@@ -173,7 +173,7 @@ internal fun DiscoveryDetails(entry: DiscoveryEntry, application: ApplicationSes
     val record = detailsProgress(application, entry.publication.id, null)
     PublicationDetails(entry.publication, application.sourceName(entry.publication.id.sourceId), entry.publication.resources.map { it.format },
         record, close, cover = { DetailsCover(entry.publication, if (entry.thumbnail != null || entry.publication.id.sourceId.value == "local-imports") application.covers else null) },
-        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,organizationCovers=application.covers) {
+        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,downloads=application.downloads,organizationCovers=application.covers) {
         if (application.canRetry(entry.publication)) PublicationReadAction(record) { close(); application.openDiscovered(entry.publication) }
         else Text(strings[UiText.UI_CATALOG_METADATA_ONLY_ACQUISITION_IS_UNAVAILABLE_FOR_THIS_SOURCE], style = MaterialTheme.typography.body2)
         if (entry.publication.rights == null) Text(strings[UiText.UI_NO_SOURCE_RIGHTS_STATEMENT_WAS_SUPPLIED_LEGAL_AVAILABILITY_IS_UNDETERMINED], style = MaterialTheme.typography.caption)

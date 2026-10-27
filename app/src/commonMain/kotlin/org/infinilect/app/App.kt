@@ -155,7 +155,7 @@ fun App(
                                         Destination.SEARCH -> org.infinilect.app.discovery.UnifiedSearchScreen(application, discoveryPosition, discoveryViewport)
                                         Destination.LIBRARY, Destination.HISTORY -> CollectionScreen(destination, application,
                                             if (destination == Destination.LIBRARY) libraryPosition else historyPosition, collectionProgress)
-                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation, developmentSettings, applicationSources.updates)
+                                        Destination.SETTINGS -> ApplicationSettingsScreen(mode, { applicationSources.appearance?.change(it) }, appearanceFailed, appearanceState.profile, { profileEditor = true }, appearanceState.loaded && applicationSources.appearance != null, appearanceState.discovery, { applicationSources.appearance?.changeDiscovery(it) }, applicationSources.appearance, applicationSources.translation, developmentSettings, applicationSources.updates,applicationSources.downloads,{application.openSaved(org.infinilect.core.PublicationSnapshot.from(it))})
                                     } }
                                 }
                             }
@@ -339,7 +339,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         val known = publicationProgress(progressRecords, publication.id)
         val record = if (applicationSession != null) detailsProgress(applicationSession, publication.id, known) else known
         PublicationDetails(publication, sources[selected].name, publication.resources.map { it.format },
-            record, close = { detail = null }, descriptions = descriptions, collections=collections,organizationCovers=applicationSession?.covers) {
+            record, close = { detail = null }, descriptions = descriptions, collections=collections,downloads=applicationSession?.downloads,organizationCovers=applicationSession?.covers) {
             if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
                 PublicationReadAction(record,enabled=!loading) {detail=null;onOpen(publication)}
             }

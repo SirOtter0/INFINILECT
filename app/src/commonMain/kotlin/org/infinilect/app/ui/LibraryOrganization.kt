@@ -97,6 +97,7 @@ internal fun LibraryTools(browser: LibraryBrowser, tags: List<LibraryTag>, contr
             LibraryChip(strings[UiText.LIB_READING],query.state==LibraryReadingState.READING) { browser.change(query.copy(state=if(query.state==LibraryReadingState.READING) null else LibraryReadingState.READING)) }
             LibraryChip(strings[UiText.LIB_COMPLETED],query.state==LibraryReadingState.COMPLETED) { browser.change(query.copy(state=if(query.state==LibraryReadingState.COMPLETED) null else LibraryReadingState.COMPLETED)) }
             LibraryChip(strings[UiText.LIB_FAVORITES],query.favorites) { browser.change(query.copy(favorites=!query.favorites)) }
+            LibraryChip(strings[UiText.DL_FILTER],query.downloaded) {browser.change(query.copy(downloaded=!query.downloaded))}
         }
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             Text(strings.quantity(UiPlural.PUBLICATIONS,count),Modifier.weight(1f),style=MaterialTheme.typography.caption)
@@ -120,6 +121,7 @@ internal fun LibraryTools(browser: LibraryBrowser, tags: List<LibraryTag>, contr
             LibraryReadingState.entries.forEach { state -> LibraryChip(strings[state.label()],query.state==state) {browser.change(query.copy(state=state))} }
         }
         Divider()
+        LibraryCheck(strings[UiText.DL_FILTER],query.downloaded) {browser.change(query.copy(downloaded=it))}
         LibraryCheck(strings[UiText.LIB_ONLY_FAVORITES],query.favorites) { browser.change(query.copy(favorites = it)) }
         LibraryCheck(strings[UiText.LIB_UNTAGGED],query.untagged) { browser.change(query.copy(untagged = it, tags = if(it) emptySet() else query.tags)) }
         if(tags.isNotEmpty()) {

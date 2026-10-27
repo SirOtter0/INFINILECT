@@ -50,6 +50,7 @@ internal class OpenPublicationController(
     private val pageSettings: PageSettingsPersistence? = null,
     private val pdfPreparer: PdfPreparer? = null,
     private val translation: EpubTranslationService? = null,
+    private val offline: org.infinilect.app.downloads.OfflineDownloads? = null,
     private val onOpened: (Publication) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow<OpenPublicationState>(OpenPublicationState.Idle)
@@ -76,6 +77,8 @@ internal class OpenPublicationController(
             var openingPages = false
             var openingEpub = false
             var handedOff = false
+            var offlineCopy: org.infinilect.app.downloads.OfflineReadingCopy? = null
+            var resolvedLoader=loader
             try {
                 suspend fun prepareReader(details: Publication?): OpenPublicationState {
                     currentCoroutineContext().ensureActive()
@@ -88,7 +91,7 @@ internal class OpenPublicationController(
                         val epubResource = selectResource(details, PublicationFormat.EPUB)
                             ?: throw OpeningException("No supported reading format is available for this publication.")
                         openingEpub = true
-                        val epub = epubPreparer.prepare(details, epubResource, loader)
+                        val epub = epubPreparer.prepare(details, epubResource, resolvedLoader)
                         // Assign ownership before the next suspension; every unhanded document closes.
                         val reader = try {
                             check(epub.publicationId == details.id)
@@ -101,7 +104,7 @@ internal class OpenPublicationController(
                     }
                     if (textResource == null && pagePreparer != null && details.resources.any { it.format == PublicationFormat.PAGES || it.format == PublicationFormat.CBZ }) {
                         openingPages = true
-                        val document = pagePreparer.prepare(details, loader)
+                        val document = pagePreparer.prepare(details, resolvedLoader)
                         val reader = try {
                             check(document.publicationId == details.id)
                             PageReaderController(document, scope, progress, pageSettings)
@@ -113,7 +116,7 @@ internal class OpenPublicationController(
                     }
                     if (textResource == null && pdfPreparer != null && selectResource(details,PublicationFormat.PDF) != null) {
                         val resource = checkNotNull(selectResource(details,PublicationFormat.PDF))
-                        val document = pdfPreparer.prepare(details,resource,loader)
+                        val document = pdfPreparer.prepare(details,resource,resolvedLoader)
                         val reader = try {
                             check(document.progressId == ReadingProgressId(details.id,resource.key,PublicationFormat.PDF))
                             PdfReaderController(document,scope,progress)
@@ -125,7 +128,7 @@ internal class OpenPublicationController(
                     }
                     val resource = textResource
                         ?: throw OpeningException("No readable text format is available for this publication.")
-                    val loaded = loadTextDocument(details, resource, loader, decodingDispatcher, preparer).also { prepared = it }
+                    val loaded = loadTextDocument(details, resource, resolvedLoader, decodingDispatcher, preparer).also { prepared = it }
                     val stored = loaded.progressId?.let { progress?.get(it) }
                     return OpenPublicationState.Ready(loaded,
                         TextReadingProgress(loaded, stored, progress, scope), details)
@@ -134,7 +137,9 @@ internal class OpenPublicationController(
                 // Cancellation is result-safe through adapter ownership and generation checks.
                 var deferredPdf: Publication? = null
                 val withinDeadline = withTimeout(60_000) {
-                    val details = source.getPublication(publication.id)
+                    offlineCopy=offline?.acquire(publication.id)
+                    resolvedLoader=offlineCopy?.loader ?: loader
+                    val details = offlineCopy?.publication ?: source.getPublication(publication.id)
                     val pdfSelected = details != null && pdfPreparer != null &&
                         selectResource(details,PublicationFormat.TEXT) == null &&
                         (epubPreparer == null || selectResource(details,PublicationFormat.EPUB) == null) &&
@@ -169,6 +174,7 @@ internal class OpenPublicationController(
             } catch (error: Exception) {
                 currentCoroutineContext().ensureActive()
                 val message = when (error) {
+                    is org.infinilect.app.downloads.DownloadException -> "The retained file is unavailable. Check Downloads or retry online."
                     is PdfException -> error.failure.userMessage
                     is EpubException -> error.failure.userMessage
                     is TextDocumentException -> error.failure.userMessage
@@ -179,6 +185,7 @@ internal class OpenPublicationController(
                 }
                 if (generation == ticket) mutableState.value = OpenPublicationState.Error(publication, message)
             } finally {
+                offlineCopy?.close()
                 if (!handedOff) { prepared?.close(); epubReader?.close(); pageReader?.close(); pdfReader?.close() }
             }
         }.also { job ->
