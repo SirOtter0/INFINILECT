@@ -176,3 +176,47 @@ Verification and current APK information for this refinement are recorded below 
 9. Open EPUB/CBZ/PDF/TEXT and return; verify positions, EPUB selection/translation and History. Confirm all source-rights and jurisdiction notices remain reachable in details.
 
 Same-certificate delivery for this new visual refinement requires the original signing attachments to be available in the execution environment. The earlier signed APK documented above predates this redesign and must not be represented as its test artifact. Debug compilation alone does not establish upgrade signing or physical acceptance.
+
+### Rendered previews
+
+These are **headless captures of the actual Compose implementation**, not generated mockups, installed-Android screenshots or realme C55 evidence. Publication names, the `Estudi 📚` user tag, artwork and reading records are original synthetic fixtures. The application-shell captures include real cover loading/fallback states. Reference artwork and illustrative reference catalog data are not used.
+
+| Library, dark — 390 dp | Library, light — 390 dp |
+| --- | --- |
+| ![Shared Compose Library dark](previews/pr34/library-dark.png) | ![Shared Compose Library light](previews/pr34/library-light.png) |
+
+| Filters (immediate) | Sort | Single organization |
+| --- | --- | --- |
+| ![Filters](previews/pr34/filters-es.png) | ![Sort](previews/pr34/sort-es.png) | ![Organizer](previews/pr34/organize-es.png) |
+
+| Details with actual saved fixture progress | Multiple selection | Tag usage count |
+| --- | --- | --- |
+| ![Details](previews/pr34/details-dark.png) | ![Selection](previews/pr34/selection-es.png) | ![Tag manager](previews/pr34/tags-es.png) |
+
+Same Catalan organizer fixture at 320×720 dp / 180% font scale, before and after:
+
+| Before | After |
+| --- | --- |
+| ![Previous organizer](previews/pr34/organization-ca-large-before.png) | ![Compact organizer](previews/pr34/organization-ca-large-after.png) |
+
+Additional captures: [Desktop Library](previews/pr34/library-desktop.png), [light-theme details](previews/pr34/details-light.png). Reproduce with `INFINILECT_UI_PREVIEW_DIRECTORY=/absolute/path` and `INFINILECT_LIBRARY_PREVIEWS=/absolute/path` while running `ApplicationInterfaceTest` and `LibraryOrganizationInterfaceTest` on Desktop, with the verified Skiko native library available. No image-generation tool is used.
+
+### Final verification of the visual refinement
+
+Verified source commit: `a5ce9629739f68f3349b5a3f4b719653028bb76c` (later commits only document results and captures).
+
+| Suite | Passed | Failures / errors / skips |
+| --- | ---: | --- |
+| App Desktop | 1,621 | 0 / 0 / 0 |
+| App Android-host | 1,353 | 0 / 0 / 0 |
+| Core JVM | 59 | 0 / 0 / 0 |
+| Core Android-host | 59 | 0 / 0 / 0 |
+| **Total** | **3,092** | **0 / 0 / 0** |
+
+The final combined run completed successfully in 11m37s, including `:core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources :desktopApp:compileKotlin`. Tests were forced to execute with the environment's test-native init script (verified Skiko path); no assertions were disabled, skipped or weakened. `python3 tools/check_localization.py` and `git diff --check` pass: **457 strings and 3 plurals per en/es/ca**. No runtime dependency/permission/signing/reader/schema changes were found.
+
+UI checks include real compact search/clear, quick ↔ advanced query synchronization, all sort controls, two/three-column density, separate artwork/title geometry, large-text short windows, favorite and confirmed removal, single/batch organization, tag usage, transient success without grid movement, errors retained, keyboard dismissal, 5,000-row virtualization and session restoration. Existing migration, byte-preserved locators, reader/security/source/translation regressions pass. The new publication plural is explicitly checked for zero/one/many in each language. Material popup exit animations use the controlled test clock; focus is placed on opening and restored after keyboard dismissal. Explicitly owned overflow state makes dismissal close the open child menu before its details/selection parent.
+
+Debug APK audit: **21,366,607 bytes**, SHA-256 `89399771048140fbc95de0453fd9ea6f26ae15302b8125184a7e5b238209906b`, built from the source commit above. Package/minimum API/four ABIs unchanged; v2 signature and 16 KiB alignment verify; all six locale CVRs match generated resources; test/schema fixtures and private key files are absent; all six native libraries match the prior PR #33 development APK byte-for-byte. This artifact is signed by the environment debug key, **not the user's update certificate**, so it is not distributed as an upgrade. Original signing inputs must be reattached to produce the install-over artifact; signing configuration remains unchanged.
+
+These are host tests, build and artifact checks. No physical Android interaction, TalkBack, realme C55 frame timing or native peak-memory measurement was performed. Keep Draft pending the manual checklist and same-certificate delivery; do not uninstall, erase data, merge or publish a release.
