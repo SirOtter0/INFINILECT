@@ -1,5 +1,7 @@
 # Library organization — PR #34
 
+Latest refinement: [animated bookmark and favorite actions](#animated-bookmark-and-favorite-actions). Earlier measurements, APKs and captures below identify their corresponding source commits.
+
 ## Audit before implementation
 
 Base: main `2034255f87dc2f1fe83fda2756054c84ffb5be68` (PR #33 merged).
@@ -245,3 +247,15 @@ Accessible Add/Remove Library and Add/Remove favorites names use reviewed en/es/
 6. Check small/large windows, es/en/ca, light/dark and 150–180% text. With Android animations disabled, state changes must remain clear; with animations enabled they should be brief and unobtrusive. Validate TalkBack and keyboard activation. No physical validation of this follow-up is claimed by host captures/tests.
 
 Verification results and the new signed APK are recorded below after checks complete. Earlier APK/capture entries describe their respective older source commits.
+
+### Captures of the compact actions
+
+These are real shared-Compose **headless renders with original synthetic data**, not physical Android screenshots or generated mockups. The light favorite capture deliberately shows a confirmed coral heart and success Snackbar.
+
+| Saved details, dark | Saved details, light | Confirmed favorite, light |
+| --- | --- | --- |
+| ![Dark details](previews/pr34-actions/details-dark.png) | ![Light details](previews/pr34-actions/details-light.png) | ![Favorite](previews/pr34-actions/favorite-light.png) |
+
+| Single organizer with header heart | Catalan, 320 dp / 180% text |
+| --- | --- |
+| ![Organizer](previews/pr34-actions/organizer-es-dark.png) | ![Large Catalan organizer](previews/pr34-actions/organizer-ca-large.png) |
