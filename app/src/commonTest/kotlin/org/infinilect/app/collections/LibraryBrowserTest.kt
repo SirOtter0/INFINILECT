@@ -85,4 +85,14 @@ class LibraryBrowserTest {
         assertEquals(setOf(1L),browser.query.value.tags)
         browser.change(LibraryQuery(text="x".repeat(500)));assertEquals(256,browser.query.value.text.length)
     }
+
+    @Test fun downloadedIsCombinedWithExistingFiltersAndDoesNotRescanProgress()=runTest {
+        val entries=MutableStateFlow(CollectionList(rows));val available=MutableStateFlow(setOf(a.publication.id,b.publication.id));var loads=0
+        val browser=LibraryBrowser(backgroundScope,entries,StandardTestDispatcher(testScheduler),available) {loads++;emptyList()}
+        browser.activate();browser.change(LibraryQuery(text="fantasia",favorites=true,state=LibraryReadingState.READING,tags=setOf(2),downloaded=true));runCurrent()
+        assertEquals(listOf(a),browser.result.value);assertEquals(1,loads)
+        available.value=setOf(b.publication.id);runCurrent();assertTrue(browser.result.value.isEmpty());assertEquals(1,loads)
+        browser.resetFilters();runCurrent();assertFalse(browser.query.value.downloaded);assertEquals("fantasia",browser.query.value.text);assertEquals(listOf(a),browser.result.value)
+        assertEquals(rows,entries.value.entries)
+    }
 }

@@ -39,18 +39,20 @@ internal class ApplicationSession(
     /** Details may query one existing progress summary after a restart; never save/normalize it. */
     suspend fun savedPublicationProgress(id: PublicationId) = sources.progress?.publicationSummaries(listOf(id))
         ?.filter { it.id.publicationId == id }?.maxByOrNull { it.updatedAtEpochMillis }
+    val downloads get()=sources.downloads
     val collections=CollectionsController(sources.collections,this.scope,clock) { sources.covers?.invalidate(it) }
     val libraryBrowser = org.infinilect.app.collections.LibraryBrowser(this.scope, collections.library, sources.libraryDispatcher,
+        offline=sources.downloads?.available ?: MutableStateFlow(emptySet()),
         loadProgress = {
             val records = sources.progress?.librarySummaries(it).orEmpty()
             collections.reconcileProgressEvidence(records.map { it.id.publicationId }.toSet())
             records
         })
     private fun session(option: SourceOption)=ReadingSession(option.source,this.scope,option.textReadingEnabled,
-        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer,sources.translation) { publication ->
+        sources.loaderFor(option.source),decodingDispatcher,sources.progress,sources.textPreparer,option.epubReadingEnabled,sources.epubPreparer,sources.epubSettings,option.pageReadingEnabled,sources.pagePreparer,sources.pageSettings,option.pdfReadingEnabled,sources.pdfPreparer,sources.translation,onOpened = { publication ->
         collections.enteredReader(publication)
         sources.collections?.recordOpened(publication,clock())
-    }
+    },offline=sources.downloads)
     private val mutableSearch=MutableStateFlow(session(sources.options.first()))
     val searchSession=mutableSearch.asStateFlow()
     private var savedReader: ReadingSession?=null

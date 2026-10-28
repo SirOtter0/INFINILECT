@@ -18,7 +18,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.PopupPositionProvider
 
-internal enum class LibraryGlyph { FILTER, SORT, TAG, HEART, BOOKMARK, MORE, CLOSE, CHECK, EDIT, DELETE, BOOK, UP, DOWN }
+internal enum class LibraryGlyph { FILTER, SORT, TAG, HEART, BOOKMARK, MORE, CLOSE, CHECK, EDIT, DELETE, BOOK, UP, DOWN, DOWNLOAD, ERROR }
 
 /** Original lightweight vectors. No image request, persistent color or extra icon dependency. */
 @Composable
@@ -30,6 +30,8 @@ internal fun LibraryIcon(glyph: LibraryGlyph, active: Boolean = false, modifier:
         fun line(x: Float,y: Float,ex: Float,ey: Float) = drawLine(color,p(x,y),p(ex,ey),1.8f*s,StrokeCap.Round)
         when(glyph) {
             LibraryGlyph.FILTER -> { line(3f,5f,21f,5f);line(6f,12f,18f,12f);line(10f,19f,14f,19f) }
+            LibraryGlyph.DOWNLOAD -> {line(12f,3f,12f,16f);line(7f,11f,12f,16f);line(17f,11f,12f,16f);line(4f,17f,4f,21f);line(4f,21f,20f,21f);line(20f,17f,20f,21f)}
+            LibraryGlyph.ERROR -> {drawCircle(color,10*s,p(12f,12f),style=Stroke(1.8f*s));line(12f,6f,12f,13f);drawCircle(color,1.1f*s,p(12f,17f))}
             LibraryGlyph.SORT -> { line(4f,5f,16f,5f);line(4f,12f,13f,12f);line(4f,19f,10f,19f);line(20f,5f,20f,20f);line(17f,17f,20f,20f);line(23f,17f,20f,20f) }
             LibraryGlyph.MORE -> for(y in listOf(5f,12f,19f)) drawCircle(color,1.7f*s,p(12f,y))
             LibraryGlyph.CLOSE -> { line(6f,6f,18f,18f);line(6f,18f,18f,6f) }

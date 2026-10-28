@@ -10,8 +10,8 @@ internal expect fun librarySearchText(value: String): String
 internal enum class LibrarySort { ADDED, LAST_READ, TITLE, AUTHOR, PROGRESS }
 internal data class LibraryQuery(val text: String = "", val state: LibraryReadingState? = null,
     val favorites: Boolean = false, val tags: Set<Long> = emptySet(), val untagged: Boolean = false,
-    val sort: LibrarySort = LibrarySort.ADDED, val descending: Boolean = true) {
-    val filtered get() = state != null || favorites || tags.isNotEmpty() || untagged
+    val sort: LibrarySort = LibrarySort.ADDED, val descending: Boolean = true,val downloaded: Boolean = false) {
+    val filtered get() = state != null || favorites || tags.isNotEmpty() || untagged || downloaded
 }
 internal data class LibrarySearchRow(val entry: LibraryEntry, val title: String, val author: String,
     val search: String, val tagIds: Set<Long>, val progress: Double?, val lastRead: Long?)
@@ -25,11 +25,11 @@ internal fun libraryIndex(entries: List<LibraryEntry>, progress: List<ReadingPro
             maxOf(entry.lastOpenedAtEpochMillis ?: -1,positions[entry.publication.id]?.updatedAtEpochMillis ?: -1).takeIf {it>=0})
     }
 }
-internal fun libraryMatches(index: List<LibrarySearchRow>, query: LibraryQuery): List<LibraryEntry> {
+internal fun libraryMatches(index: List<LibrarySearchRow>, query: LibraryQuery, downloaded: Set<PublicationId> = emptySet()): List<LibraryEntry> {
     val words = librarySearchText(query.text.take(256)).split(' ').filter { it.isNotEmpty() }
     val matching = index.filter { row ->
         val entry = row.entry
-        (query.state == null || entry.readingState == query.state) && (!query.favorites || entry.favorite) &&
+        (!query.downloaded || entry.publication.id in downloaded) && (query.state == null || entry.readingState == query.state) && (!query.favorites || entry.favorite) &&
             (!query.untagged || row.tagIds.isEmpty()) && row.tagIds.containsAll(query.tags) && words.all { it in row.search }
     }
     val comparator = Comparator<LibrarySearchRow> { a,b ->
@@ -56,6 +56,7 @@ internal fun libraryMatches(index: List<LibrarySearchRow>, query: LibraryQuery):
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class LibraryBrowser(private val scope: CoroutineScope, private val entries: StateFlow<CollectionList<LibraryEntry>>,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val offline: StateFlow<Set<PublicationId>> = MutableStateFlow(emptySet()),
     private val loadProgress: suspend (List<PublicationId>) -> List<ReadingProgress> = { emptyList() }) {
     private val mutableQuery = MutableStateFlow(LibraryQuery())
     val query = mutableQuery.asStateFlow()
@@ -77,10 +78,10 @@ internal class LibraryBrowser(private val scope: CoroutineScope, private val ent
         scope.launch {
             val index = combine(entries.map { it.entries }.distinctUntilChanged(),progress) { rows, records -> rows to records }
                 .mapLatest { (rows,records) -> withContext(dispatcher) { libraryIndex(rows,records) } }
-            combine(index,query) { rows,query -> rows to query }.collectLatest { (rows,query) ->
+            combine(index,query,offline) { rows,query,ids -> Triple(rows,query,ids) }.collectLatest { (rows,query,ids) ->
                 mutableWorking.value = true
                 try {
-                    val result = withContext(dispatcher) { libraryMatches(rows,query) }
+                    val result = withContext(dispatcher) { libraryMatches(rows,query,ids) }
                     currentCoroutineContext().ensureActive()
                     mutableResult.value = result
                 } finally { mutableWorking.value = false }
@@ -95,5 +96,5 @@ internal class LibraryBrowser(private val scope: CoroutineScope, private val ent
             .take(LibraryOrganizationLimits.PUBLICATIONS)
     }
     fun change(value: LibraryQuery) { mutableQuery.value = value.copy(text = value.text.take(256), tags = value.tags.toSet()) }
-    fun resetFilters() { change(query.value.copy(state = null, favorites = false, tags = emptySet(), untagged = false)) }
+    fun resetFilters() { change(query.value.copy(state = null, favorites = false, tags = emptySet(), untagged = false,downloaded=false)) }
 }

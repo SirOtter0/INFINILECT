@@ -24,6 +24,13 @@ import org.infinilect.app.search.SearchException
 import org.infinilect.app.network.PROJECT_USER_AGENT
 import org.infinilect.core.*
 import org.infinilect.app.discovery.*
+import org.infinilect.app.downloads.DownloadException
+import org.infinilect.app.downloads.DownloadFailure
+import org.infinilect.app.downloads.DownloadCause
+import org.infinilect.app.downloads.downloadError
+
+private class ArchiveHttpFailure(val status: Int) : Exception()
+private class ArchiveDownloadDenied(val denial: ArchiveDownloadDenial) : Exception()
 
 
 /** Application-consumed bytes, excluding transport buffering; never includes book contents. */
@@ -37,8 +44,44 @@ internal class InternetArchiveSource(
     private val userAgent: String = PROJECT_USER_AGENT,
     private val observe: (ArchiveHttpEvidence) -> Unit = {},
     streamDispatcher: CoroutineDispatcher = Dispatchers.IO,
-) : PublicationSource, DiscoverySource, AutoCloseable {
+) : PublicationSource, DiscoverySource, org.infinilect.app.downloads.OfflineDownloadProvider, AutoCloseable {
     override val id = ARCHIVE_ID
+    override val downloadSourceId get() = id
+    override suspend fun downloadOffers(id: PublicationId): List<org.infinilect.app.downloads.DownloadOffer> {
+        owns(id)
+        return downloadRequest {
+            val item=item(id) ?: throw DownloadException(DownloadFailure.MISSING)
+            item.downloadDenial?.let {throw ArchiveDownloadDenied(it)}
+            item.files.map { org.infinilect.app.downloads.DownloadOffer(item.publication,it.resource,it.size) }
+        }
+    }
+    override suspend fun openDownload(offer: org.infinilect.app.downloads.DownloadOffer): ResourceContent {
+        val content=downloadRequest {loadResource(offer.resource)}
+        return object: ResourceContent by content {
+            override suspend fun read(buffer: ByteArray,offset: Int,length: Int): Int = try {content.read(buffer,offset,length)}
+            catch(error: CancellationException) {throw error}
+            catch(_: InvalidArchiveData) {throw DownloadException(DownloadFailure.INCOMPLETE)}
+            catch(error: Exception) {throw downloadError(error,DownloadFailure.CONNECTION)}
+        }
+    }
+    private suspend fun <T> downloadRequest(block: suspend ()->T): T = try {block()}
+    catch(error: CancellationException) {throw error}
+    catch(error: DownloadException) {throw error}
+    catch(error: Exception) {
+        // The original reader keeps its SearchException contract. Downloads preserve the
+        // bounded cause category instead of flattening every denial/protocol error to network.
+        val cause=if(error is SearchException) error.cause ?: error else error
+        throw when(cause) {
+            is ArchiveHttpFailure -> DownloadException(DownloadFailure.HTTP,cause.status)
+            is ArchiveDownloadDenied -> DownloadException(when(cause.denial) {
+                ArchiveDownloadDenial.RESTRICTED -> DownloadFailure.NOT_ALLOWED
+                ArchiveDownloadDenial.RIGHTS_UNVERIFIED -> DownloadFailure.RIGHTS_UNVERIFIED
+                ArchiveDownloadDenial.UNSUPPORTED_FORMAT -> DownloadFailure.UNSUPPORTED_FORMAT
+            })
+            is InvalidArchiveData, is IllegalArgumentException -> DownloadException(DownloadFailure.INVALID,technicalCause=DownloadCause.INVALID_DATA)
+            else -> downloadError(cause as? Exception ?: error,DownloadFailure.CONNECTION)
+        }
+    }
     private val lock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + streamDispatcher)
     private val closed = AtomicBoolean()
@@ -146,7 +189,8 @@ internal class InternetArchiveSource(
             header(HttpHeaders.AcceptEncoding, "identity")
         }.execute { response ->
             val evidence = response.evidence(url)
-            if (response.status.value != 200 || response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase() != "application/json")
+            if (response.status.value != 200) throw ArchiveHttpFailure(response.status.value)
+            if (response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase() != "application/json")
                 throw InvalidArchiveData()
             response.uncompressed()
             val declared = response.length(MAX_METADATA_BYTES.toLong())
@@ -181,6 +225,7 @@ internal class InternetArchiveSource(
                         // Refresh after queueing, immediately before open; no other request can intervene.
                         val item = parseItem(metadataBytesLocked(ArchiveUrls.metadata(resource.publicationId.localId)), resource.publicationId)
                             ?: throw InvalidArchiveData()
+                        item.downloadDenial?.let {throw ArchiveDownloadDenied(it)}
                         val file = item.files.singleOrNull { it.resource == resource } ?: throw InvalidArchiveData()
                         stream(ArchiveUrls.download(resource.publicationId.localId, resource.key), file, item.locations, ready, emptySet())
                     }
@@ -206,7 +251,7 @@ internal class InternetArchiveSource(
                 response.bodyAsChannel().cancel(null)
                 stream(target, file, locations, ready, visited + url)
             } else {
-                if (response.status.value != 200) throw InvalidArchiveData()
+                if (response.status.value != 200) throw ArchiveHttpFailure(response.status.value)
                 val type = response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase()
                 if (type != file.resource.mediaType) throw InvalidArchiveData()
                 response.uncompressed()

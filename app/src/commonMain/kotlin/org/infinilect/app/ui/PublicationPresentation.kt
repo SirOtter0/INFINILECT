@@ -93,7 +93,7 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
     progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
-    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, collections: org.infinilect.app.collections.CollectionsController? = null, organizationCovers: org.infinilect.app.covers.PublicationCovers? = null, actions: @Composable () -> Unit) {
+    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, collections: org.infinilect.app.collections.CollectionsController? = null, organizationCovers: org.infinilect.app.covers.PublicationCovers? = null, downloads: org.infinilect.app.downloads.OfflineDownloads? = null, actions: @Composable () -> Unit) {
     val strings = LocalAppStrings.current
     val feedback = remember {SnackbarHostState()}
     val focus = remember { FocusRequester() }
@@ -133,7 +133,16 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                                 }
                             }
                         }
-                        if(collections!=null) PublicationOrganizationActions(publication,collections,organizationCovers,feedback)
+                        if(collections!=null) PublicationOrganizationActions(publication,collections,organizationCovers,feedback,downloads)
+                        else downloads?.let {Row {org.infinilect.app.downloads.DownloadAction(publication,it)}}
+                        downloads?.let {manager ->
+                            org.infinilect.app.downloads.DownloadFailureMessage(publication.id,manager)
+                            when(manager.backend.capability(publication.id)) {
+                                org.infinilect.app.downloads.DownloadCapability.IMPORTED -> Text(strings[UiText.DL_IMPORTED],style=MaterialTheme.typography.caption)
+                                org.infinilect.app.downloads.DownloadCapability.UNSUPPORTED -> Text(strings[UiText.DL_NOT_ALLOWED],style=MaterialTheme.typography.caption)
+                                else -> Unit
+                            }
+                        }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
                         (suppliedSynopsis ?: synopsis)?.let { text ->
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

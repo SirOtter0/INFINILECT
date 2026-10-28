@@ -56,7 +56,7 @@ internal fun OrganizationToggle(label: String, glyph: LibraryGlyph, active: Bool
  * leaving stops feedback, not the durable operation. No optimistic membership/favorite copy. */
 @Composable
 internal fun PublicationOrganizationActions(publication: Publication, controller: CollectionsController,
-    covers: PublicationCovers?, feedback: SnackbarHostState) {
+    covers: PublicationCovers?, feedback: SnackbarHostState,downloads: org.infinilect.app.downloads.OfflineDownloads? = null) {
     val strings=LocalAppStrings.current
     val membership by controller.membership.collectAsState()
     val library by controller.library.collectAsState()
@@ -105,12 +105,13 @@ internal fun PublicationOrganizationActions(publication: Publication, controller
             }
             LibraryIconButton(strings[UiText.LIB_ORGANIZE],LibraryGlyph.TAG,enabled=enabled) {organize=true}
         }
+        downloads?.let {org.infinilect.app.downloads.DownloadAction(publication,it)}
     }
     if(membership.unavailable) TextButton(controller::refreshLibrary,Modifier.heightIn(min=48.dp)) {Text(strings[UiText.UI_RETRY_LIBRARY])}
     error?.let {Text(strings.status(it),color=MaterialTheme.colors.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
     if(organizationResult==false) Text(strings[UiText.LIB_SAVE_ERROR],color=MaterialTheme.colors.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
     if(confirm) AlertDialog(onDismissRequest={confirm=false},title={Text(strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM])},
-        text={Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_FILES_HISTORY_AND_SAVED_READING_POSITIONS_ARE])},
+        text={Column {Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_FILES_HISTORY_AND_SAVED_READING_POSITIONS_ARE]);if(downloads!=null) Text(strings[UiText.DL_LIBRARY_KEEP],style=MaterialTheme.typography.caption)}},
         confirmButton={TextButton({confirm=false;changeMembership(true)},Modifier.heightIn(min=48.dp),enabled=enabled){Text(strings[UiText.UI_REMOVE])}},
         dismissButton={TextButton({confirm=false},Modifier.heightIn(min=48.dp)){Text(strings[UiText.CANCEL])}})
     if(organize && entry!=null) LibraryOrganizer(listOf(entry),tags,controller,covers) {organize=false}

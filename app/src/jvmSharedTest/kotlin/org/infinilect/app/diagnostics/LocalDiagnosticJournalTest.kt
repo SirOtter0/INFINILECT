@@ -9,6 +9,14 @@ import java.util.concurrent.Executors
 import kotlin.test.*
 
 class LocalDiagnosticJournalTest {
+    @Test fun downloadEventsAndFiniteCauseCodesSurviveJournalRestart() = fixture { dir ->
+        val journal=LocalDiagnosticJournal(dir);journal.enable()
+        TechnicalEvent.entries.filter {it.name.startsWith("DOWNLOAD_")}.forEach {journal.record(it,4,11)}
+        journal.flush()
+        val restored=LocalDiagnosticJournal(dir);restored.restore()
+        TechnicalEvent.entries.filter {it.name.startsWith("DOWNLOAD_")}.forEach {assertTrue(restored.summary().contains("code=${it.name} g=4 n=11"))}
+        restored.disable();assertFalse(restored.summary().contains("DOWNLOAD_"))
+    }
     private fun fixture(block: (File) -> Unit) {
         val dir = Files.createTempDirectory("original-diagnostic-test").toFile()
         try { block(File(dir, "journal")) } finally { dir.deleteRecursively() }

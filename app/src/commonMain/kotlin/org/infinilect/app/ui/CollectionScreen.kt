@@ -28,6 +28,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
     position: LazyGridState = rememberLazyGridState(), progressRecords: List<ReadingProgress> = emptyList()) {
     val strings = LocalAppStrings.current
     val controller = application.collections
+    val offline by (application.downloads?.available ?: remember {kotlinx.coroutines.flow.MutableStateFlow(emptySet<PublicationId>())}).collectAsState()
     val library by controller.library.collectAsState()
     val history by controller.history.collectAsState()
     val confirmation by controller.confirmClear.collectAsState()
@@ -125,7 +126,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
                         open = { application.openSaved(publication) }, details = { detail = publication; detailFormat = it },
                         select = { controller.select(publication.id) }, toggle = { controller.toggleSelection(publication.id) },
                         remove = { remove = CollectionRemoval(publication, history = false) },
-                        favorite=entry.favorite,completed=entry.readingState==LibraryReadingState.COMPLETED,artworkHeight=artworkHeight)
+                        favorite=entry.favorite,completed=entry.readingState==LibraryReadingState.COMPLETED,artworkHeight=artworkHeight,offline=publication.id in offline)
                 } else historyGroups.forEach { (day, group) ->
                     item(key = "history-day:${day.key}") { Text(if (day.label == "Today" || day.label == "Yesterday") strings.status(day.label) else day.label, style = MaterialTheme.typography.subtitle2,
                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp).semantics { heading() }) }
@@ -148,7 +149,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
             progress = progress, close = { detail = null }, descriptions=application.descriptions,
-            collections=controller,organizationCovers=application.covers,cover={DetailsCover(publication.displayPublication(),application.covers)}) {
+            collections=controller,downloads=application.downloads,organizationCovers=application.covers,cover={DetailsCover(publication.displayPublication(),application.covers)}) {
             PublicationReadAction(progress) {detail=null;application.openSaved(publication)}
         }
     }
@@ -156,7 +157,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
     remove?.let { removal ->
         AlertDialog(onDismissRequest = { remove = null },
             title = { Text(if (removal.history) strings[UiText.UI_REMOVE_FROM_HISTORY] else strings[UiText.UI_REMOVE_FROM_LIBRARY_CONFIRM]) },
-            text = { Text(if (removal.history) strings.format(UiText.UI_1_S_WILL_BE_REMOVED_FROM_THIS_LIST_ONLY_FILES_AND_SAVED_READING_POSITIONS_ARE_KE, removal.publication.title) else strings.format(UiText.UI_1_S_WILL_BE_REMOVED_FROM_THIS_LIST_ONLY_FILES_AND_SAVED_READING_POSITIONS_ARE_KE_NOTICE, removal.publication.title)) },
+            text = { Column {Text(if (removal.history) strings.format(UiText.UI_1_S_WILL_BE_REMOVED_FROM_THIS_LIST_ONLY_FILES_AND_SAVED_READING_POSITIONS_ARE_KE, removal.publication.title) else strings.format(UiText.UI_1_S_WILL_BE_REMOVED_FROM_THIS_LIST_ONLY_FILES_AND_SAVED_READING_POSITIONS_ARE_KE_NOTICE, removal.publication.title));if(!removal.history && application.downloads!=null) Text(strings[UiText.DL_LIBRARY_KEEP],style=MaterialTheme.typography.caption)} },
             confirmButton = { TextButton({
                 remove = null
                 if (removal.history) controller.removeHistory(removal.publication.id) else controller.removeLibrary(removal.publication.id)
@@ -165,7 +166,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
     }
     batch?.let { ids ->
         AlertDialog(onDismissRequest = { batch = null }, title = { Text(strings.format(UiText.UI_REMOVE_1_S_FROM_LIBRARY, ids.size)) },
-            text = { Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_ORIGINAL_FILES_IMPORTED_COPIES_HISTORY_AND_SA]) },
+            text = { Column {Text(strings[UiText.UI_ONLY_LIBRARY_MEMBERSHIP_IS_REMOVED_ORIGINAL_FILES_IMPORTED_COPIES_HISTORY_AND_SA]);if(application.downloads!=null) Text(strings[UiText.DL_LIBRARY_KEEP],style=MaterialTheme.typography.caption)} },
             confirmButton = { TextButton({ batch = null; controller.removeSelectedLibrary(ids) }, Modifier.heightIn(min = 48.dp), enabled = !busy) { Text(strings[UiText.UI_REMOVE]) } },
             dismissButton = { TextButton({ batch = null }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.CANCEL]) } })
     }
