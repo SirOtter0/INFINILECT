@@ -37,7 +37,10 @@ private fun fail(f: DownloadFailure): Nothing=throw DownloadException(f)
 internal class FileOfflineDownloads(private val directory: Path?,providers: List<OfflineDownloadProvider>,
     private val validate: suspend (DownloadOffer,ResourceLoader)->Unit,
     private val io: CoroutineDispatcher=Dispatchers.IO,private val clock: ()->Long=System::currentTimeMillis,
-    private val freeSpace: (Path)->Long={Files.getFileStore(it).usableSpace}) : DownloadBackend {
+    // Android libcore rejects Files.getFileStore with SecurityException. File queries
+    // the private directory's usable space without that unsupported FileStore lookup.
+    // Zero/unknown space still fails the existing conservative admission check.
+    private val freeSpace: (Path)->Long={it.toFile().usableSpace}) : DownloadBackend {
     private val providers=providers.associateBy {it.downloadSourceId}
     private val mutex=Mutex()
     private val rows=linkedMapOf<PublicationId,DownloadEntry>()
