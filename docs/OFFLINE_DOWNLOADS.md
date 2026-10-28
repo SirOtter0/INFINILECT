@@ -114,7 +114,7 @@ Physical Android checklist (realme C55, pending):
 
 Automated totals, final build/artifact results and commit references follow.
 
-## Final automated verification and APK
+## Initial delivery verification and APK — 2026-10-27
 
 Verified executable/test source: `253820cf74a7980a2841feb66bb4bd76271201a1`. The final documentation-only commit may follow it; application/core/platform/build/test source hashes were frozen and checked before signing.
 
@@ -144,3 +144,99 @@ The managed run used JDK 21, the installed Android SDK and the existing external
 Development APK: `INFINILECT-PR36-253820c-development.apk`, 21116470 bytes. SHA-256: `87a302fe3efd6634b29641329769ea663730e837da57a6db12bf3d5b7593165d`. Package `org.infinilect.app`, minSdk 26, unchanged development versionCode 1 / versionName 0.0.1-SNAPSHOT. Certificate SHA-256 matches the existing development installation: `95c708e6cfee94bc13ecf34d2a38cf4f1dc5eab185133f8e139629dd0be470fe`. APK v2 signature and 16 KiB alignment verified; six en/es/ca string/plural payloads match generated resources; six native libraries are byte-identical to the PR #35 baseline. Permissions are unchanged. Signing inputs and new test fixtures are absent from the APK and repository.
 
 The APK is delivered separately in the user's private Drive; readback confirms the exact expected size and owner-only permissions. No public release or public sharing was created. Install over the prior app without uninstalling/clearing data. **Draft remains pending physical acceptance.**
+
+## Investigación de la descarga de `RepublicanismMarxism` — 2026-10-28
+
+### Evidencia y límites del diagnóstico
+
+El informe físico describe un círculo con exclamación en los detalles. Es `LibraryGlyph.ERROR`: `DownloadAction` lo selecciona cuando el registro pasa a `DownloadStatus.ERROR`. El trabajador de `OfflineDownloads` llega a ese estado cuando falla `backend.download`; no identifica por sí mismo si hubo un problema HTTP, de autorización, disco o validación. Antes de esta corrección, la explicación solo estaba en Ajustes → Descargas. Los detalles no observaban ni presentaban ese error persistido. Además, `FileOfflineDownloads.offers`, la apertura y las lecturas capturaban cualquier excepción recuperable del proveedor como `CONNECTION`, perdiendo las distinciones anteriores.
+
+Se consultó el endpoint oficial `https://archive.org/metadata/RepublicanismMarxism`. Declaraba `mediatype=texts`, licencia CC0 1.0 y ningún indicador de préstamo/acceso restringido de los comprobados por el adaptador. Ofrecía:
+
+| Archivo | Formato reconocido | Bytes declarados |
+| --- | --- | --- |
+| `AestheticaFascisticaI-MassimoMorigiMarxismoRepubblicanesimo_djvu.txt` | DjVuTXT → TXT | 86.957 |
+| `AestheticaFascisticaI-MassimoMorigiMarxismoRepubblicanesimo.pdf` | Text PDF → PDF | 384.189 |
+
+Ambos cumplían las comprobaciones existentes de oferta. La declaración de la fuente no es una garantía independiente sobre los derechos del depositante ni sobre todas las jurisdicciones. Se conservan las restricciones de acceso y de archivo, sin scraping ni elusión.
+
+La prueba inicial, con el código de transferencia anterior a estos cambios, descargó y validó **ambos archivos completos** usando `InternetArchiveSource` y `FileOfflineDownloads` reales en Linux/Desktop. Cada flujo recibió metadatos HTTP 200 y entrega 302 → 200; la redirección coincidía con una ubicación anunciada por los metadatos oficiales (`dn760009.eu.archive.org/0/items/RepublicanismMarxism`). No fue necesario ampliar hosts, formatos ni permisos. La configuración de proxy y certificados del entorno se aplicó externamente a la JVM; no se incorporó a la aplicación. Un primer intento sin esa configuración falló antes de recibir HTTP, por lo que no se utiliza como evidencia del fallo Android.
+
+**No se ha reproducido ni confirmado la causa de la transferencia fallida del realme C55.** Los defectos demostrados son la pérdida de categoría del error y su presentación insuficiente. No se presenta esta corrección como solución verificada de un fallo específico de red o almacenamiento en Android.
+
+### Cadena real y cambios
+
+`PublicationPresentation` / `PublicationOrganizationActions` → `DownloadAction` → `OfflineDownloads.offers/enqueue` → `FileOfflineDownloads.offers/pending/download` → `InternetArchiveSource.downloadOffers/openDownload` → `ArchiveMetadata.item` / `ArchiveUrls.redirect` → stream privado → validadores existentes → renombrado y registro atómicos.
+
+- `ArchiveMetadata.item` conserva exactamente la admisión anterior, y añade un motivo tipado cuando no hay oferta: restricciones, derechos no verificados o ausencia de un formato compatible. No concede nuevos derechos.
+- Las rutas específicas de descarga de `InternetArchiveSource` conservan HTTP/categoría sin incluir mensajes del servidor. El lector original mantiene su contrato de errores. Una interrupción del cuerpo de Archive se distingue de una respuesta/documento inválido.
+- `FileOfflineDownloads` propaga `DownloadException` en lugar de convertirla siempre en conexión; conserva cancelación, límites, validación y limpieza de `.part`.
+- Los detalles muestran el error persistido en texto accesible, debajo de la fila compacta de acciones, con la misma traducción usada por Descargas. El icono conserva la acción de reintentar y expone la causa mediante semántica accesible. Las denegaciones al resolver ofertas abren el panel desplazable existente, con Cerrar siempre accesible.
+- Se añaden tres mensajes en inglés/español/catalán: rechazo HTTP, derechos no verificados y formatos no admitidos. Los modelos de traducción no cambian.
+- No cambian actualizador, permisos, identificador, firma, dependencias, esquema de Biblioteca, archivos importados, lectores ni presupuestos de almacenamiento/concurrencia.
+
+### Diagnóstico local sin datos privados
+
+`AndroidLocalDiagnostics` conecta el gestor al mismo sumidero optativo ya existente. Sigue limitado a compilaciones de desarrollo, desactivado por defecto, local, sin servidor; desactivarlo borra el registro. Se mantienen 128 líneas / 40.000 bytes y la escritura agrupada existente. No hay eventos por bloque de datos/fotograma. El registro solo recibe vocabulario cerrado y números, nunca identificadores de publicación, títulos, texto, consultas, URLs, rutas, credenciales ni mensajes completos de excepciones.
+
+Eventos nuevos: `DOWNLOAD_STARTED`, `DOWNLOAD_RESOLVING`, `DOWNLOAD_OPENING`, `DOWNLOAD_TRANSFERRING`, `DOWNLOAD_VALIDATING`, `DOWNLOAD_COMMITTING`, `DOWNLOAD_HTTP_ERROR`, `DOWNLOAD_UNSUPPORTED_FORMAT`, `DOWNLOAD_RIGHTS_UNVERIFIED`, `DOWNLOAD_STORAGE_ERROR`, `DOWNLOAD_COMPLETED`, `DOWNLOAD_FAILED`, `DOWNLOAD_CANCELLED` y `DOWNLOAD_CAUSE`.
+
+En estos eventos, `g` indica una **fase técnica**, no un identificador de publicación:
+
+| g | Fase |
+| --- | --- |
+| 0 | Notificación del controlador, sin fase específica |
+| 1 | Resolución / nueva comprobación de autorización |
+| 2 | Preparación o persistencia del almacén |
+| 3 | Apertura HTTP del recurso |
+| 4 | Transferencia al archivo privado |
+| 5 | Validación mediante el lector |
+| 6 | Publicación atómica del archivo completo |
+
+En `DOWNLOAD_STARTED` y `DOWNLOAD_VALIDATING`, `n` identifica únicamente el formato: 1=TXT, 2=EPUB, 3=CBZ, 4=PDF (0=otro). En `DOWNLOAD_HTTP_ERROR`, `n` es el estado HTTP (100–599; 0 si no se conoce). En `DOWNLOAD_FAILED`, `n` es la categoría estable: 1=no permitido, 2=conexión, 3=incompleto, 4=inválido, 5=límite, 6=espacio, 7=almacenamiento, 8=archivo ausente, 9=interrumpido, 10=en uso, 11=HTTP, 12=derechos no verificados, 13=formato incompatible. `DOWNLOAD_CAUSE` añade únicamente una causa enumerada: 1=IO, 2=acceso, 3=operación no soportada, 4=renombrado atómico no soportado, 5=DNS, 6=TLS, 7=timeout, 8=datos inválidos. 0 significa desconocida. Un mismo fallo puede emitir tanto detalle de backend como notificación final del controlador; no implica dos descargas. No se interceptan errores fatales como si fueran recuperables.
+
+### Reproducción y validación física pendiente
+
+`./gradlew :app:archiveOfflineDownloadCheck` es una prueba **explícita de red**, independiente de test/check/build. Solo prueba la publicación comunicada, rechaza ofertas no admitidas, descarga TXT/PDF serialmente y no imprime contenido. Tras descargar, reconstruye el almacén y vuelve a validar la copia con la fuente cerrada. El PDF usa PDFBox real en Desktop. No es una prueba de Android ni una prueba de modo avión físico. En un entorno con proxy/CA, configurar la JVM externamente sin desactivar TLS.
+
+Las pruebas deterministas usan HTTP simulado con el adaptador, almacén y validadores reales; los documentos de prueba son originales/sintéticos. Cubren estados HTTP de metadatos y contenido, derechos, restricciones, formato EPUB no ofrecido por este adaptador, JSON/MIME inválidos, respuesta truncada, ausencia de parciales disponibles, reinicio y lectura TXT sin solicitudes remotas. Las pruebas offline de EPUB2/EPUB3 existentes comprueban documentos originales autorizados, reinicio, lectura/progreso e integridad de Biblioteca con el proveedor de prueba inaccesible. **No son una descarga EPUB de un catálogo público**: el adaptador público actual sigue ofreciendo únicamente TXT/PDF. No se ha inventado una oferta EPUB para cumplir una prueba.
+
+Checklist del realme C55, una vez disponible una APK autorizada para su instalación:
+
+1. No desinstalar ni borrar datos. La investigación separada de Play Protect continúa; no desactivar ni ignorar una advertencia de aplicación dañina.
+2. En Ajustes → Diagnóstico de desarrollo, activar «Registrar diagnóstico local» antes de probar.
+3. Abrir `RepublicanismMarxism`, pulsar Descargar, comprobar las ofertas reales y elegir TXT. Confirmar explícitamente. Repetir por separado con PDF, eliminando solo la copia descargada entre formatos si corresponde.
+4. Si falla, leer el mensaje bajo las acciones; ir directamente a Ajustes → «Ver y copiar diagnóstico», actualizar y copiar el informe. Conservar especialmente las líneas `DOWNLOAD_*`. La ausencia de eventos previos a activar el registro es normal.
+5. Cancelar una descarga pendiente/en curso y reintentar. Cambiar de pestaña debe conservarla; pasar Android a segundo plano la cancela según el contrato de esta PR. Una copia incompleta nunca debe aparecer disponible sin conexión.
+6. Tras completar, activar modo avión y desactivar Wi-Fi, cerrar/reabrir la aplicación y abrir desde Descargas/Biblioteca. Verificar lectura y posición tras volver a abrir. Esta comprobación física sigue pendiente.
+7. Confirmar que eliminar solo la descarga mantiene Biblioteca, Historial, posición, favoritos y etiquetas. Revisar mensajes en es/en/ca. Desactivar el diagnóstico al terminar para borrar el informe.
+
+### Resultado de la verificación de esta corrección
+
+| Comprobación | Resultado |
+| --- | --- |
+| Suite Desktop completa | 1.692 aprobadas; 0 fallos/errores/omitidas |
+| Suite Android-host completa | 1.413 aprobadas; 0 fallos/errores/omitidas |
+| Core JVM | 59 aprobadas; 0 fallos/errores/omitidas |
+| Core Android-host | 59 aprobadas; 0 fallos/errores/omitidas |
+| APK Android debug | Compilación correcta |
+| Recursos empaquetados | Verificados en/es/ca: strings y plurales |
+| Compilación Desktop | Correcta |
+| Android Lint | 0 incidencias |
+| Guard de localización | 541 cadenas y 3 plurales en los tres idiomas; 189 archivos Kotlin revisados |
+| `git diff --check` | Correcto |
+
+Total: **3.223 ejecuciones aprobadas**. Se añaden 11 casos (nueve compartidos y dos de interfaz Desktop), 20 ejecuciones adicionales. Se mantuvieron todas las pruebas anteriores. Durante el desarrollo, una regresión detectó la conversión errónea de un cuerpo truncado a error de conexión; la envoltura específica de lectura lo conserva ahora como incompleto. Otra comprobación existente detectó que el aviso de diagnóstico y su fallback inglés no coincidían; se corrigió el recurso/fallback y se ejecutaron de nuevo las cuatro suites completas, sin debilitar la aserción. El último conjunto completo de tareas terminó con `BUILD SUCCESSFUL`.
+
+Comando de verificación, con el JDK/SDK y las bibliotecas nativas de pruebas configurados externamente en este entorno:
+
+```sh
+./gradlew :app:desktopTest :app:testAndroidHostTest :core:jvmTest :core:testAndroidHostTest :androidApp:assembleDebug :androidApp:verifyDebugLanguageResources :desktopApp:compileKotlin :androidApp:lintDebug
+./gradlew :app:archiveOfflineDownloadCheck
+python3 tools/check_localization.py
+git diff --check
+```
+
+La comprobación de red posterior descargó otra vez **86.957 bytes TXT y 384.189 bytes PDF**, validó ambos, cerró la fuente y reconstruyó el almacén para validar las copias locales. Es evidencia Linux/Desktop con el motor de red y PDFBox de esa plataforma, no una instalación Android, un ensayo de modo avión en el realme ni una prueba de su motor PDF nativo.
+
+Se comparó el manifiesto combinado de la APK debug recién compilada con la APK de desarrollo anterior de PR #36: son idénticos, incluyendo componentes, paquete, SDK y permisos. Las seis bibliotecas nativas también son idénticas byte a byte. No hay cambios de dependencias, configuración de firma ni código del actualizador. No se han utilizado las claves privadas del usuario, firmado una nueva entrega ni publicado una release en esta intervención. La causa específica del fallo Android y la instalación/validación física siguen pendientes; el diagnóstico nuevo permite obtener la evidencia sin PC.

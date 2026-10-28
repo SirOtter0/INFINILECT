@@ -12,6 +12,7 @@ internal const val MAX_METADATA_BYTES = 2 * 1024 * 1024
 internal const val MAX_RESOURCE_BYTES = 64L * 1024 * 1024
 internal val ARCHIVE_ID = SourceId("internet-archive")
 internal class InvalidArchiveData : Exception("Internet Archive returned unsupported data.")
+internal enum class ArchiveDownloadDenial { RESTRICTED, RIGHTS_UNVERIFIED, UNSUPPORTED_FORMAT }
 
 internal data class ArchiveFile(val resource: PublicationResource, val size: Long)
 internal data class ArchiveItem(
@@ -21,6 +22,7 @@ internal data class ArchiveItem(
     val licenseUrl: String?,
     val locations: Set<ArchiveLocation>,
     val possibleCopyrightStatus: String?,
+    val downloadDenial: ArchiveDownloadDenial? = null,
 )
 
 /** Bounded JSON metadata, not a universal Internet Archive schema. */
@@ -147,12 +149,14 @@ internal object ArchiveMetadata {
             metadata.strings("collection").any { it in setOf("loggedin", "inlibrary", "printdisabled", "lendinglibrary") }
         val rawFiles = root["files"] as? JsonArray ?: throw InvalidArchiveData()
         if (rawFiles.size > 200) throw InvalidArchiveData()
+        var fileRightsDenied = false
+        var fileRestricted = false
         val files = if (restricted || license !in cc0 || metadata.string("mediatype") != "texts") emptyList() else
             rawFiles.mapNotNull { value ->
                 val file = value as? JsonObject ?: throw InvalidArchiveData()
-                if (file.flag("private") || file.flag("restricted")) return@mapNotNull null
+                if (file.flag("private") || file.flag("restricted")) {fileRestricted=true;return@mapNotNull null}
                 // Never override a file-specific declaration with the item-level CC0 field.
-                if (file["rights"] != null || (file["licenseurl"] != null && file.string("licenseurl") !in cc0)) return@mapNotNull null
+                if (file["rights"] != null || (file["licenseurl"] != null && file.string("licenseurl") !in cc0)) {fileRightsDenied=true;return@mapNotNull null}
                 val name = file.string("name") ?: return@mapNotNull null
                 try { ArchiveUrls.filename(name) } catch (_: IllegalArgumentException) { return@mapNotNull null }
                 val format = file.string("format")
@@ -170,6 +174,12 @@ internal object ArchiveMetadata {
         return ArchiveItem(Publication(id, metadata.string("title") ?: identifier, PublicationType.DOCUMENT,
             metadata.strings("creator"), files.map { it.resource }, metadata.strings("language"),
             ArchiveUrls.canonical(identifier), rights ?: license), files, rights, license,
-            locations(root, identifier), metadata.string("possible-copyright-status"))
+            locations(root, identifier), metadata.string("possible-copyright-status"),
+            if(files.isNotEmpty()) null else when {
+                restricted -> ArchiveDownloadDenial.RESTRICTED
+                license !in cc0 || fileRightsDenied -> ArchiveDownloadDenial.RIGHTS_UNVERIFIED
+                fileRestricted -> ArchiveDownloadDenial.RESTRICTED
+                else -> ArchiveDownloadDenial.UNSUPPORTED_FORMAT
+            })
     }
 }

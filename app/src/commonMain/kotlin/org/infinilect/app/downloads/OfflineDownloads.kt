@@ -6,10 +6,36 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import org.infinilect.core.*
+import org.infinilect.app.diagnostics.*
 
 internal enum class DownloadStatus { NOT_DOWNLOADED, PENDING, DOWNLOADING, DOWNLOADED, ERROR, CANCELLED }
-internal enum class DownloadFailure { NOT_ALLOWED, CONNECTION, INCOMPLETE, INVALID, LIMIT, SPACE, STORAGE, MISSING, INTERRUPTED, BUSY }
-internal class DownloadException(val failure: DownloadFailure) : Exception(failure.name)
+// Explicit diagnostic codes; persisted values remain the existing enum names, not ordinals.
+internal enum class DownloadFailure(val diagnosticCode: Int) {
+    NOT_ALLOWED(1), CONNECTION(2), INCOMPLETE(3), INVALID(4), LIMIT(5), SPACE(6), STORAGE(7), MISSING(8), INTERRUPTED(9), BUSY(10),
+    HTTP(11), RIGHTS_UNVERIFIED(12), UNSUPPORTED_FORMAT(13),
+}
+internal enum class DownloadCause(val code: Int) { UNKNOWN(0), IO(1), ACCESS(2), UNSUPPORTED_OPERATION(3), ATOMIC_MOVE(4), DNS(5), TLS(6), TIMEOUT(7), INVALID_DATA(8) }
+internal class DownloadException(val failure: DownloadFailure, val httpStatus: Int? = null, val technicalCause: DownloadCause = DownloadCause.UNKNOWN) : Exception(failure.name)
+internal enum class DownloadStage(val code: Long) { RESOLVE(1), STORAGE(2), OPEN(3), TRANSFER(4), VALIDATE(5), COMMIT(6) }
+internal fun PublicationFormat.downloadDiagnosticCode()=when(this) {
+    PublicationFormat.TEXT -> 1
+    PublicationFormat.EPUB -> 2
+    PublicationFormat.CBZ -> 3
+    PublicationFormat.PDF -> 4
+    else -> 0
+}
+/** Only finite codes/statuses enter the optional journal, never exception messages or IDs. */
+internal fun TechnicalDiagnostics?.downloadFailure(error: DownloadException, stage: DownloadStage) {
+    val kind = when(error.failure) {
+        DownloadFailure.HTTP -> TechnicalEvent.DOWNLOAD_HTTP_ERROR
+        DownloadFailure.RIGHTS_UNVERIFIED -> TechnicalEvent.DOWNLOAD_RIGHTS_UNVERIFIED
+        DownloadFailure.UNSUPPORTED_FORMAT -> TechnicalEvent.DOWNLOAD_UNSUPPORTED_FORMAT
+        DownloadFailure.STORAGE, DownloadFailure.SPACE -> TechnicalEvent.DOWNLOAD_STORAGE_ERROR
+        else -> null
+    }
+    if(kind!=null) event(kind,stage.code,if(error.failure==DownloadFailure.HTTP) error.httpStatus?.takeIf {it in 100..599} ?: 0 else error.failure.diagnosticCode)
+    if(error.technicalCause!=DownloadCause.UNKNOWN) event(TechnicalEvent.DOWNLOAD_CAUSE,stage.code,error.technicalCause.code)
+}
 internal enum class DownloadCapability { AUTHORIZED_SOURCE, IMPORTED, UNSUPPORTED }
 internal data class DownloadOffer(val publication: Publication,val resource: PublicationResource,val size: Long?)
 /** Explicit opt-in per adapter; discovery metadata alone is never an acquisition grant. */
@@ -30,6 +56,7 @@ internal interface OfflineReadingCopy {
     fun close()
 }
 internal interface DownloadBackend {
+    fun setDiagnostics(sink: TechnicalDiagnostics?) = Unit
     fun capability(id: PublicationId): DownloadCapability
     suspend fun load(): DownloadSnapshot
     suspend fun offers(id: PublicationId): List<DownloadOffer>
@@ -48,6 +75,8 @@ internal data class DownloadCatalogue(val loaded: Boolean=false,val entries: Lis
  * Navigation never owns these jobs. Android backgrounding cancels rather than impersonating
  * a persistent OS download service. Retry is explicit and starts from fresh authorization. */
 internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: CoroutineDispatcher=Dispatchers.Main.immediate) {
+    internal var technicalDiagnostics: TechnicalDiagnostics? = null
+        set(value) {field=value;backend.setDiagnostics(value)}
     private val scope=CoroutineScope(SupervisorJob()+dispatcher)
     private val mutable=MutableStateFlow(DownloadCatalogue())
     val catalogue=mutable.asStateFlow()
@@ -73,7 +102,10 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
             available.value=catalogue.value.entries.filter {it.status==DownloadStatus.DOWNLOADED}.map {it.id}.toSet()
         }
     }
-    private fun fail(reason: DownloadFailure) {if(!closed.value) mutable.update {it.copy(failure=reason)}}
+    private fun fail(reason: DownloadFailure) {
+        technicalDiagnostics.event(TechnicalEvent.DOWNLOAD_FAILED,count=reason.diagnosticCode)
+        if(!closed.value) mutable.update {it.copy(failure=reason)}
+    }
     private fun mutate(id: PublicationId? = null,block: suspend ()->Unit) {
         if(closed.value || id!=null && id in catalogue.value.busy) return
         if(id!=null) mutable.update {it.copy(busy=it.busy+id)}
@@ -102,12 +134,15 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
             val currentProgress=progress.getOrPut(id) {MutableStateFlow(DownloadProgress())}
             val job=scope.async {backend.download(row,{withContext(dispatcher) {publish(it)}},{withContext(dispatcher) {if(!closed.value) currentProgress.value=it}})}
             active=id to job
-            try {publish(job.await());refresh()}
+            technicalDiagnostics.event(TechnicalEvent.DOWNLOAD_STARTED,count=row.format.downloadDiagnosticCode())
+            try {publish(job.await());technicalDiagnostics.event(TechnicalEvent.DOWNLOAD_COMPLETED);refresh()}
             catch(e: CancellationException) {
+                technicalDiagnostics.event(TechnicalEvent.DOWNLOAD_CANCELLED)
                 withContext(NonCancellable) {try {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish)} catch(_: Exception) {fail(DownloadFailure.STORAGE)}}
                 currentCoroutineContext().ensureActive()
             } catch(e: Exception) {
                 val failure=(e as? DownloadException)?.failure ?: DownloadFailure.CONNECTION
+                technicalDiagnostics.event(TechnicalEvent.DOWNLOAD_FAILED,count=failure.diagnosticCode)
                 try {backend.settle(id,DownloadStatus.ERROR,failure)?.let(::publish);refresh()} catch(_: Exception) {fail(DownloadFailure.STORAGE)}
             } finally {active=null}
         }

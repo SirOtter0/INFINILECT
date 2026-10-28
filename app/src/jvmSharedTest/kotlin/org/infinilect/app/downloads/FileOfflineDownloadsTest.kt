@@ -8,8 +8,24 @@ import java.nio.channels.FileChannel
 import kotlinx.coroutines.*
 import org.infinilect.core.*
 import kotlin.test.*
+import org.infinilect.app.diagnostics.*
 
 class FileOfflineDownloadsTest {
+    @Test fun storageDiagnosticsRetainOnlyBoundedCauseCodesAndNoIncompleteFile()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("offline-diagnostics");val source=OfflineFixtureSource();val p=source.add(PublicationFormat.TEXT);val owner=OfflineFixtureOwner(root,source)
+        val store=owner.store {throw UnsupportedOperationException("private/path/credential must never enter journal")}
+        val events=mutableListOf<Triple<TechnicalEvent,Long,Int>>()
+        store.setDiagnostics(TechnicalDiagnostics {event,stage,count ->events+=Triple(event,stage,count)})
+        try {
+            store.load();val row=store.pending(store.offers(p.id).single())
+            assertEquals(DownloadFailure.STORAGE,assertFailsWith<DownloadException> {store.download(row,{},{})}.failure)
+            assertTrue(Triple(TechnicalEvent.DOWNLOAD_CAUSE,DownloadStage.STORAGE.code,DownloadCause.UNSUPPORTED_OPERATION.code) in events)
+            assertTrue(events.any {it.first==TechnicalEvent.DOWNLOAD_STORAGE_ERROR})
+            assertTrue(events.any {it.first==TechnicalEvent.DOWNLOAD_FAILED})
+            assertEquals(0,source.opens);assertNull(store.acquire(p.id))
+            assertFalse(events.toString().contains("credential"))
+        } finally {store.close();owner.close();root.toFile().deleteRecursively()}
+    }
     private suspend fun download(store: DownloadBackend,id: PublicationId): DownloadEntry {
         val row=store.pending(store.offers(id).first())
         return store.download(row,{},{})

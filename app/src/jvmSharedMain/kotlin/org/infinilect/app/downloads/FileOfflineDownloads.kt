@@ -17,6 +17,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.infinilect.core.*
+import org.infinilect.app.diagnostics.*
 
 internal const val OFFLINE_DIRECTORY="offline-downloads-v1"
 internal const val DOWNLOAD_FILE_LIMIT=64L*1024*1024
@@ -52,6 +53,8 @@ internal class FileOfflineDownloads(private val directory: Path?,providers: List
     private var revision=0L
     private var quota=512L*1024*1024
     private val active=mutableSetOf<PublicationId>()
+    @Volatile private var diagnostics: TechnicalDiagnostics?=null
+    override fun setDiagnostics(sink: TechnicalDiagnostics?) {diagnostics=sink}
     init {require(providers.size==this.providers.size)}
     override fun capability(id: PublicationId)=when {
         id.sourceId.value=="local-imports" -> DownloadCapability.IMPORTED
@@ -72,8 +75,15 @@ internal class FileOfflineDownloads(private val directory: Path?,providers: List
     }
     private suspend fun <T> locked(block: suspend ()->T): T = withContext(io) {
         try {mutex.withLock {checkOpen();block()}}
-        catch(e: CancellationException) {throw e} catch(e: DownloadException) {throw e}
-        catch(_: Exception) {fail(DownloadFailure.STORAGE)}
+        catch(e: CancellationException) {throw e} catch(e: DownloadException) {
+            diagnostics.downloadFailure(e,DownloadStage.STORAGE)
+            throw e
+        }
+        catch(error: Exception) {
+            val failure=downloadError(error,DownloadFailure.STORAGE)
+            diagnostics.downloadFailure(failure,DownloadStage.STORAGE)
+            throw failure
+        }
     }
     private fun path(id: PublicationId,suffix: String)=base().resolve(offlineKey(id)+suffix)
     private fun children(): List<Path> {
@@ -139,10 +149,19 @@ internal class FileOfflineDownloads(private val directory: Path?,providers: List
     }
     override suspend fun snapshot(): DownloadSnapshot=locked {initialize();snapshotLocked()}
     override suspend fun offers(id: PublicationId): List<DownloadOffer> {
-        if(capability(id)!=DownloadCapability.AUTHORIZED_SOURCE) fail(DownloadFailure.NOT_ALLOWED)
-        val offers=try {providers.getValue(id.sourceId).downloadOffers(id)} catch(e: CancellationException) {throw e} catch(_: Exception) {fail(DownloadFailure.CONNECTION)}
-        if(offers.size>32) fail(DownloadFailure.LIMIT)
-        return offers.filter {it.publication.id==id && compatible(it)}
+        diagnostics.event(TechnicalEvent.DOWNLOAD_RESOLVING,DownloadStage.RESOLVE.code)
+        try {
+            if(capability(id)!=DownloadCapability.AUTHORIZED_SOURCE) fail(DownloadFailure.NOT_ALLOWED)
+            val offers=try {providers.getValue(id.sourceId).downloadOffers(id)} catch(e: CancellationException) {throw e} catch(e: Exception) {throw downloadError(e,DownloadFailure.CONNECTION)}
+            if(offers.size>32) fail(DownloadFailure.LIMIT)
+            val compatible=offers.filter {it.publication.id==id && compatible(it)}
+            if(offers.isNotEmpty() && compatible.isEmpty()) fail(DownloadFailure.UNSUPPORTED_FORMAT)
+            return compatible
+        } catch(e: DownloadException) {
+            diagnostics.downloadFailure(e,DownloadStage.RESOLVE)
+            diagnostics.event(TechnicalEvent.DOWNLOAD_FAILED,DownloadStage.RESOLVE.code,e.failure.diagnosticCode)
+            throw e
+        }
     }
     private fun compatible(offer: DownloadOffer): Boolean {
         val r=offer.resource
@@ -163,8 +182,10 @@ internal class FileOfflineDownloads(private val directory: Path?,providers: List
     override suspend fun download(entry: DownloadEntry,started: suspend (DownloadEntry)->Unit,progress: suspend (DownloadProgress)->Unit): DownloadEntry {
         val job=currentCoroutineContext().job;jobs+=job
         var content: ResourceContent?=null
+        var stage=DownloadStage.RESOLVE
         try {return withContext(io) {
             val offer=offers(entry.id).firstOrNull {it.resource==entry.resource} ?: fail(DownloadFailure.NOT_ALLOWED)
+            stage=DownloadStage.STORAGE
             val cap=locked {
                 initialize();if(active.isNotEmpty() || rows[entry.id]?.status!=DownloadStatus.PENDING) fail(DownloadFailure.BUSY)
                 val remaining=quota-used()
@@ -176,17 +197,19 @@ internal class FileOfflineDownloads(private val directory: Path?,providers: List
                 maximum
             }
             val part=path(entry.id,".part");val hash=MessageDigest.getInstance("SHA-256");var total=0L;var last=0L
-            val opened=try {providers.getValue(entry.id.sourceId).openDownload(offer)} catch(e: CancellationException) {throw e} catch(_: Exception) {fail(DownloadFailure.CONNECTION)}
+            stage=DownloadStage.OPEN;diagnostics.event(TechnicalEvent.DOWNLOAD_OPENING,stage.code)
+            val opened=try {providers.getValue(entry.id.sourceId).openDownload(offer)} catch(e: CancellationException) {throw e} catch(e: Exception) {throw downloadError(e,DownloadFailure.CONNECTION)}
             content=opened;contents+=opened
             val declared=opened.sizeBytes
             if(declared?.let {it !in 1..cap || offer.size!=null && it!=offer.size}==true) fail(DownloadFailure.INCOMPLETE)
             Files.deleteIfExists(part)
+            stage=DownloadStage.TRANSFER;diagnostics.event(TechnicalEvent.DOWNLOAD_TRANSFERRING,stage.code)
             FileChannel.open(part,CREATE_NEW,WRITE,NOFOLLOW_LINKS).use {out ->
                 val b=ByteArray(32768)
                 while(true) {
                     checkOpen();ensureActive()
                     val requested=minOf(b.size.toLong(),cap-total+1).toInt()
-                    val n=try {opened.read(b,0,requested)} catch(e: CancellationException) {throw e} catch(_: Exception) {fail(DownloadFailure.CONNECTION)}
+                    val n=try {opened.read(b,0,requested)} catch(e: CancellationException) {throw e} catch(e: Exception) {throw downloadError(e,DownloadFailure.CONNECTION)}
                     if(n==-1) break
                     if(n !in 1..requested) fail(DownloadFailure.INCOMPLETE)
                     total+=n;if(total>cap) fail(DownloadFailure.LIMIT)
@@ -199,15 +222,26 @@ internal class FileOfflineDownloads(private val directory: Path?,providers: List
             opened.close();contents-=opened;content=null
             val digest=hash.digest().hex()
             val local=localLoader(part,total,offer.resource)
+            stage=DownloadStage.VALIDATE;diagnostics.event(TechnicalEvent.DOWNLOAD_VALIDATING,stage.code,entry.format.downloadDiagnosticCode())
             try {validate(offer,local)} catch(e: CancellationException) {throw e} catch(e: DownloadException) {throw e} catch(_: Exception) {fail(DownloadFailure.INVALID)}
             ensureActive();checkOpen()
+            stage=DownloadStage.COMMIT;diagnostics.event(TechnicalEvent.DOWNLOAD_COMMITTING,stage.code)
             locked {
                 if(rows[entry.id]?.status!=DownloadStatus.DOWNLOADING) fail(DownloadFailure.BUSY)
                 Files.move(part,path(entry.id,".payload"),ATOMIC_MOVE,REPLACE_EXISTING)
                 val completed=save(rows.getValue(entry.id).copy(status=DownloadStatus.DOWNLOADED,size=total,sha256=digest,completedAt=clock(),failure=null))
                 progress(DownloadProgress(total,total));completed
             }
-        }} catch(e: CancellationException) {throw e} catch(e: DownloadException) {throw e} catch(_: Exception) {fail(DownloadFailure.STORAGE)}
+        }} catch(e: CancellationException) {throw e} catch(e: DownloadException) {
+            diagnostics.downloadFailure(e,stage)
+            diagnostics.event(TechnicalEvent.DOWNLOAD_FAILED,stage.code,e.failure.diagnosticCode)
+            throw e
+        } catch(error: Exception) {
+            val failure=downloadError(error,DownloadFailure.STORAGE)
+            diagnostics.downloadFailure(failure,stage)
+            diagnostics.event(TechnicalEvent.DOWNLOAD_FAILED,stage.code,DownloadFailure.STORAGE.diagnosticCode)
+            throw failure
+        }
         finally {
             content?.let {contents-=it;try {it.close()} catch(_: Exception) {}}
             withContext(NonCancellable+io) {mutex.withLock {active-=entry.id;root?.resolve(offlineKey(entry.id)+".part")?.let {try {Files.deleteIfExists(it)} catch(_: IOException) {}}}}

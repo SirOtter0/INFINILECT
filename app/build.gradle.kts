@@ -178,6 +178,7 @@ mapOf(
     "oapenAlternateAccessCheck" to "org.infinilect.app.oapen.OapenAlternateAccessCheck",
     "internetArchiveAcquisitionCheck" to "org.infinilect.app.archive.InternetArchiveAcquisitionCheck",
     "internetArchiveTextReadingCheck" to "org.infinilect.app.archive.InternetArchiveTextReadingCheck",
+    "archiveOfflineDownloadCheck" to "org.infinilect.app.downloads.ArchiveOfflineDownloadCheck",
 ).forEach { (taskName, entrypoint) ->
     tasks.register<JavaExec>(taskName) {
         group = "verification"

@@ -24,14 +24,19 @@ class OfflineInterfaceTest {
         val r=PublicationResource(id,"original",PublicationFormat.TEXT,"text/plain")
         val p=Publication(id,"Original Unicode 🦦 title with a very long unchanged publication name",PublicationType.BOOK,resources=listOf(r))
         var row: DownloadEntry?=null;var revision=0L;var opens=0;var removed=0
+        var transferFailure: DownloadFailure?=null;var offerFailure: DownloadFailure?=null
         val gate=CompletableDeferred<Unit>()
         override fun capability(id: PublicationId)=DownloadCapability.AUTHORIZED_SOURCE
         override suspend fun load()=snapshot()
         override suspend fun snapshot()=DownloadSnapshot(listOfNotNull(row),revision=revision)
-        override suspend fun offers(id: PublicationId)=listOf(DownloadOffer(p,r,1000))
+        override suspend fun offers(id: PublicationId): List<DownloadOffer> {
+            offerFailure?.let {throw DownloadException(it)}
+            return listOf(DownloadOffer(p,r,1000))
+        }
         override suspend fun pending(offer: DownloadOffer)=DownloadEntry(p,r.format,DownloadStatus.PENDING,r,1000,revision=++revision).also {row=it}
         override suspend fun download(entry: DownloadEntry,started: suspend (DownloadEntry)->Unit,progress: suspend (DownloadProgress)->Unit): DownloadEntry {
             opens++;row=entry.copy(status=DownloadStatus.DOWNLOADING,revision=++revision);started(row!!);progress(DownloadProgress(500,1000));gate.await()
+            transferFailure?.let {throw DownloadException(it)}
             return row!!.copy(status=DownloadStatus.DOWNLOADED,revision=++revision).also {row=it}
         }
         override suspend fun settle(id: PublicationId,status: DownloadStatus,failure: DownloadFailure?)=row?.copy(status=status,failure=failure,revision=++revision).also {row=it}
@@ -49,6 +54,43 @@ class OfflineInterfaceTest {
     private fun TestScope.click(scene: ImageComposeScene,label: String) {
         val n=nodes(scene).last {it.config.contains(SemanticsActions.OnClick) && !it.config.contains(SemanticsProperties.Disabled) && has(it,label)}
         assertTrue(n.config[SemanticsActions.OnClick].action!!.invoke());draw(scene)
+    }
+    @Test fun transferFailureIsVisibleInDetailsAndRetryCanRecoverInAllThreeLanguages()=runTest {
+        deviceInterfaceLanguage();val previous=Locale.getDefault()
+        val tables=try {interfaceLanguages.associateWith {language ->applyInterfaceLanguage(language);loadInterfaceStrings(getSystemResourceEnvironment())}} finally {Locale.setDefault(previous)}
+        for((_,s) in tables) {
+            val b=Backend().also {it.transferFailure=DownloadFailure.HTTP}
+            val manager=OfflineDownloads(b,StandardTestDispatcher(testScheduler))
+            val scene=ImageComposeScene(320,540,Density(1f,1.8f),coroutineContext=StandardTestDispatcher(testScheduler))
+            try {
+                scene.setContent {CompositionLocalProvider(LocalAppStrings provides s) {ApplicationTheme(ApplicationThemeMode.DARK) {Column {
+                    DownloadAction(b.p,manager);DownloadFailureMessage(b.id,manager)
+                }}}}
+                draw(scene);click(scene,s[UiText.DL_DOWNLOAD]);click(scene,s[UiText.DL_DOWNLOAD])
+                b.gate.complete(Unit);draw(scene)
+                assertEquals(DownloadStatus.ERROR,b.row?.status)
+                assertTrue(nodes(scene).any {it.config.getOrNull(SemanticsProperties.Text)?.any {text ->text.text==s[UiText.DL_HTTP_ERROR]}==true})
+                assertTrue(nodes(scene).any {it.config.getOrNull(SemanticsProperties.StateDescription)==s[UiText.DL_HTTP_ERROR]})
+                b.transferFailure=null;click(scene,s[UiText.DL_RETRY]);click(scene,s[UiText.DL_DOWNLOAD])
+                assertEquals(DownloadStatus.DOWNLOADED,b.row?.status)
+                assertFalse(nodes(scene).any {it.config.getOrNull(SemanticsProperties.Text)?.any {text ->text.text==s[UiText.DL_HTTP_ERROR]}==true})
+            } finally {scene.close();manager.close();runCurrent();manager.awaitClosed()}
+        }
+    }
+    @Test fun deniedRightsAndUnsupportedFormatsExplainWhyWithoutStartingTransfer()=runTest {
+        for(failure in listOf(DownloadFailure.RIGHTS_UNVERIFIED,DownloadFailure.UNSUPPORTED_FORMAT)) {
+            val b=Backend().also {it.offerFailure=failure};val s=LocalizedStrings()
+            val manager=OfflineDownloads(b,StandardTestDispatcher(testScheduler));val scene=ImageComposeScene(320,440,Density(1f,1.8f),coroutineContext=StandardTestDispatcher(testScheduler))
+            try {
+                scene.setContent {CompositionLocalProvider(LocalAppStrings provides s) {ApplicationTheme(ApplicationThemeMode.LIGHT) {DownloadAction(b.p,manager)}}}
+                draw(scene);click(scene,s[UiText.DL_DOWNLOAD])
+                assertTrue(nodes(scene).any {has(it,s[failure.label()])});assertEquals(0,b.opens)
+                val close=nodes(scene).last {it.config.contains(SemanticsActions.OnClick) && has(it,s[UiText.CLOSE])}
+                assertTrue(close.boundsInRoot.top>=0 && close.boundsInRoot.bottom<=440)
+                assertTrue(nodes(scene).any {it.config.contains(SemanticsActions.ScrollBy)})
+                click(scene,s[UiText.CLOSE]);assertTrue(manager.catalogue.value.entries.isEmpty())
+            } finally {scene.close();manager.close();runCurrent();manager.awaitClosed()}
+        }
     }
     @Test fun consentStartsOnlyOneTransferAndCompletionAndDeletionRemainIndependentOfDialogLifetime()=runTest {
         val b=Backend();val manager=OfflineDownloads(b,StandardTestDispatcher(testScheduler));val strings=LocalizedStrings()

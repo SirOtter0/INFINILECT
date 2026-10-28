@@ -136,6 +136,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         if(collections!=null) PublicationOrganizationActions(publication,collections,organizationCovers,feedback,downloads)
                         else downloads?.let {Row {org.infinilect.app.downloads.DownloadAction(publication,it)}}
                         downloads?.let {manager ->
+                            org.infinilect.app.downloads.DownloadFailureMessage(publication.id,manager)
                             when(manager.backend.capability(publication.id)) {
                                 org.infinilect.app.downloads.DownloadCapability.IMPORTED -> Text(strings[UiText.DL_IMPORTED],style=MaterialTheme.typography.caption)
                                 org.infinilect.app.downloads.DownloadCapability.UNSUPPORTED -> Text(strings[UiText.DL_NOT_ALLOWED],style=MaterialTheme.typography.caption)

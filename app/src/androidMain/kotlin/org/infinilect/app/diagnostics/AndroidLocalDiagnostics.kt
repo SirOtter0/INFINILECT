@@ -42,6 +42,7 @@ class AndroidLocalDiagnostics(context: Context, private val sources: Application
     init {
         if (available) {
             sources.technicalDiagnostics = sink; sources.covers?.technicalDiagnostics = sink
+            sources.downloads?.technicalDiagnostics = sink
             scope.launch { operations.withLock {
                 io {
                     journal.restore()
@@ -116,6 +117,7 @@ class AndroidLocalDiagnostics(context: Context, private val sources: Application
         synchronized(handlerLock) { closed = true; uninstallHandler() }
         if (sources.technicalDiagnostics === sink) sources.technicalDiagnostics = null
         if (sources.covers?.technicalDiagnostics === sink) sources.covers.technicalDiagnostics = null
+        if (sources.downloads?.technicalDiagnostics === sink) sources.downloads.technicalDiagnostics = null
         signal.close(); scope.cancel()
     }
 }

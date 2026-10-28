@@ -31,6 +31,9 @@ internal fun DownloadFailure.label()=when(this) {
     DownloadFailure.MISSING -> UiText.DL_LOCAL_UNAVAILABLE
     DownloadFailure.INTERRUPTED -> UiText.DL_INTERRUPTED
     DownloadFailure.BUSY -> UiText.DL_BUSY
+    DownloadFailure.HTTP -> UiText.DL_HTTP_ERROR
+    DownloadFailure.RIGHTS_UNVERIFIED -> UiText.DL_RIGHTS_UNVERIFIED
+    DownloadFailure.UNSUPPORTED_FORMAT -> UiText.DL_UNSUPPORTED_FORMAT
 }
 internal fun DownloadStatus.label()=when(this) {
     DownloadStatus.NOT_DOWNLOADED -> UiText.DL_NOT_DOWNLOADED
@@ -66,6 +69,7 @@ internal fun DownloadAction(publication: Publication,manager: OfflineDownloads) 
         else -> UiText.DL_DOWNLOAD
     }]
     LibraryIconButton(label,if(status==DownloadStatus.DOWNLOADED) LibraryGlyph.CHECK else if(status==DownloadStatus.ERROR) LibraryGlyph.ERROR else LibraryGlyph.DOWNLOAD,
+        modifier=Modifier.semantics {row?.failure?.let {stateDescription=s[it.label()]}},
         enabled=!busy && !looking && capability==DownloadCapability.AUTHORIZED_SOURCE,active=status==DownloadStatus.DOWNLOADED,
         icon=if(active) ({DownloadActionProgress(manager,id)}) else if(looking) ({CircularProgressIndicator(Modifier.size(22.dp),strokeWidth=2.dp)}) else null) {
         when {
@@ -93,7 +97,19 @@ internal fun DownloadAction(publication: Publication,manager: OfflineDownloads) 
         values[chosen].publication.rights?.let {Text(it,style=MaterialTheme.typography.caption)}
     }}
     if(remove) RemoveDownloadConfirmation({remove=false}) {remove=false;manager.remove(id)}
-    failure?.let {reason -> AlertDialog({failure=null},title={Text(s[UiText.DL_ERROR])},text={Text(s[reason.label()])},confirmButton={TextButton({failure=null},Modifier.heightIn(min=48.dp)) {Text(s[UiText.CLOSE])}})}
+    failure?.let {reason -> LibraryPanel(s[UiText.DL_ERROR],{failure=null}) {Text(s[reason.label()])}}
+}
+/** Lives below the compact action row, so a transfer failure stays readable without
+ * changing the row's layout or reopening Downloads. No collector of chunk progress. */
+@Composable
+internal fun DownloadFailureMessage(id: PublicationId,manager: OfflineDownloads) {
+    val s=LocalAppStrings.current
+    val failure by remember(manager,id) {manager.catalogue.map {catalogue ->
+        val row=catalogue.entries.firstOrNull {it.id==id}
+        row?.failure?.takeIf {row.status==DownloadStatus.ERROR} ?: catalogue.failure
+    }.distinctUntilChanged()}.collectAsState(null)
+    failure?.let {Text(s[it.label()],style=MaterialTheme.typography.body2,color=MaterialTheme.colors.error,
+        modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
 }
 @Composable
 private fun RemoveDownloadConfirmation(close: ()->Unit,confirm: ()->Unit) {

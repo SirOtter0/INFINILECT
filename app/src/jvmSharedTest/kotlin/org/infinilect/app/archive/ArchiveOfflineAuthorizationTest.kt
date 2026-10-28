@@ -6,6 +6,7 @@ import io.ktor.client.engine.mock.*
 import io.ktor.http.*
 import kotlinx.coroutines.test.runTest
 import org.infinilect.core.*
+import org.infinilect.app.downloads.*
 import kotlin.test.*
 
 /** Production admission and URL/redirect policy, synthetic HTTP bytes; no live server. */
@@ -31,14 +32,15 @@ class ArchiveOfflineAuthorizationTest {
             {it.replace("dutchgovernmentdocuments","inlibrary")},
             {it.replace("http://creativecommons.org/publicdomain/zero/1.0/","https://example.invalid/unknown-rights")}
         )
-        for(change in mutations) {
+        for((index,change) in mutations.withIndex()) {
             var restricted=false;var assets=0
             InternetArchiveSource(MockEngine {request ->
                 if(!request.url.encodedPath.startsWith("/metadata/")) {assets++;error("Denied item must never reach payload")}
                 respond(itemFixture {if(restricted) change(it) else it},headers=headersOf(HttpHeaders.ContentType,"application/json"))
             }).use {source ->
                 val offer=source.downloadOffers(id).first();restricted=true
-                assertTrue(source.downloadOffers(id).isEmpty())
+                assertEquals(if(index==4) DownloadFailure.RIGHTS_UNVERIFIED else DownloadFailure.NOT_ALLOWED,
+                    assertFailsWith<DownloadException> {source.downloadOffers(id)}.failure)
                 assertFails {source.openDownload(offer)};assertEquals(0,assets)
             }
         }

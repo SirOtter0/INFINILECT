@@ -404,7 +404,7 @@
     <string name="image_not_rendered">[Imagen no representada]</string>
     <string name="direct_model_limits">Pares directos disponibles: inglés ↔ español e inglés ↔ catalán. Español ↔ catalán no está disponible; la traducción mediante inglés no está habilitada.</string>
     <string name="debug_diagnostics">Diagnóstico de desarrollo</string>
-    <string name="debug_diagnostics_notice">Registro técnico local opcional para investigar cierres. Sin datos de libros, búsquedas ni perfil. Al desactivarlo se borra el registro. Solo en compilaciones de desarrollo.</string>
+    <string name="debug_diagnostics_notice">Registro técnico local opcional para investigar cierres y fallos de descarga. Sin datos de libros, búsquedas ni perfil. Al desactivarlo se borra el registro. Solo en compilaciones de desarrollo.</string>
     <string name="debug_diagnostics_enable">Registrar diagnóstico local</string>
     <string name="debug_diagnostics_error">No se ha podido guardar el diagnóstico. Comprueba el espacio disponible y vuelve a intentarlo.</string>
     <string name="debug_diagnostics_view">Ver y copiar diagnóstico</string>
@@ -538,4 +538,7 @@
     <string name="dl_empty">No hay descargas conservadas. Usa la acción de descarga en los detalles de una publicación.</string>
     <string name="dl_consent">¿Guardar una copia privada sin conexión de este formato autorizado? Esto no la añade a Biblioteca. Un reintento vuelve a descargar el archivo completo.</string>
     <string name="dl_read">Leer sin conexión</string>
+    <string name="dl_http_error">La fuente ha rechazado la descarga o no está disponible temporalmente. Vuelve a intentarlo más tarde.</string>
+    <string name="dl_rights_unverified">INFINILECT no ha podido verificar un permiso explícito para conservar esta publicación sin conexión. No se ha descargado ningún archivo.</string>
+    <string name="dl_unsupported_format">Esta publicación no ofrece un archivo autorizado en un formato compatible dentro de los límites de descarga. Internet Archive admite actualmente TXT y PDF; este adaptador no ofrece EPUB ni CBZ.</string>
 </resources>

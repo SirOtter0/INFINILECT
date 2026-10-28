@@ -404,7 +404,7 @@
     <string name="image_not_rendered">[Image not rendered]</string>
     <string name="direct_model_limits">Available direct pairs: English ↔ Spanish and English ↔ Catalan. Spanish ↔ Catalan is not supported; translating through English is not enabled.</string>
     <string name="debug_diagnostics">Development diagnostics</string>
-    <string name="debug_diagnostics_notice">Optional local technical log for investigating crashes. No book, search or profile data. Disabling deletes the log. Available only in development builds.</string>
+    <string name="debug_diagnostics_notice">Optional local technical journal to investigate crashes and download failures. No book, search or profile data. Disabling deletes the journal. Development builds only.</string>
     <string name="debug_diagnostics_enable">Record local diagnostics</string>
     <string name="debug_diagnostics_error">The diagnostic log could not be saved. Check available storage and try again.</string>
     <string name="debug_diagnostics_view">View and copy diagnostic log</string>
@@ -538,4 +538,7 @@
     <string name="dl_empty">No retained downloads. Use the download action in publication details.</string>
     <string name="dl_consent">Save a private offline copy of this authorized format? This does not add it to Library. A retry downloads the whole file again.</string>
     <string name="dl_read">Read offline</string>
+    <string name="dl_http_error">The source rejected the download or is temporarily unavailable. Retry later.</string>
+    <string name="dl_rights_unverified">INFINILECT could not verify an explicit permission to keep this publication offline. No file was downloaded.</string>
+    <string name="dl_unsupported_format">This publication has no authorized file in a supported format within the download limits. Internet Archive currently supports TXT and PDF; EPUB and CBZ are not offered by this adapter.</string>
 </resources>

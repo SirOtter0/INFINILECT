@@ -6,6 +6,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
 import org.infinilect.core.*
+import org.infinilect.app.diagnostics.*
 import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -42,6 +43,21 @@ class OfflineDownloadsTest {
         override suspend fun close() {closed=true}
     }
     private fun OfflineDownloads.status(key: String="a")=catalogue.value.entries.firstOrNull {it.id.localId==key}?.status
+    @Test fun optionalDownloadDiagnosticsRecordFinalStatesWithoutPublicationData()=runTest {
+        val backend=Backend();val owner=OfflineDownloads(backend,StandardTestDispatcher(testScheduler))
+        val events=mutableListOf<Pair<TechnicalEvent,Int>>()
+        owner.technicalDiagnostics=TechnicalDiagnostics {event,_,count ->events+=event to count}
+        try {
+            runCurrent();owner.enqueue(backend.offer("private-title-never-logged"));runCurrent()
+            assertTrue(TechnicalEvent.DOWNLOAD_STARTED to 1 in events)
+            backend.failure=DownloadFailure.HTTP;backend.gate.complete(Unit);runCurrent()
+            assertTrue(TechnicalEvent.DOWNLOAD_FAILED to DownloadFailure.HTTP.diagnosticCode in events)
+            backend.failure=null;owner.retry(backend.offer("private-title-never-logged").publication.id);runCurrent()
+            assertTrue(TechnicalEvent.DOWNLOAD_COMPLETED to 0 in events)
+            val count=events.size;owner.technicalDiagnostics=null
+            owner.enqueue(backend.offer("another"));runCurrent();assertEquals(count,events.size)
+        } finally {owner.close();owner.awaitClosed()}
+    }
     @Test fun duplicatesAreRejectedAndOnlyOneTransferRunsWithEightAcceptedIntents()=runTest {
         val backend=Backend();val owner=OfflineDownloads(backend,StandardTestDispatcher(testScheduler));runCurrent()
         repeat(10) {owner.enqueue(backend.offer("a"))};runCurrent();assertEquals(1,backend.starts)
