@@ -1,4 +1,4 @@
-# Secure release updates — PR #35
+# Secure release updates — PR #35 / permission hardening PR #37
 
 ## Audit and boundary before implementation
 
@@ -97,13 +97,13 @@ TLS/hostname validation stays with the unchanged platform engines (OkHttp Androi
 
 ## Android installation and data safety
 
-After a verified candidate, Install first checks `canRequestPackageInstalls()`. Only then can the user explicitly open Android's permission page for this package and return to retry Install. `REQUEST_INSTALL_PACKAGES` enables this official user-approved path; `ACCESS_NETWORK_STATE` supports the opt-in validated/unmetered check. No storage, notification, accessibility-service, device-admin or privileged install permission is added.
+No current variant declares `REQUEST_INSTALL_PACKAGES` (PR #37). The retained installer code can only be enabled by a reviewed variant that declares the capability, is not debuggable, and has independent trusted keys/certificate pins. Only after all these conditions and candidate verification can the future Install path check `canRequestPackageInstalls()` and explicitly open Android’s source-permission page. `ACCESS_NETWORK_STATE` remains necessary for optional validated/unmetered metadata checks, independently of installation. No storage, notification, accessibility-service, device-admin or privileged install permission is added.
 
 PackageInstaller uses `MODE_FULL_INSTALL`, the fixed package name, a bounded `base.apk` session copy and fsync. API 31+ explicitly requires user action; older non-privileged installations use system confirmation. An explicit, non-exported receiver handles the system-held mutable PendingIntent needed for status extras and launches the system's pending confirmation. No downloaded field becomes an Intent, command, path or installer parameter. Failed/uncommitted sessions are abandoned. Cancellations/failures are reported when the app returns; success is not announced merely because commit/handoff succeeded. The next process reads the actual installed version from PackageManager.
 
 No uninstall, data clearing, package/signing change, data migration or reader/storage rewrite occurs. Library, History, favorites, tags, locators, preferences, imported files and translation models stay in their existing directories/stores. Public trust and physical install-over behavior are **not established** by a successful build.
 
-## Verification and limits
+## Historical verification — PR #35
 
 Deterministic tests use MockEngine, barriers and original synthetic bytes. Manifest signatures use real RSA-3072 keys generated only in test memory; APK inspection/handoff is mocked on host. There is no trusted third-party APK fixture and no live-service dependency in unit tests. Headless shared Compose tests exercise actual Settings/notes at 320×440 dp, en/es/ca, light/dark, 100/180% font sizes, accessible actions and the disabled public-install boundary. They are not Android/TalkBack/device evidence.
 
@@ -135,7 +135,7 @@ Public update installation is intentionally unavailable until the reviewed real 
 
 ## Physical acceptance checklist
 
-1. Install the same-development-certificate APK over the current version, without uninstalling/clearing data. Check Library, History, favorites/tags and all reader positions before and after; confirm translation models still work offline.
+1. Only if Android accepts the same-development-certificate APK with Play Protect enabled, install over the current version without uninstalling/clearing data. Do not bypass a harmful-app warning. Check Library, History, favorites/tags and all reader positions before and after; confirm translation models still work offline.
 2. Open Settings → Updates in es/en/ca, light/dark, narrow portrait/landscape and large fonts. Verify the installed version/code, selected channel, scrolling, notes Close action and accessible labels/keyboard/TalkBack.
 3. Check Stable and Beta. With the current empty official catalogue, expect no newer release. Disconnect and retry: a localized recoverable error, no reader/navigation lock. Test return after reconnecting and rapid repeated presses.
 4. Leave automatic checks off: no startup network check/popup. Opt in, foreground on a validated unmetered network, then repeat tab/background/foreground transitions: at most one attempt per day; metered/battery-saver skips automatic attempts. Manual checks remain possible. Persist the choice/channel across restart and cache clearing.
@@ -151,3 +151,118 @@ Public update installation is intentionally unavailable until the reviewed real 
 - [Java signature algorithms](https://docs.oracle.com/en/java/javase/21/docs/specs/security/standard-names.html#signature-algorithms).
 
 No source/assets are copied from Mihon. Existing GPL-3.0-or-later and dependency licenses remain unchanged.
+
+## PR #37 — mínima autoridad del instalador Android
+
+### Auditoría y causa del permiso innecesario
+
+Base verificada: `main` `209e3e918132f144fc5c588d0db6eca271d8a704` (PR #36 fusionada). Se auditaron `androidApp/build.gradle.kts`, el manifiesto principal, `AndroidUpdates`, `GitHubUpdates`, `UpdateTrust`, `UpdateController`, sus interfaces/UI y los manifiestos combinados originales de las dos variantes. No hay flavors, variantes beta ni módulos de macrobenchmark Android. `app` y `core` son bibliotecas KMP, no otras aplicaciones instalables. Beta/Estable son canales de metadatos, no variantes Gradle.
+
+`REQUEST_INSTALL_PACKAGES` se añadió sin condición al manifiesto común en PR #35. Por tanto, llegaba tanto a `debug` como a `release`, aunque `productionUpdateTrust()` sigue vacío (sin claves de manifiesto ni certificados públicos autorizados) y el backend ya rechazaba además cualquier instalación debuggable. **Ninguna variante actual puede instalar legítimamente actualizaciones.** No basta con que una variante se llame release.
+
+| Variante | Instalador actual | REQUEST_INSTALL_PACKAGES antes | Después | Otros permisos de uso |
+| --- | --- | --- | --- | --- |
+| debug | Bloqueado: desarrollo, sin confianza y ahora sin declaración | Sí | Ausente | INTERNET, ACCESS_NETWORK_STATE, permiso interno signature de AndroidX |
+| release | Bloqueado: sin confianza y ahora sin declaración; sin configuración de firma pública | Sí | Ausente | Los mismos |
+| Desktop | No instala APK | No aplica | No aplica | Solo consulta y enlace oficial |
+
+Se conserva `ACCESS_NETWORK_STATE`: `AndroidUpdateInstaller.automaticAllowed()` consulta la red activa/capacidades VALIDATED y NOT_METERED y el modo de ahorro de energía para las comprobaciones automáticas optativas. Ese uso sigue existiendo cuando la instalación está deshabilitada. La consulta manual y los canales permanecen disponibles; ninguna comprobación descarga una APK automáticamente.
+
+### Cambios y coherencia entre manifiesto y runtime
+
+- El manifiesto principal utiliza una marca `tools:node="remove"` para la declaración ordinaria de `REQUEST_INSTALL_PACKAGES`, también frente a manifiestos de dependencias. No se añade ningún permiso, flavor ni opción Gradle para activarlo.
+- `UpdateInstaller.installationSupported` es una capacidad explícita, independiente del consentimiento/grant del usuario. Android la obtiene una vez de **las requestedPermissions de su propio paquete**, mediante la API pública `PackageManager.GET_PERMISSIONS`. No depende de metadatos remotos ni de si el usuario concedió «instalar desde esta fuente». Desktop la declara falsa.
+- El backend requiere conjuntamente Android + no debuggable + capacidad declarada + raíces de confianza configuradas. Revalida la condición antes de preparar, instalar y solicitar el permiso. El adaptador Android también rechaza la entrega y la apertura de la pantalla de permiso si falta la declaración.
+- Añadir claves por sí solo ya no puede habilitar una APK sin capacidad declarada. El grant Android continúa siendo otro requisito independiente del futuro flujo legítimo, después de verificación y consentimiento.
+- `verifyDebugUpdaterManifest` / `verifyReleaseUpdaterManifest` se registran mediante `androidComponents.onVariants` sobre `SingleArtifact.MERGED_MANIFEST`. Cualquier nueva variante recibe también el guard. Se ejecutan en `assemble<Variant>` y `check`, sin dependencia externa. Rechazan cualquier conjunto de permisos distinto del revisado, incluyendo declaraciones alternativas `uses-permission-sdk-23`, y exigen exactamente un callback receiver explícitamente no exportado y sin intent-filter.
+- `testUpdaterManifestPolicy` comprueba un manifiesto seguro y siete modificaciones rechazadas (permiso ordinario, permiso SDK, permiso privilegiado, receiver exportado, exported omitido, receiver ausente y paquete diferente). Son ocho controles de build separados de los casos JUnit.
+
+No cambian versiones, SDK, applicationId, configuración/certificados de firma, recursos de idioma, dependencias de ejecución, lectores, traducción ni el sistema de descargas de PR #36. El gate nuevo consulta metadatos del paquete una vez por propietario, no por fotograma ni por recomposición. No se inicia ningún servicio.
+
+Una futura distribución con instalación propia necesita una revisión explícita de variante/manifiesto/guard, claves y certificados públicos legítimos, firma y proceso de publicación. No se propone habilitarla mediante una propiedad `-P` ni por ser release. También debe validarse en Android su ruta hoy inalcanzable; la auditoría observa que `prepare` aún usa `Files.getFileStore` para el preflight de espacio, API incompatible con Android como se vio en PR #36. Este cambio de mínimo privilegio no activa esa ruta ni modifica esa operación: corregir/verificar ese requisito forma parte de la activación futura, no de habilitar permisos en builds que hoy no pueden instalar.
+
+### Revisión de la cadena de seguridad conservada
+
+- UI: comprobaciones automáticas desactivadas por defecto; consentimiento separado para descargar e instalar. Sin instalación silenciosa ni evasión de Play Protect.
+- Confianza: claves/pins incorporados por código revisado; nunca aceptados desde GitHub o preferencias. RSA ≥3072/SHA256, claves revocadas y validez temporal comprobadas antes de aceptar el payload del manifiesto. No se añade la clave/certificado de desarrollo como raíz pública.
+- Artefactos: tamaño/SHA-256 completo, paquete fijo, versiones crecientes, mínimo SDK, ABI y certificado coincidentes con manifiesto firmado e instalación actual. Se repiten hash/identidad antes de handoff. Android realiza su validación final de firma; los mocks host no prueban PackageInstaller real.
+- Red: HTTPS y confianza de plataforma; endpoints oficiales fijos, tres redirecciones a CDN autorizadas, límites de JSON/descarga y cancelación existentes. No se amplían hosts, tamaños, concurrency ni políticas TLS.
+- Componentes: `UpdateInstallReceiver` sigue `exported=false`, sin intent-filter, y valida acción e identificador de sesión del callback. El PendingIntent es explícito y está en manos del sistema. Se conserva la Activity MAIN/LAUNCHER y el receiver AndroidX protegido por `android.permission.DUMP`; no aparecen componentes exportados nuevos.
+- Archivos: nombres privados fijos, bloqueo de propietario, parciales eliminados, publicación atómica y copia de sesión del sistema. No se exponen rutas mediante FileProvider o grants URI amplios. Los errores visibles son códigos localizados, sin mensajes de servidor/credenciales ni datos de libros.
+
+### Comparación reproducible de APK y revisión de Play Protect
+
+Comparar con el original disponible `INFINILECT-PR35-01137f6-development.apk`, no una reconstrucción presentada como original. Su SHA-256 es `1a2bd39df6d0d935b2f5622a8a9e3e4cf4d1c815337fedbe0a4abf2bb05dce85`; certificado público SHA-256 `95c708e6cfee94bc13ecf34d2a38cf4f1dc5eab185133f8e139629dd0be470fe`. Es una firma de desarrollo para comprobar identidad, no un pin de actualización pública.
+
+```sh
+apkanalyzer manifest permissions INFINILECT-PR35-01137f6-development.apk
+apkanalyzer manifest permissions INFINILECT-PR37-development.apk
+apkanalyzer manifest print INFINILECT-PR35-01137f6-development.apk
+apkanalyzer manifest print INFINILECT-PR37-development.apk
+apksigner verify --verbose --print-certs INFINILECT-PR35-01137f6-development.apk
+apksigner verify --verbose --print-certs INFINILECT-PR37-development.apk
+sha256sum INFINILECT-PR35-01137f6-development.apk INFINILECT-PR37-development.apk
+```
+
+En los XML, revisar paquete, SDK/versiones, requestedPermissions, exported/permission de cada componente y ausencia de servicios nuevos. Comparar además las bibliotecas nativas por entrada ZIP/SHA-256, las versiones de dependencias empaquetadas y el diff Gradle (no hay dependencias nuevas). La APK release local es **sin firmar** y solo sirve para comprobar la variante; no es una versión pública ni una APK que deba instalarse sobre desarrollo.
+
+**Se confirma un permiso innecesario, no la causa del bloqueo de Google.** Ni retirarlo, ni una firma válida, ni un Lint limpio garantizan que Play Protect acepte la APK. No hay prueba física disponible en este entorno. No se modifica identidad/certificado, ofusca comportamiento ni desactiva seguridad para cambiar la detección.
+
+Si persiste el aviso, reunir sin datos personales: APK exacta/SHA-256/tamaño, procedencia y commit; certificado y verificación v2/v3; manifiestos/permisos/componentes antes/después; inventario de dependencias/nativos y resultados de pruebas; captura completa del aviso, fecha y versiones de Android/Play Protect aportadas por el propietario. Usar las [indicaciones oficiales](https://developers.google.com/android/play-protect/warning-dev-guidance) y el [formulario oficial de revisión](https://support.google.com/googleplay/android-developer/contact/protectappeals). El formulario puede requerir evidencia de un análisis externo: revisarlo con el propietario antes de cualquier subida a VirusTotal u otro servicio. No se ha subido ninguna APK a un escáner, enviado apelación, publicado APK/release ni cambiado la visibilidad de archivos.
+
+### Validación física pendiente — realme C55
+
+1. Mantener Play Protect activo. Si bloquea la APK, no pulsar «instalar de todas formas»: conservar la advertencia completa para su revisión. No desinstalar ni borrar datos para probar una identidad/firma distinta.
+2. Solo si Android permite una actualización legítima con el mismo certificado, comprobar Biblioteca/Historial, favoritos/etiquetas, posiciones y modelos antes/después.
+3. Ajustes → Actualizaciones: comprobar versión instalada, consultar Estable/Beta, errores de conexión/reintento y persistencia de preferencias. Actualizar/instalar debe permanecer deshabilitado por configuración; no debe abrirse «instalar desde esta fuente» ni el instalador del sistema.
+4. Revisar comprobaciones automáticas optativas con Wi-Fi no medido, ahorro de batería y regreso a primer plano. El arranque no debe descargar APK ni iniciar un servicio permanente.
+5. Comprobar los lectores y una copia offline ya conservada con modo avión/Wi-Fi apagado. Probar TXT/PDF autorizados, cancelación/reintento y eliminación solo de la descarga como regresión de PR #36; sin tocar datos existentes.
+6. Verificar es/en/ca, fuente grande y navegación. Estos pasos están preparados para el propietario; no se presentan como ya ejecutados físicamente.
+
+### Verificación ejecutada — PR #37
+
+Ejecución sobre el código congelado del cambio, con JDK 21, SDK/build-tools 37 y las rutas de Skiko/proxy/CA del entorno gestionado configuradas fuera del repositorio. Las cuatro suites se forzaron a ejecutar; no se desactivaron ni debilitaron pruebas.
+
+| Suite | Casos | Fallos / errores / omitidos |
+| --- | ---: | --- |
+| Desktop | 1.695 | 0 / 0 / 0 |
+| Android-host | 1.416 | 0 / 0 / 0 |
+| Core JVM | 59 | 0 / 0 / 0 |
+| Core Android-host | 59 | 0 / 0 / 0 |
+| **Total** | **3.229** | **0 / 0 / 0** |
+
+Las tres regresiones compartidas nuevas verifican las 16 combinaciones de plataforma/desarrollo/capacidad/confianza, la consulta de versiones sin capacidad de instalación y el bloqueo de una entrega ya preparada cuando la capacidad deja de estar disponible. Continúan pasando las pruebas existentes de firmas RSA reales con claves sintéticas, autenticidad/integridad, metadatos/artefactos no autorizados, redirecciones, cancelación, limpieza y errores. Estas pruebas no utilizan una clave pública de producción ni prueban PackageInstaller físico.
+
+Además de JUnit: ocho casos sintéticos de política de manifiesto y los dos guards de manifiestos finales pasan. Como control negativo, ambos guards se ejecutaron también contra los XML combinados **originales** guardados antes del cambio: los dos fallaron por el permiso adicional, como se esperaba. Después se volvieron a ejecutar contra los XML corregidos y pasaron. No se basa la comprobación solo en buscar texto en el manifiesto fuente.
+
+Tareas ejecutadas (mediante el wrapper externo del entorno; estos son sus equivalentes Gradle):
+
+```sh
+./gradlew --continue :core:jvmTest :core:testAndroidHostTest \
+  :app:desktopTest :app:testAndroidHostTest \
+  :androidApp:assembleDebug :androidApp:assembleRelease \
+  :androidApp:verifyDebugLanguageResources :androidApp:check \
+  :androidApp:lintRelease :desktopApp:compileKotlin
+./gradlew :androidApp:verifyDebugUpdaterManifest :androidApp:verifyReleaseUpdaterManifest
+python3 tools/check_localization.py
+git diff --check
+```
+
+- Ejecución completa: **BUILD SUCCESSFUL**, 12 min 54 s. Android debug, Android release **sin firmar** y compilación Desktop correctos.
+- Lint Android debug y release: **cero incidencias** en ambos informes XML.
+- Guard de localización: **541 cadenas y 3 plurales por idioma en en/es/ca**, 189 archivos Kotlin revisados. Los seis CVR empaquetados coinciden con los generados, tanto en debug como en release.
+- Comprobación real optativa `:app:githubUpdateCheck`: **BUILD SUCCESSFUL**, 14 s; repositorio oficial, canal estable, ninguna versión nueva, instalación de confianza falsa y **cero solicitudes de assets**. Es una llamada host mediante el proxy/CA del entorno, no una prueba de red Android física.
+- Diff: ocho archivos limitados al manifiesto, guard Gradle, capacidad del adaptador/backend, pruebas y este documento. No cambian descargas offline, lectores, core, SQL/migraciones, catálogo de modelos, dependencias, permisos adicionales, recursos ni firma Gradle. Pasan sus regresiones incluidas en las suites completas.
+
+### APK local verificable — PR #37
+
+Se preparó **localmente**, fuera del árbol Git y sin publicar ni subir a Drive/escáner/release, `INFINILECT-PR37-development.apk`:
+
+- Tamaño: **21.136.950 bytes**.
+- SHA-256: `64e5a0acef49aefc39746181d8a688469d0b10d128e3a56a3f4b35cc78516897`.
+- Certificado SHA-256: `95c708e6cfee94bc13ecf34d2a38cf4f1dc5eab185133f8e139629dd0be470fe`, idéntico al original #35; un firmante, firmas **v2 y v3 válidas** y alineación de 16 KiB verificada en ambos archivos.
+- Paquete `org.infinilect.app`, versionCode `1`, versionName `0.0.1-SNAPSHOT`, minSdk `26` y targetSdk `37` conservados. La firma se aplicó fuera de Gradle con el certificado de desarrollo suministrado; no se cambió la configuración de firma ni se incorporaron secretos al repositorio/APK.
+- La inspección de los manifiestos **dentro de las APK** debug/release confirma exactamente los tres permisos restantes de la tabla. Frente a la APK #35 solo se retira `REQUEST_INSTALL_PACKAGES`; no se añade otro permiso. Componentes y atributos exported/permission coinciden; el callback del actualizador sigue privado.
+- Seis bibliotecas nativas y 53 entradas empaquetadas de versiones de dependencias idénticas al original #35. No hay clases de fixtures de actualizaciones/descargas ni archivos de firma/contraseñas empaquetados.
+
+La igualdad del certificado permite preparar una actualización sobre la instalación previa, pero **no demuestra** que Android/Play Protect la acepten ni que los datos se conserven en una instalación física aún no ejecutada. No hay emulador/dispositivo disponible para validar PackageManager, permisos de instalación, TalkBack, aviso de Play Protect o lectura en modo avión. El bloqueo de Google sigue pendiente de comprobar; la PR se mantiene Draft, sin merge ni publicación.

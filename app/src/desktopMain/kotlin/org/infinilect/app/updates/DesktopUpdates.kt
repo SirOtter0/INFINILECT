@@ -8,6 +8,7 @@ import java.nio.file.Path
 import kotlinx.coroutines.*
 
 internal fun createDesktopUpdates(directory: Path?, preferences: Path?): UpdateController = UpdateController(GitHubUpdates(directory,object : UpdateInstaller {
+    override val installationSupported=false
     override val installed=InstalledUpdateBuild(INSTALLED_DESKTOP_VERSION,1,false)
     override suspend fun inspect(file: Path): ApkIdentity = updateError(UpdateFailure.INCOMPATIBLE)
     override suspend fun handoff(file: Path): InstallHandoff = updateError(UpdateFailure.INCOMPATIBLE)

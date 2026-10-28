@@ -15,16 +15,64 @@ import kotlin.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class GitHubUpdatesTest {
     private class Installer : UpdateInstaller {
+        override var installationSupported=true
         override var installed=SyntheticUpdates.installed
-        var inspected=0;var delegated=0;var mismatch=false;var permission=false
+        var inspected=0;var delegated=0;var mismatch=false;var permission=false;var permissionRequests=0
         override suspend fun inspect(file: Path): ApkIdentity {assertContentEquals(SyntheticUpdates.bytes,Files.readAllBytes(file));inspected++;return SyntheticUpdates.identity().let {if(mismatch) it.copy(certificates=setOf("2".repeat(64))) else it}}
         override suspend fun handoff(file: Path): InstallHandoff {assertTrue(Files.isRegularFile(file));if(permission) return InstallHandoff.PERMISSION;delegated++;return InstallHandoff.DELEGATED}
         override suspend fun automaticAllowed()=true
-        override fun requestPermission()=Unit
+        override fun requestPermission() {permissionRequests++}
         override fun openOfficialPage()=Unit
     }
     private fun jsonRelease(tag: String, pre: Boolean = false, draft: Boolean = false)=buildJsonObject {
         put("tag_name",tag);put("prerelease",pre);put("draft",draft);put("body","<script>plain notes</script>");putJsonArray("assets") {}
+    }
+    @Test fun installerRequiresPlatformDeclarationNonDevelopmentAndroidAndIndependentTrust()=runTest {
+        for(android in listOf(false,true)) for(development in listOf(false,true))
+            for(supported in listOf(false,true)) for(configured in listOf(false,true)) {
+                val installer=Installer().apply {
+                    installed=SyntheticUpdates.installed.copy(android=android,development=development)
+                    installationSupported=supported
+                }
+                val b=GitHubUpdates(Files.createTempDirectory("updates-capability"),installer,
+                    if(configured) SyntheticUpdates.trust else productionUpdateTrust(),
+                    MockEngine {error("Capability check must not request network")},dispatcher=StandardTestDispatcher(testScheduler))
+                try {
+                    assertEquals(android && !development && supported && configured,b.trustedInstallationConfigured)
+                    if(!b.trustedInstallationConfigured) {
+                        assertEquals(UpdateFailure.TRUST_NOT_CONFIGURED,assertFailsWith<UpdateException> {b.prepare(SyntheticUpdates.release()) {_,_,_->}}.failure)
+                        assertEquals(UpdateFailure.TRUST_NOT_CONFIGURED,assertFailsWith<UpdateException> {b.install(PreparedUpdate())}.failure)
+                        assertEquals(UpdateFailure.TRUST_NOT_CONFIGURED,assertFailsWith<UpdateException> {b.requestInstallPermission()}.failure)
+                        assertEquals(0,installer.inspected);assertEquals(0,installer.delegated);assertEquals(0,installer.permissionRequests)
+                    }
+                } finally {b.close()}
+            }
+    }
+    @Test fun metadataCheckingStillWorksWithoutInstallationCapabilityEvenWithTestTrustConfigured()=runTest {
+        var requests=0;val installer=Installer().apply {installationSupported=false}
+        val b=GitHubUpdates(Files.createTempDirectory("updates-metadata-only"),installer,SyntheticUpdates.trust,
+            MockEngine {request ->
+                requests++;assertEquals("api.github.com",request.url.host)
+                respond(JsonArray(listOf(jsonRelease("v1.1.0"))).toString(),headers=headersOf(HttpHeaders.ContentType,"application/json"))
+            },dispatcher=StandardTestDispatcher(testScheduler))
+        try {
+            assertFalse(b.trustedInstallationConfigured);assertEquals("v1.1.0",b.latest(UpdateChannel.STABLE)?.tag)
+            assertEquals(1,requests);assertEquals(0,installer.inspected);assertEquals(0,installer.delegated)
+        } finally {b.close()}
+    }
+    @Test fun disablingPlatformCapabilityAfterPreparationBlocksHandoffAndPermissionRequests()=runTest {
+        val envelope=SyntheticUpdates.envelope();val installer=Installer()
+        val b=GitHubUpdates(Files.createTempDirectory("updates-capability-recheck"),installer,SyntheticUpdates.trust,
+            MockEngine {request ->respond(if(request.url.encodedPath.endsWith(".json")) envelope else SyntheticUpdates.bytes,headers=headersOf(HttpHeaders.ContentType,"application/octet-stream"))},
+            {SyntheticUpdates.now},StandardTestDispatcher(testScheduler))
+        try {
+            val token=b.prepare(SyntheticUpdates.release(envelope)) {_,_,_->}
+            installer.installationSupported=false
+            assertEquals(UpdateFailure.TRUST_NOT_CONFIGURED,assertFailsWith<UpdateException> {b.install(token)}.failure)
+            assertEquals(UpdateFailure.TRUST_NOT_CONFIGURED,assertFailsWith<UpdateException> {b.requestInstallPermission()}.failure)
+            assertEquals(0,installer.delegated);assertEquals(0,installer.permissionRequests)
+            b.discard()
+        } finally {b.close()}
     }
     @Test fun discoverySeparatesChannelsUsesNumericVersionsAndNeverDownloadsPayloads()=runTest {
         val calls=mutableListOf<String>();val root=Files.createTempDirectory("updates-test")

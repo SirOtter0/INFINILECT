@@ -16,6 +16,11 @@ import java.util.zip.ZipFile
 internal class AndroidUpdateInstaller(context: Context) : UpdateInstaller {
     private val context=context.applicationContext
     private val pm=this.context.packageManager
+    // Read this app's merged manifest, not remote metadata or the current user grant.
+    // Adding trust roots alone must not enable an installer in a permission-free APK.
+    @Suppress("DEPRECATION")
+    override val installationSupported: Boolean = pm.getPackageInfo(this.context.packageName,PackageManager.GET_PERMISSIONS)
+        .requestedPermissions?.contains(android.Manifest.permission.REQUEST_INSTALL_PACKAGES)==true
     @Suppress("DEPRECATION")
     private fun info(file: Path? = null): PackageInfo {
         val flags=if(Build.VERSION.SDK_INT>=28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
@@ -50,6 +55,7 @@ internal class AndroidUpdateInstaller(context: Context) : UpdateInstaller {
         ApkIdentity(p.packageName,p.versionName.orEmpty(),code(p),p.applicationInfo?.minSdkVersion ?: updateError(UpdateFailure.INCOMPATIBLE),abis,certificates(p))
     }
     override suspend fun handoff(file: Path): InstallHandoff = withContext(Dispatchers.IO) {
+        if(!installationSupported) updateError(UpdateFailure.TRUST_NOT_CONFIGURED)
         if(!pm.canRequestPackageInstalls()) return@withContext InstallHandoff.PERMISSION
         val service=pm.packageInstaller
         val params=PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
@@ -75,6 +81,7 @@ internal class AndroidUpdateInstaller(context: Context) : UpdateInstaller {
         } finally {if(!committed) service.abandonSession(id)}
     }
     override fun requestPermission() {
+        if(!installationSupported) updateError(UpdateFailure.TRUST_NOT_CONFIGURED)
         context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
     override fun openOfficialPage() {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(OFFICIAL_RELEASES_PAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}
