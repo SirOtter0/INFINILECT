@@ -63,8 +63,11 @@ class AndroidSourcesTest {
         val directory = java.nio.file.Files.createTempDirectory("infinilect-android-sources")
         val sources = createApplicationSources(directory.toFile())
         try {
-            assertEquals(listOf("internet-archive","gutenberg","local-imports"),sources.options.map { it.source.id.value })
-            assertEquals(listOf(true,false,true),sources.options.map { it.textReadingEnabled })
+            assertEquals(listOf("internet-archive","gutenberg","oapen","local-imports"),sources.options.map { it.source.id.value })
+            assertEquals(listOf(true,false,false,true),sources.options.map { it.textReadingEnabled })
+            val oapen = sources.options.single { it.source.id.value == "oapen" }
+            assertFalse(oapen.epubReadingEnabled || oapen.pageReadingEnabled || oapen.pdfReadingEnabled)
+            assertFalse((oapen.source as Any) is org.infinilect.app.downloads.OfflineDownloadProvider)
             assertEquals("INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)",PROJECT_USER_AGENT)
         } finally { sources.close(); sources.close(); directory.toFile().deleteRecursively() }
     }

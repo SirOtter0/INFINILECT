@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet type="text/xsl" href="static/style.xsl"?><OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.openarchives.org/OAI/2.0/ http://www.openarchives.org/OAI/2.0/OAI-PMH.xsd"><responseDate>2026-10-29T21:19:54Z</responseDate><request verb="GetRecord" identifier="oai:library.oapen.org:20.500.12657/25287" metadataPrefix="xoai">https://library.oapen.org/oai/request</request><GetRecord><record><header><identifier>oai:library.oapen.org:20.500.12657/25287</identifier><datestamp>2024-03-23T08:56:18Z</datestamp><setSpec>com_20.500.12657_5</setSpec><setSpec>col_20.500.12657_6</setSpec></header><metadata><metadata xmlns="http://www.lyncode.com/xoai" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.lyncode.com/xoai http://www.lyncode.com/xsd/xoai.xsd">
+<element name="dc">
+<element name="contributor">
+<element name="author">
+<element name="none">
+<field name="value">Snijder, Ronald</field>
+<field name="authority">9f548a5e-37eb-411e-af0c-7ce507439cfa</field>
+<field name="confidence">600</field>
+</element>
+</element>
+</element>
+<element name="date">
+<element name="accessioned">
+<element name="none">
+<field name="value">2019-04-10 23:55</field>
+<field name="value">2020-03-27 15:48:21</field>
+<field name="value">2020-04-01T10:33:17Z</field>
+</element>
+</element>
+<element name="available">
+<element name="none">
+<field name="value">2020-04-01T10:33:17Z</field>
+</element>
+</element>
+<element name="issued">
+<element name="none">
+<field name="value">2019</field>
+</element>
+</element>
+</element>
+<element name="identifier">
+<element name="none">
+<field name="value">1004809</field>
+</element>
+<element name="en_US">
+<field name="value">OCN: 1100549298</field>
+</element>
+<element name="uri">
+<element name="none">
+<field name="value">http://library.oapen.org/handle/20.500.12657/25287</field>
+</element>
+</element>
+</element>
+<element name="description">
+<element name="abstract">
+<element name="none">
+<field name="value">In many scholarly disciplines, books - not articles - are the norm. As print runs become smaller, the question arises whether publishing monographs in open access helps to make their contents globally accessible. To answer this question, the results of multiple studies on the usage of open access books are presented. The research focuses on three areas: economic viability; optimization of open access monographs infrastructure and measuring the effects of open access in terms of scholarly impact and societal influence. Each chapter reviews a different aspect: book sales, digital dissemination, open licenses, user communities, measuring usage, developing countries and the effects on citations and social media.</field>
+</element>
+</element>
+</element>
+<element name="language">
+<element name="none">
+<field name="originalValue">English</field>
+<field name="value">eng</field>
+</element>
+</element>
+<element name="subject">
+<element name="classification">
+<element name="en_US">
+<field name="value">thema EDItEUR::G Reference, Information and Interdisciplinary subjects::GL Library and information sciences / Museology</field>
+<field name="value">thema EDItEUR::G Reference, Information and Interdisciplinary subjects::GP Research and information: general</field>
+</element>
+</element>
+<element name="other">
+<element name="none">
+<field name="value">Open Access</field>
+<field name="value">Monographs</field>
+<field name="value">OAPEN Library</field>
+<field name="value">Directory of Open Access Books</field>
+</element>
+</element>
+</element>
+<element name="title">
+<element name="none">
+<field name="value">The deliverance of open access books</field>
+</element>
+<element name="alternative">
+<element name="none">
+<field name="value">Examining usage and dissemination</field>
+</element>
+</element>
+</element>
+<element name="type">
+<element name="none">
+<field name="value">book</field>
+</element>
+</element>
+</element>
+<element name="oapen">
+<element name="identifier">
+<element name="doi">
+<element name="none">
+<field name="value">10.26530/OAPEN_1004809</field>
+</element>
+</element>
+<element name="isbn">
+<element name="none">
+<field name="value">9789085551201</field>
+</element>
+</element>
+<element name="ocn">
+<element name="none">
+<field name="value">1100549298</field>
+</element>
+</element>
+</element>
+<element name="relation">
+<element name="isPublishedBy">
+<element name="none">
+<field name="value">dd3d1a33-0ac2-4cfe-a101-355ae1bd857a</field>
+<field name="authority">dd3d1a33-0ac2-4cfe-a101-355ae1bd857a</field>
+<field name="confidence">600</field>
+</element>
+</element>
+<element name="isbn">
+<element name="none">
+<field name="value">9789085551201</field>
+</element>
+</element>
+</element>
+<element name="imprint">
+<element name="none">
+<field name="value">Pallas Publications</field>
+</element>
+</element>
+<element name="pages">
+<element name="none">
+<field name="value">234</field>
+</element>
+</element>
+<element name="place">
+<element name="publication">
+<element name="none">
+<field name="value">Amsterdam</field>
+</element>
+</element>
+</element>
+</element>
+<element name="bundles">
+<element name="bundle">
+<field name="name">ORIGINAL</field>
+<element name="bitstreams">
+<element name="bitstream">
+<field name="name">9789085551201_OA_version.pdf</field>
+<field name="format">application/pdf</field>
+<field name="size">9593943</field>
+<field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/1/9789085551201_OA_version.pdf</field>
+<field name="checksum">fad59e1f7accb638a009eb242938b54e</field>
+<field name="checksumAlgorithm">MD5</field>
+<field name="sid">1</field>
+<field name="dctitle">9789085551201_OA_version.pdf</field>
+<field name="dcidentifierurlwebshop">https://www.aup.nl/en/book/9789085551201/the-deliverance-of-open-access-books</field>
+<field name="rightsuri">http://creativecommons.org/licenses/by-nc/3.0/</field>
+<field name="rights">CC-BY-NC</field>
+</element>
+</element>
+</element>
+<element name="bundle">
+<field name="name">TEXT</field>
+<element name="bitstreams">
+<element name="bitstream">
+<field name="name">9789085551201_OA_version.pdf.txt</field>
+<field name="originalName">9789085551201_OA_version.pdf.txt</field>
+<field name="description">Extracted text</field>
+<field name="format">text/plain</field>
+<field name="size">488807</field>
+<field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/2/9789085551201_OA_version.pdf.txt</field>
+<field name="checksum">75bc419414e5bb61889adfa0bfe3a64f</field>
+<field name="checksumAlgorithm">MD5</field>
+<field name="sid">2</field>
+<field name="dctitle">9789085551201_OA_version.pdf.txt</field>
+</element>
+</element>
+</element>
+<element name="bundle">
+<field name="name">THUMBNAIL</field>
+<element name="bitstreams">
+<element name="bitstream">
+<field name="name">9789085551201_OA_version.pdf.jpg</field>
+<field name="originalName">9789085551201_OA_version.pdf.jpg</field>
+<field name="description">Generated Thumbnail</field>
+<field name="format">image/jpeg</field>
+<field name="size">5894</field>
+<field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/3/9789085551201_OA_version.pdf.jpg</field>
+<field name="checksum">6d62fac65e3601441056bd5833146d77</field>
+<field name="checksumAlgorithm">MD5</field>
+<field name="sid">3</field>
+<field name="dctitle">9789085551201_OA_version.pdf.jpg</field>
+</element>
+</element>
+</element>
+<element name="bundle">
+<field name="name">EXPORT</field>
+<element name="bitstreams">
+<element name="bitstream">
+<field name="name">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.marc.xml</field>
+<field name="format">application/octet-stream</field>
+<field name="size">5875</field>
+<field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/4/0870af05-e1de-49f2-92fe-8fc1e3f3dec9.marc.xml</field>
+<field name="checksum">aeed0cd11843fcc62d1f5c3f84967fb3</field>
+<field name="checksumAlgorithm">MD5</field>
+<field name="sid">4</field>
+<field name="dctitle">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.marc.xml</field>
+</element>
+<element name="bitstream">
+<field name="name">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.onix_3.0.xml</field>
+<field name="format">application/octet-stream</field>
+<field name="size">6156</field>
+<field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/5/0870af05-e1de-49f2-92fe-8fc1e3f3dec9.onix_3.0.xml</field>
+<field name="checksum">40c5c5e2533316e4b80e8b6583cc75e5</field>
+<field name="checksumAlgorithm">MD5</field>
+<field name="sid">5</field>
+<field name="dctitle">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.onix_3.0.xml</field>
+</element>
+<element name="bitstream">
+<field name="name">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.ris</field>
+<field name="format">application/octet-stream</field>
+<field name="size">1282</field>
+<field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/6/0870af05-e1de-49f2-92fe-8fc1e3f3dec9.ris</field>
+<field name="checksum">9691bb3ad5da9d73356743cc2ed98658</field>
+<field name="checksumAlgorithm">MD5</field>
+<field name="sid">6</field>
+<field name="dctitle">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.ris</field>
+</element>
+<element name="bitstream">
+<field name="name">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.tsv</field>
+<field name="format">application/octet-stream</field>
+<field name="size">463</field>
+<field name="url">https://library.oapen.org/bitstream/20.500.12657/25287/-1/0870af05-e1de-49f2-92fe-8fc1e3f3dec9.tsv</field>
+<field name="checksum">9d8513ab751a073c5484e8db4f1be315</field>
+<field name="checksumAlgorithm">MD5</field>
+<field name="sid">-1</field>
+<field name="dctitle">0870af05-e1de-49f2-92fe-8fc1e3f3dec9.tsv</field>
+</element>
+</element>
+</element>
+</element>
+<element name="others">
+<field name="uuid">0870af05-e1de-49f2-92fe-8fc1e3f3dec9</field>
+<field name="handle">20.500.12657/25287</field>
+<field name="identifier">oai:library.oapen.org:20.500.12657/25287</field>
+<field name="lastModifyDate">2024-03-23 08:56:18.955</field>
+</element>
+<element name="repository">
+<field name="name">OAPEN Library</field>
+<field name="mail">info@oapen.org</field>
+</element>
+<element name="linkedItemsMetadata">
+<element name="oapen.relation.isPublishedBy">
+<field name="uuid">dd3d1a33-0ac2-4cfe-a101-355ae1bd857a</field>
+<field name="handle">20.500.12657/22272</field>
+<element name="publisher.name">
+<field name="value">Amsterdam University Press</field>
+</element>
+</element>
+</element>
+<element name="fieldsWithParentData"/>
+</metadata></metadata></record></GetRecord></OAI-PMH>

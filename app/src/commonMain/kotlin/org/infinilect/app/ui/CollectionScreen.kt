@@ -123,7 +123,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
                     val publication=entry.publication
                     LibraryCover(remember(publication) { publication.displayPublication() }, application.covers, progress[publication.id],
                         selected = publication.id in selected, selecting = selecting, enabled = membership.forPublication(publication.id).enabled && !busy,
-                        open = { application.openSaved(publication) }, details = { detail = publication; detailFormat = it },
+                        open = { if (publication.id.sourceId.value == "oapen") { detail = publication; detailFormat = null } else application.openSaved(publication) }, details = { detail = publication; detailFormat = it },
                         select = { controller.select(publication.id) }, toggle = { controller.toggleSelection(publication.id) },
                         remove = { remove = CollectionRemoval(publication, history = false) },
                         favorite=entry.favorite,completed=entry.readingState==LibraryReadingState.COMPLETED,artworkHeight=artworkHeight,offline=publication.id in offline)
@@ -148,9 +148,9 @@ internal fun CollectionScreen(destination: Destination, application: Application
         val progress = detailsProgress(application, publication.id, progress[publication.id])
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
-            progress = progress, close = { detail = null }, descriptions=application.descriptions,
+            progress = progress, close = { detail = null }, descriptions=application.descriptions, bibliographySource = application.bibliographySource(publication.id),
             collections=controller,downloads=application.downloads,organizationCovers=application.covers,cover={DetailsCover(publication.displayPublication(),application.covers)}) {
-            PublicationReadAction(progress) {detail=null;application.openSaved(publication)}
+            if (publication.id.sourceId.value != "oapen") PublicationReadAction(progress) {detail=null;application.openSaved(publication)}
         }
     }
     organize?.let { ids -> LibraryOrganizer(library.entries.filter { it.publication.id in ids },tags,controller,application.covers) { organize = null } }

@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import org.infinilect.core.*
+import org.infinilect.app.discovery.PublicationBibliographySource
+import org.infinilect.app.discovery.PublicationBibliography
 import kotlinx.coroutines.CancellationException
 
 internal fun PublicationSnapshot.displayPublication() = Publication(id, title, type, authors, languages = languages, sourceUrl = sourceUrl, rights = rights)
@@ -93,8 +95,17 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
     progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
-    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, collections: org.infinilect.app.collections.CollectionsController? = null, organizationCovers: org.infinilect.app.covers.PublicationCovers? = null, downloads: org.infinilect.app.downloads.OfflineDownloads? = null, actions: @Composable () -> Unit) {
+    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, collections: org.infinilect.app.collections.CollectionsController? = null, organizationCovers: org.infinilect.app.covers.PublicationCovers? = null, downloads: org.infinilect.app.downloads.OfflineDownloads? = null, bibliographySource: PublicationBibliographySource? = null, actions: @Composable () -> Unit) {
     val strings = LocalAppStrings.current
+    var bibliographyRetry by remember(publication.id) { mutableStateOf(0) }
+    val bibliography by key(publication.id, bibliographySource, bibliographyRetry) {
+        produceState<Pair<PublicationBibliography?, Boolean>>(null to false) {
+            try { value = bibliographySource?.bibliography(publication.id) to false }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { value = null to true }
+        }
+    }
+    val metadata = bibliography.first
     val feedback = remember {SnackbarHostState()}
     val focus = remember { FocusRequester() }
     val synopsis by produceState<String?>(null, publication.id, descriptions) {
@@ -144,7 +155,12 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                             }
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
-                        (suppliedSynopsis ?: synopsis)?.let { text ->
+                        if (publication.id.sourceId.value == "oapen") OapenNotice(publication.id)
+                        if (bibliography.second) {
+                            Text(strings[UiText.OAPEN_METADATA_ERROR], color = MaterialTheme.colors.error)
+                            TextButton({ bibliographyRetry++ }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.RETRY]) }
+                        }
+                        (metadata?.description ?: suppliedSynopsis ?: synopsis)?.let { text ->
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(strings[UiText.UI_SYNOPSIS], style = MaterialTheme.typography.subtitle1, modifier = Modifier.semantics { heading() })
                                 Text(if (expanded) text else descriptionExcerpt(text), style = MaterialTheme.typography.body1)
@@ -154,12 +170,17 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                                 }
                             }
                         }
-                        if (subjects.isNotEmpty()) DetailLine(strings[UiText.UI_CATEGORIES], subjects.joinToString("; "))
+                        val shownSubjects = metadata?.subjects ?: subjects
+                        if (shownSubjects.isNotEmpty()) DetailLine(strings[UiText.UI_CATEGORIES], shownSubjects.joinToString("; "))
+                        metadata?.publisher?.let { DetailLine(strings[UiText.OAPEN_PUBLISHER], it) }
+                        metadata?.date?.let { DetailLine(strings[UiText.OAPEN_DATE], it) }
+                        metadata?.identifiers?.takeIf { it.isNotEmpty() }?.let { DetailLine(strings[UiText.OAPEN_IDENTIFIERS], it.joinToString("\n")) }
+                        metadata?.announcedFormats?.takeIf { it.isNotEmpty() }?.let { DetailLine(strings[UiText.OAPEN_ANNOUNCED_FORMATS], it.joinToString(", ")) }
                         DetailLine(strings[UiText.UI_SOURCE], strings.sourceName(source))
-                        DetailLine(strings[UiText.UI_FORMAT], if(formats.isEmpty()) strings[UiText.UI_FORMAT_CHECKED_WHEN_OPENING] else publicationFormat(formats))
+                        if (publication.id.sourceId.value != "oapen") DetailLine(strings[UiText.UI_FORMAT], if(formats.isEmpty()) strings[UiText.UI_FORMAT_CHECKED_WHEN_OPENING] else publicationFormat(formats))
                         if (publication.languages.isNotEmpty()) DetailLine(strings[UiText.UI_LANGUAGES], publication.languages.joinToString(", "))
                         if (progress != null) DetailLine(strings[UiText.UI_READING_PROGRESS], strings.format(UiText.UI_1_S_READ, (progress.progression * 100).toInt()))
-                        publication.rights?.let { DetailLine(strings[UiText.UI_SOURCE_RIGHTS_STATEMENT], it) }
+                        (metadata?.publication?.rights ?: publication.rights)?.let { DetailLine(strings[UiText.UI_SOURCE_RIGHTS_STATEMENT], it) }
                         publication.sourceUrl?.let { DetailLine(strings[UiText.UI_SOURCE_REFERENCE], it) }
                         Surface(color=MaterialTheme.colors.onSurface.copy(alpha=.05f),shape=MaterialTheme.shapes.small) {
                             Text(strings[UiText.UI_AVAILABILITY_DOES_NOT_ESTABLISH_RIGHTS_IN_EVERY_COUNTRY_SAVED_METADATA_DOES_NOT],Modifier.padding(12.dp),style = MaterialTheme.typography.caption)
