@@ -541,4 +541,14 @@
     <string name="dl_http_error">La font ha rebutjat la baixada o no està disponible temporalment. Torna-ho a provar més tard.</string>
     <string name="dl_rights_unverified">INFINILECT no ha pogut verificar un permís explícit per conservar aquesta publicació sense connexió. No s’ha baixat cap fitxer.</string>
     <string name="dl_unsupported_format">Aquesta publicació no ofereix cap fitxer autoritzat en un format compatible dins dels límits de baixada. Internet Archive admet actualment TXT i PDF; aquest adaptador no ofereix EPUB ni CBZ.</string>
+    <string name="oapen_lookup_help">OAPEN permet consultar per identificador handle (per exemple, 20.500.12657/25287). Utilitza el seu catàleg oficial per cercar per títol, autor o matèria.</string>
+    <string name="oapen_metadata_error">Les metadades d’OAPEN no estan disponibles o no són vàlides. Obre el catàleg oficial o torna-ho a provar més tard.</string>
+    <string name="oapen_limited">OAPEN: consulta per identificador i enllaços oficials. La cerca de text integrada i les baixades sense connexió estan pendents de verificar l’accés. Els fitxers i les llicències anunciats no confirmen una baixada funcional.</string>
+    <string name="oapen_open_catalog">Obre el catàleg OAPEN</string>
+    <string name="oapen_open_record">Obre la fitxa oficial d’OAPEN</string>
+    <string name="oapen_announced_formats">Formats anunciats per OAPEN (baixada sense verificar)</string>
+    <string name="oapen_publisher">Editorial</string>
+    <string name="oapen_date">Data de publicació</string>
+    <string name="oapen_identifiers">Identificadors (DOI / ISBN)</string>
+    <string name="oapen_open_failed">No s’ha pogut obrir la pàgina oficial. Comprova que hi hagi un navegador disponible.</string>
 </resources>

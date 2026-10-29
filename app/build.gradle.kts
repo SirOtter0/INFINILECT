@@ -164,6 +164,15 @@ tasks.register<JavaExec>("gutenbergSearchCheck") {
 }
 
 // Opt-in access diagnostic, independent of Gutenberg and of test/check/build.
+tasks.register<JavaExec>("oapenLookupCheck") {
+    group = "verification"
+    description = "Resolve one documented OAPEN handle through public OAI-PMH; no acquisition."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.oapen.OapenLookupCheck")
+}
+
 tasks.register<JavaExec>("oapenApiAccessCheck") {
     group = "verification"
     description = "Inspect one bounded response from the documented OAPEN REST endpoint (no acquisition)."

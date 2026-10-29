@@ -8,6 +8,16 @@ import org.jetbrains.compose.resources.StringResource
 
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
+    OAPEN_LOOKUP_HELP(Res.string.oapen_lookup_help, "OAPEN currently supports lookup by handle (for example 20.500.12657/25287). Use its official catalog for title, author or subject searches."),
+    OAPEN_METADATA_ERROR(Res.string.oapen_metadata_error, "OAPEN metadata is unavailable or invalid. Open the official catalog or retry later."),
+    OAPEN_LIMITED(Res.string.oapen_limited, "OAPEN: identifier lookup and official links only. Integrated text search and offline downloads are pending verified access. Announced files and licenses do not confirm a working download."),
+    OAPEN_OPEN_CATALOG(Res.string.oapen_open_catalog, "Open OAPEN catalog"),
+    OAPEN_OPEN_RECORD(Res.string.oapen_open_record, "Open official OAPEN record"),
+    OAPEN_ANNOUNCED_FORMATS(Res.string.oapen_announced_formats, "Formats announced by OAPEN (download unverified)"),
+    OAPEN_PUBLISHER(Res.string.oapen_publisher, "Publisher"),
+    OAPEN_DATE(Res.string.oapen_date, "Publication date"),
+    OAPEN_IDENTIFIERS(Res.string.oapen_identifiers, "Identifiers (DOI / ISBN)"),
+    OAPEN_OPEN_FAILED(Res.string.oapen_open_failed, "Could not open the official page. Check that a browser is available."),
     DL_TITLE(Res.string.dl_title, "Downloads"),
     DL_DOWNLOAD(Res.string.dl_download, "Download"),
     DL_CANCEL(Res.string.dl_cancel, "Cancel download"),

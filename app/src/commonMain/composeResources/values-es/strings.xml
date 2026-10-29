@@ -541,4 +541,14 @@
     <string name="dl_http_error">La fuente ha rechazado la descarga o no está disponible temporalmente. Vuelve a intentarlo más tarde.</string>
     <string name="dl_rights_unverified">INFINILECT no ha podido verificar un permiso explícito para conservar esta publicación sin conexión. No se ha descargado ningún archivo.</string>
     <string name="dl_unsupported_format">Esta publicación no ofrece un archivo autorizado en un formato compatible dentro de los límites de descarga. Internet Archive admite actualmente TXT y PDF; este adaptador no ofrece EPUB ni CBZ.</string>
+    <string name="oapen_lookup_help">OAPEN permite consultar por identificador handle (por ejemplo, 20.500.12657/25287). Utiliza su catálogo oficial para buscar por título, autor o materia.</string>
+    <string name="oapen_metadata_error">Los metadatos de OAPEN no están disponibles o no son válidos. Abre el catálogo oficial o inténtalo más tarde.</string>
+    <string name="oapen_limited">OAPEN: consulta por identificador y enlaces oficiales. La búsqueda de texto integrada y las descargas sin conexión están pendientes de verificar el acceso. Los archivos y licencias anunciados no confirman una descarga funcional.</string>
+    <string name="oapen_open_catalog">Abrir catálogo OAPEN</string>
+    <string name="oapen_open_record">Abrir ficha oficial de OAPEN</string>
+    <string name="oapen_announced_formats">Formatos anunciados por OAPEN (descarga sin verificar)</string>
+    <string name="oapen_publisher">Editorial</string>
+    <string name="oapen_date">Fecha de publicación</string>
+    <string name="oapen_identifiers">Identificadores (DOI / ISBN)</string>
+    <string name="oapen_open_failed">No se ha podido abrir la página oficial. Comprueba que haya un navegador disponible.</string>
 </resources>

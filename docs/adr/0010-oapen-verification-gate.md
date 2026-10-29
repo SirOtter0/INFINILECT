@@ -39,3 +39,8 @@ reproduce access evidence without Internet-dependent normal tests, dependencies,
 core changes or Gutenberg policy changes. Resolving API access and the transfer
 contract requires official OAPEN guidance and a successful response, not a guessed
 DSpace version. Historical ADRs are preserved.
+
+
+## PR #38 clarification (2026-10-29)
+
+The acquisition and REST-discovery gates remain in force: current REST and PDF GET still return HTTP 403, with no successful file transfer. A narrow metadata-only adapter now resolves exact handles via the publicly documented, successfully verified OAI-PMH GetRecord route. This supersedes the blanket absence of an adapter **only for identifier lookup and display metadata**, not for speculative REST mapping or acquisition. OAPEN is explicitly not an OfflineDownloadProvider and has no returned reading resources. Free-text discovery/pagination and offline-reading acceptance remain blocked. Current evidence, implemented scope and verification are in [OAPEN.md](../OAPEN.md).

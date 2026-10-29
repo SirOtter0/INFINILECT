@@ -77,6 +77,7 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status", contentType = "status") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite })
+                        if (state.enabled.any { it.value == "oapen" }) OapenNotice()
                         if (state.invalidQuery) Text(strings[UiText.UI_USE_AT_MOST_256_CHARACTERS_AND_NO_CONTROL_CHARACTERS], color = MaterialTheme.colors.error)
                         if (state.request == null) Text(strings[UiText.UI_SEARCH_ACROSS_CATALOGS_OR_EXPLORE_A_SUBJECT_ABOVE_NOTHING_IS_DOWNLOADED_BY_BROWS])
                         else if (state.catalogs.isEmpty()) Text(strings[UiText.UI_SELECT_AT_LEAST_ONE_SOURCE_SUBJECT_BROWSING_CURRENTLY_REQUIRES_INTERNET_ARCHIVE])
@@ -173,7 +174,7 @@ internal fun DiscoveryDetails(entry: DiscoveryEntry, application: ApplicationSes
     val record = detailsProgress(application, entry.publication.id, null)
     PublicationDetails(entry.publication, application.sourceName(entry.publication.id.sourceId), entry.publication.resources.map { it.format },
         record, close, cover = { DetailsCover(entry.publication, if (entry.thumbnail != null || entry.publication.id.sourceId.value == "local-imports") application.covers else null) },
-        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,downloads=application.downloads,organizationCovers=application.covers) {
+        descriptions = application.descriptions, bibliographySource = application.bibliographySource(entry.publication.id), suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,downloads=application.downloads,organizationCovers=application.covers) {
         if (application.canRetry(entry.publication)) PublicationReadAction(record) { close(); application.openDiscovered(entry.publication) }
         else Text(strings[UiText.UI_CATALOG_METADATA_ONLY_ACQUISITION_IS_UNAVAILABLE_FOR_THIS_SOURCE], style = MaterialTheme.typography.body2)
         if (entry.publication.rights == null) Text(strings[UiText.UI_NO_SOURCE_RIGHTS_STATEMENT_WAS_SUPPLIED_LEGAL_AVAILABILITY_IS_UNDETERMINED], style = MaterialTheme.typography.caption)

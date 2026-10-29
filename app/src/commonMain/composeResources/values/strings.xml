@@ -541,4 +541,14 @@
     <string name="dl_http_error">The source rejected the download or is temporarily unavailable. Retry later.</string>
     <string name="dl_rights_unverified">INFINILECT could not verify an explicit permission to keep this publication offline. No file was downloaded.</string>
     <string name="dl_unsupported_format">This publication has no authorized file in a supported format within the download limits. Internet Archive currently supports TXT and PDF; EPUB and CBZ are not offered by this adapter.</string>
+    <string name="oapen_lookup_help">OAPEN currently supports lookup by handle (for example 20.500.12657/25287). Use its official catalog for title, author or subject searches.</string>
+    <string name="oapen_metadata_error">OAPEN metadata is unavailable or invalid. Open the official catalog or retry later.</string>
+    <string name="oapen_limited">OAPEN: identifier lookup and official links only. Integrated text search and offline downloads are pending verified access. Announced files and licenses do not confirm a working download.</string>
+    <string name="oapen_open_catalog">Open OAPEN catalog</string>
+    <string name="oapen_open_record">Open official OAPEN record</string>
+    <string name="oapen_announced_formats">Formats announced by OAPEN (download unverified)</string>
+    <string name="oapen_publisher">Publisher</string>
+    <string name="oapen_date">Publication date</string>
+    <string name="oapen_identifiers">Identifiers (DOI / ISBN)</string>
+    <string name="oapen_open_failed">Could not open the official page. Check that a browser is available.</string>
 </resources>
