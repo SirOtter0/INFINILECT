@@ -150,8 +150,14 @@ class OapenSourceTest {
     }
     @Test fun duplicateIdentitiesCoalesceThroughExistingDiscoveryCache()=runTest {
         var calls=0
-        OapenSource(MockEngine {calls++;respond(record(),headers=headersOf(HttpHeaders.ContentType,"text/xml"))},
-            kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)).use { source ->
+        val controlled=kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        // Both network and parser use the controlled scheduler: a real IO dispatcher
+        // must not race runTest advancing the catalog's virtual timeout.
+        val engine=MockEngine(MockEngineConfig().apply {
+            dispatcher=controlled
+            addHandler {calls++;respond(record(),headers=headersOf(HttpHeaders.ContentType,"text/xml"))}
+        })
+        OapenSource(engine,controlled).use { source ->
             val catalog=DiscoveryCatalog(listOf(source),backgroundScope){testScheduler.currentTime}
             try {
                 val a=async {catalog.load(id.sourceId,DiscoveryRequest(id.localId))}
