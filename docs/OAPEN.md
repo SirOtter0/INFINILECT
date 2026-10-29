@@ -50,7 +50,43 @@ At that point register OAPEN with the existing FileOfflineDownloads provider lis
 
 Android/Desktop: open Search → Sources & filters, select OAPEN (optionally deselect other sources), paste `20.500.12657/25287`, then open Details. Expect bibliographic metadata and the official record action; no download or reading action. Add/remove the metadata-only Library entry if desired; no file/progress record is created. Reopen its details to resolve optional bibliography. Try a missing numeric handle, network-off errors/retry, a plain-text query (honest handle-lookup explanation plus official catalog action), es/en/ca, light/dark, small screens and large fonts. Switching language must not alter the publication, Library data or request count. A browser is used only after an explicit tap; browser access/download is outside INFINILECT's verified transfer path.
 
-`./gradlew :app:oapenLookupCheck` is an opt-in single GetRecord experiment using the real shared adapter; normal suites use the captured CC0 public metadata fixture and MockEngine, never the live server. Existing `oapenApiAccessCheck` / `oapenAlternateAccessCheck` remain development probes, not production dependencies. Test/build results for PR #38 are recorded below after execution. No physical Android verification or APK publication is claimed.
+`./gradlew :app:oapenLookupCheck` is an opt-in single GetRecord experiment using the real shared adapter; normal suites use the captured CC0 public metadata fixture and MockEngine, never the live server. Existing `oapenApiAccessCheck` / `oapenAlternateAccessCheck` remain development probes, not production dependencies. Final test/build results for PR #38 are recorded below. No physical Android verification or APK publication is claimed.
+
+
+### Final verification — PR #38
+
+Code tested: runtime implementation `c2459317cd9515767e9284e94ba161ee1a99fc4d`, with the deterministic test-scheduler correction in `001162f541c986846648ac106bec569f6023960e`. All source/resource hashes were checked against the frozen inputs; subsequent changes are documentation only.
+
+| Suite | Cases | Failures / errors / skipped |
+| --- | ---: | --- |
+| Desktop | 1,713 | 0 / 0 / 0 |
+| Android-host | 1,432 | 0 / 0 / 0 |
+| Core JVM | 59 | 0 / 0 / 0 |
+| Core Android-host | 59 | 0 / 0 / 0 |
+| **Total** | **3,263** | **0 / 0 / 0** |
+
+Final full run: **BUILD SUCCESSFUL, 12m 28s**, JDK 21 / SDK 37 / Gradle 9.7.1, one Gradle worker, test tasks forced to execute with the managed environment's verified Skiko path. Existing tests/assertions were not removed, disabled or weakened. Equivalent tasks:
+
+```sh
+./gradlew --max-workers=1 --continue :core:jvmTest :core:testAndroidHostTest \
+  :app:desktopTest :app:testAndroidHostTest :androidApp:assembleDebug \
+  :androidApp:assembleRelease :androidApp:verifyDebugLanguageResources \
+  :androidApp:check :androidApp:lintRelease :desktopApp:compileKotlin
+python3 tools/check_localization.py
+git diff --check
+```
+
+Android debug and unsigned release APKs and Desktop compiled. Lint debug/release: **zero issues** in both XML reports. Localization: **551 strings and 3 plurals in en/es/ca**, 193 production Kotlin files scanned; all six locale CVRs match generated resources in each APK. Test record XML, test integration entrypoint classes and signing files are absent from the APKs. Neither APK has been published, uploaded or offered as a physically validated installation.
+
+New coverage: 16 shared source tests (run on both targets) and two Desktop shared-UI tests, including 18 language/theme/size/font combinations and browser-action/error handling. Earlier focused verification passed **65 Desktop + 20 Android-host** cases. Coalescence uses both a controlled MockEngine dispatcher and controlled parser dispatcher so a real IO thread cannot race the test clock's virtual timeout; production timeouts/concurrency were not changed.
+
+An earlier complete run failed that scheduling test and the existing CBZ `PageSpreadLayoutTest.sparseFastTouchAtEitherEdgeTurnsOnceInBothLayoutsAndReadingDirections` (initial spread not presented in the fixture's bounded wait). The scheduling test was corrected, then the complete suites were rerun. The unchanged CBZ case passed focused rerun, an isolated run on pristine main `6a34f4d63e4f868bd61c4de96cb865feb3a80b2a`, and the final complete run. **Its intermittent host-test failure has no confirmed root cause and is not claimed fixed by OAPEN.** No reader, native decoder, assertion or wait was modified to obtain the final result. These host render tests do not establish physical Android behavior.
+
+Diff review confirms no changes to Internet Archive, the retained-download manager, readers, translation/models, core, SQL/migrations, updater, Android manifest/permissions, signing or SDK configuration. Their regression tests passed in the final suites. The new Android registry expectation explicitly includes OAPEN with every reading flag false and no OfflineDownloadProvider capability; it retains the checks for the other sources.
+
+The opt-in real `:app:oapenLookupCheck` then passed (**BUILD SUCCESSFUL, 15s**, 2026-10-29). It used the new shared OapenSource with the real Desktop Java engine, the project User-Agent and the fixed public GetRecord endpoint: bibliography parsed, publisher/description/identifiers present, one announced format and **zero file requests**. Network proxy/CA properties were forwarded to JavaExec by an external environment init script, with TLS verification retained; no networking workaround was added to the application. This validates a real host metadata lookup, not Android networking, REST search, file transfer or offline reading.
+
+Remaining acceptance blockers: integrated free-text discovery and REST pagination, a successful permitted PDF transfer, any verified EPUB transfer, OAPEN retained-copy/offline/progress integration, and physical Android validation. A green host/build result does not remove those gates. Keep Draft; do not merge or publish releases/APKs.
 
 ---
 
