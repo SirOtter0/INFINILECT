@@ -10,6 +10,7 @@ object UpdateIntegrationCheck {
     @JvmStatic fun main(args: Array<String>)=runBlocking {
         val directory=Files.createTempDirectory("infinilect-update-check")
         val backend=GitHubUpdates(directory,object : UpdateInstaller {
+            override val installationSupported=false
             override val installed=InstalledUpdateBuild(INSTALLED_DESKTOP_VERSION,1,false)
             override suspend fun inspect(file: Path): ApkIdentity=error("No APK access permitted")
             override suspend fun handoff(file: Path): InstallHandoff=error("No installation permitted")

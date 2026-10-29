@@ -23,6 +23,8 @@ import java.nio.file.StandardCopyOption.*
 import java.security.MessageDigest
 
 internal interface UpdateInstaller {
+    /** Platform capability/declaration, not the user's install-source grant. */
+    val installationSupported: Boolean
     val installed: InstalledUpdateBuild
     suspend fun inspect(file: Path): ApkIdentity
     suspend fun handoff(file: Path): InstallHandoff
@@ -45,7 +47,7 @@ internal class GitHubUpdates(
     private val preferencesDirectory: Path? = directory,
 ) : UpdateBackend {
     override val installed get()=installer.installed
-    override val trustedInstallationConfigured get()=installed.android && !installed.development && trust.configured
+    override val trustedInstallationConfigured get()=installed.android && !installed.development && installer.installationSupported && trust.configured
     private val client=HttpClient(engine) {
         followRedirects=false;expectSuccess=false
         install(HttpTimeout) {connectTimeoutMillis=5_000;socketTimeoutMillis=15_000;requestTimeoutMillis=120_000}
@@ -266,7 +268,10 @@ internal class GitHubUpdates(
     override suspend fun automaticAllowed()=installer.automaticAllowed()
     override suspend fun installationCancelled()=installer.installationCancelled()
     override suspend fun installationFailure()=installer.installationFailure()
-    override fun requestInstallPermission()=installer.requestPermission()
+    override fun requestInstallPermission() {
+        if(!trustedInstallationConfigured) updateError(UpdateFailure.TRUST_NOT_CONFIGURED)
+        installer.requestPermission()
+    }
     override fun openOfficialPage()=installer.openOfficialPage()
     override fun close() {try {releaseLease()} finally {client.close();engine.close()}}
 }
