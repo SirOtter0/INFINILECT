@@ -44,6 +44,33 @@ class EpubImportCompatibilityTest {
             finally { document.close() }
         }
     }
+    @Test fun importedMultipleRightsSurviveReopeningTheExistingLocalStoreWithoutNewIdentity() = runBlocking<Unit> {
+        owned { local, _, root ->
+            val fixture=epub2Fixture().apply {
+                opf {it.replace("<dc:rights>Original test fixture</dc:rights>","<dc:rights>Original A</dc:rights><dc:rights>Original B</dc:rights>")}
+            }
+            val publication=local.import(LocalFileSelection("original.epub") {EpubBytes(fixture.zip())})
+            local.close();local.awaitClosed()
+            val text=FileTextPreparer(root.resolve("reopened-text"))
+            val epub=FileEpubPreparer(root.resolve("reopened-epub"))
+            val pages=CbzPagePreparer(root.resolve("reopened-cbz"))
+            val reopened=FileLocalPublicationSource(root.resolve("imports"),text,epub,pages)
+            try {
+                val restored=assertNotNull(reopened.getPublication(publication.id))
+                assertEquals(publication,restored)
+                assertEquals(listOf(publication.id),reopened.search("*").publications.map {it.id})
+                assertNull(restored.rights,"EPUB declarations must not become source authorization")
+                val loader=object:ResourceLoader {override suspend fun load(resource:PublicationResource)=reopened.loadResource(resource)}
+                val document=epub.prepare(restored,restored.resources.single(),loader)
+                try {
+                    assertEquals(listOf(EpubRightsStatement("Original A"),EpubRightsStatement("Original B")),document.metadata.rights)
+                    assertTrue(BoundedEpubParser().chapter(document,EpubEntryPath("OPS/chapter.xhtml")).codePoints>0)
+                } finally {document.close()}
+            } finally {
+                reopened.close();reopened.awaitClosed();epub.close();epub.awaitClosed();text.close();text.awaitClosed();pages.close();pages.awaitClosed()
+            }
+        }
+    }
     @Test fun recognizedMalformedPackageHasAnEpubErrorAndLeavesNoOwnedImport() = runBlocking<Unit> {
         rejected(epub2Fixture().apply { entries[packagePath] = "<broken".encodeToByteArray() }.zip(), ImportFailure.EPUB_INVALID)
     }

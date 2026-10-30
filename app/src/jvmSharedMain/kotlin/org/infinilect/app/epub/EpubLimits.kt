@@ -9,11 +9,13 @@ import org.infinilect.core.EpubEntryPath
 /** Finite production ceilings
 tests may only lower them. */
 internal data class EpubLimits(
-val archiveBytes: Long = 32L * 1024 * 1024, val expandedBytes: Long = 64L * 1024 * 1024, val entryBytes: Long = 8L * 1024 * 1024, val entries: Int = 512, val ratio: Int = 100, val xmlBytes: Int = 1024 * 1024, val manifest: Int = 256, val spine: Int = 128, ) {
+val archiveBytes: Long = 32L * 1024 * 1024, val expandedBytes: Long = 64L * 1024 * 1024, val entryBytes: Long = 8L * 1024 * 1024, val entries: Int = 512, val ratio: Int = 100, val xmlBytes: Int = 1024 * 1024, val manifest: Int = 256, val spine: Int = 128,
+val rightsDeclarations: Int = 32, val rightsTextUnits: Int = 32 * 1024, ) {
     init {
         require(archiveBytes in 1..32L*1024*1024 && expandedBytes in 1..64L*1024*1024)
         require(entryBytes in 1..8L*1024*1024 && entries in 1..512 && ratio in 1..100)
         require(xmlBytes in 1..1024*1024 && manifest in 1..256 && spine in 1..128)
+        require(rightsDeclarations in 1..32 && rightsTextUnits in 1..32*1024)
     }
 }
 internal const val EPUB_BUFFER_BYTES = 8192

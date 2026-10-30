@@ -28,8 +28,15 @@ object WikisourceFeasibilityCheck {
             }
         }
         try {
+            println("Wikisource validation phase=prepare")
             val document=preparer.prepare(publication,resource,loader)
             try {
+                check(document.metadata.languages == listOf("es"))
+                check(document.metadata.rights == listOf(
+                    EpubRightsStatement("Creative Commons BY-SA 3.0", "en"),
+                    EpubRightsStatement("GNU Free Documentation License", "en"),
+                )) {"Official export rights metadata changed; review required"}
+                println("Wikisource validation phase=chapters; rightsStatements=${document.metadata.rights.size}; spine=${document.spine.size}")
                 val parser=org.infinilect.app.reader.epub.defaultEpubParser()
                 var points=0
                 for (item in document.spine) {
@@ -40,6 +47,12 @@ object WikisourceFeasibilityCheck {
                 println("EPUB accepted by production preparer/parser; chapters=${document.spine.size}; readableCodePoints=$points")
             }
             finally {document.close()}
-        } finally {preparer.close();preparer.awaitClosed();root.toFile().deleteRecursively()}
+        } finally {
+            preparer.close();preparer.awaitClosed()
+            try {
+                Files.walk(root).use {paths->check(paths.noneMatch {it.fileName.toString().endsWith(".zip")}) {"Prepared file cleanup incomplete"}}
+                println("Wikisource validation cleanup=complete")
+            } finally {root.toFile().deleteRecursively()}
+        }
     }
 }

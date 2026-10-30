@@ -31,6 +31,19 @@ or becomes a cache revision. Identifier/title/language metadata are required. EP
 `dcterms:modified`; EPUB2 has no fabricated modification timestamp (`modified=null`); optional creators/rights are retained without inferring
 permissions.
 
+PR #39 retains repeatable `dc:rights` in `EpubMetadata.rights` as an ordered
+`List<EpubRightsStatement>`, including duplicates. Each literal statement keeps
+XML-decoded text (without trimming), its optional local ID and effective XML
+language/direction. Consumers must iterate the list; it is not a single combined
+license. This follows [OPF2 §2.2 and §2.2.15](https://idpf.org/epub/20/spec/OPF_2.0_latest.htm)
+and [EPUB 3.3 optional Dublin Core elements](https://www.w3.org/TR/epub-33/#sec-opf-dcmes-optional).
+Zero/one statement remains supported; non-text/blank statements are rejected.
+The original ZIP, contributor pages and license links are not rewritten. This
+in-memory model is not persisted: no import/library/progress schema changes are
+required. `Publication.rights` remains the independent source-supplied statement;
+EPUB metadata does not grant download authorization. No existing UI consumes the
+EPUB field as a single string; publication details still use the source statement.
+
 `app/commonMain` has a small parallel `EpubPreparer` seam, owned on both platforms.
 The opener now deliberately hands off an EPUB document to the separate semantic
 reader for enabled source options; TEXT remains preferred and no generic engine
@@ -48,6 +61,8 @@ registry is added. A structurally valid document still needs renderer checks.
 | XML document | 1 MiB |
 | XML depth / element count / attributes per element | 32 / 20,000 / 32 |
 | Per-node text / attribute value | 8,192 UTF-16 units |
+| Rights declarations / aggregate rights text | 32 / 32,768 UTF-16 units |
+| Effective rights language / direction | 128 UTF-16 units each |
 | Manifest / spine entries | 256 / 128 |
 | Canonical path length / components | 512 UTF-16 units / 32 (ZIP name still ≤513 UTF-8 bytes) |
 | Archive/entry comments and extra fields | 1,024 bytes each |
