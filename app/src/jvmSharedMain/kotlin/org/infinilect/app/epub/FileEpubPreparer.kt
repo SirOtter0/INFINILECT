@@ -27,7 +27,8 @@ internal fun androidEpubDirectory(cacheDir: Path): Path?  = cacheDir.takeIf {
 * No ZIP entry is ever extracted to a filesystem path. All work/cleanup runs on IO.
 */
 
-internal class FileEpubPreparer(private val directory: Path?, private val limits: EpubLimits = EpubLimits(), private val dispatcher: CoroutineDispatcher = Dispatchers.IO): EpubPreparer {
+internal class FileEpubPreparer(private val directory: Path?, private val limits: EpubLimits = EpubLimits(), private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val validateDocument:suspend(EpubDocument,PublicationResource)->Unit={_,_->}): EpubPreparer {
     private val closed = AtomicBoolean()
     private val mutex = Mutex()
     private val cleanup = CoroutineScope(SupervisorJob()+dispatcher)
@@ -94,6 +95,9 @@ internal class FileEpubPreparer(private val directory: Path?, private val limits
                                     value.close()
                                     throw CancellationException("EPUB owner closed")
                                 }
+                                // Additional owning-source authorization can only reject. It
+                                // cannot skip structural validation or publish an unverified file.
+                                validateDocument(value,resource)
                                 value
                             }
                             finally {

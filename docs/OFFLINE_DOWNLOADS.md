@@ -1,5 +1,18 @@
 # Offline publication downloads — PR #36
 
+PR #39 extends the existing provider list with **Wikisource, Spanish reviewed
+subset**. The actual EPUB 3 export of _El matadero_ passes full validation,
+atomic retained publication and reopening after closing the network source and
+recreating storage. Initial coverage is one complete reviewed work/revision,
+not all search results. A source-specific rejection policy verifies semantic
+spine/credit fingerprints and exact original attribution links after ordinary
+EPUB validation, without replacing the existing manager or changing Archive's
+policy. Dynamic export size is not invented; real progress may be indeterminate.
+All quota, consent, leases, cancellation/recovery and safe-deletion guarantees
+below remain. [Current evidence and physical checklist](WIKISOURCE.md).
+The original PR #36 audit/table below is historical; its statement that no remote
+EPUB adapter exists is superseded by this narrow route.
+
 ## Audit before implementation
 
 Base: main `1d8235e294079844118e0125c5170e6f10c32df1` (PR #35 merged). Existing Library/History live in SQLDelight schema v2; locators, imports, preferences, translation models and disposable reading preparation have independent owners. Saving metadata never authorizes bytes. `OpenPublicationController` normally resolves fresh source metadata and then feeds the existing format preparer through `ResourceLoader` / streaming `ResourceContent`.

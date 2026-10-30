@@ -19,6 +19,10 @@ internal fun validateEpubContent(root: EpubXmlNode, base: EpubEntryPath, manifes
     val wrappers = linkedMapOf<EpubXmlNode, EpubImage>()
     val imageNodes = hashSetOf<EpubXmlNode>()
     val ids = hashSetOf<String>()
+    // TOC entries are actual reader navigation, never passive external citations.
+    val navigationAnchors = root.walk().filter { it.name == XmlName(XHTML, "nav") &&
+        it.attributes[XmlName("http://www.idpf.org/2007/ops", "type")]?.split(Regex("\\s+"))?.contains("toc") == true
+    }.flatMap { it.walk().filter { child -> child.name == XmlName(XHTML, "a") } }.toSet()
     for (node in root.walk()) {
         job?.ensureActive()
         when (node.name) {
@@ -54,7 +58,8 @@ internal fun validateEpubContent(root: EpubXmlNode, base: EpubEntryPath, manifes
             if (name.local == "id") requireEpub(validEpubContentAnchor(value) && ids.add(value))
             if (name.local in setOf("href", "src", "poster", "data")) {
                 requireEpub(value.length <= 512)
-                resolveEpubTarget(base, value, manifest)
+                val citation = node.name == XmlName(XHTML, "a") && node !in navigationAnchors && name == XmlName("", "href") && epubExternalReference(value) != null
+                if (!citation) resolveEpubTarget(base, value, manifest)
             }
         }
     }

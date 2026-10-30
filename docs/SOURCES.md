@@ -3,6 +3,10 @@
 Current retained-download behavior (PR #36): the existing strict explicit-CC0
 Internet Archive adapter supports TXT and PDF retained copies, independently of
 Library membership. Gutenberg remains catalogue-only; imports are not duplicated.
+PR #39 adds **Wikisource (Spanish, verified catalog)** with an actual EPUB 3 route
+and retained downloads. Initial coverage is one manually reviewed complete work,
+_El matadero_, page 1425/revision 1393104; other search hits are not automatically
+accepted as complete or authorized. [Evidence, API, rights and limitations](WIKISOURCE.md).
 The initial acquisition experiments below are historical and do not describe the
 new download manager. See [offline acquisition/storage/lifecycle policy](OFFLINE_DOWNLOADS.md).
 

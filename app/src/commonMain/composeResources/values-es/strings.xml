@@ -544,4 +544,6 @@
     <string name="source_show_catalog_only">Mostrar fuentes sin lectura integrada</string>
     <string name="source_show_catalog_only_description">Incluye catálogos cuyos libros todavía no pueden abrirse directamente en INFINILECT.</string>
     <string name="source_catalog_only_name">%1$s · solo catálogo</string>
+    <string name="wikisource_source_label">Wikisource (español, catálogo verificado)</string>
+    <string name="wikisource_review_required">Wikisource no dispone de una exportación completa revisada para esta revisión.</string>
 </resources>

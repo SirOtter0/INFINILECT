@@ -118,9 +118,9 @@ class EpubRightsMetadataTest {
             },EpubFailure.INVALID)
         }
     }
-    @Test fun acceptingMultipleRightsDoesNotBypassTheExistingHtml5DoctypeRestriction()=runBlocking<Unit> {
-        rejected(fixture(rights="<dc:rights>A</dc:rights><dc:rights>B</dc:rights>").apply {
+    @Test fun multipleRightsAndInertHtml5DoctypePreserveTheOriginalArchive()=runBlocking<Unit> {
+        prepared(fixture(rights="<dc:rights>A</dc:rights><dc:rights>B</dc:rights>").apply {
             change("OPS/nav.xhtml") {"<!DOCTYPE html>\n"+it}
-        },EpubFailure.INVALID)
+        }) { assertEquals(listOf("A","B"),it.metadata.rights.map {statement->statement.text}) }
     }
 }

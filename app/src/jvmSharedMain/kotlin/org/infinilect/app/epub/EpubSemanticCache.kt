@@ -28,7 +28,7 @@ internal class EpubSemanticCacheUnavailable : IOException()
 private class CorruptSemanticCache : IOException()
 internal data class CachedWindow(val start: Int, val logical: Int, val count: Int, val offset: Long, val bytes: Long, val digest: ByteArray)
 private data class CachedChapter(val file: Path, val bytes: Long, val digest: ByteArray, val windows: List<CachedWindow>, val metadata: EpubSemanticMetadata, val initialQuery: EpubWindowRequest, val initialMatch: Int?)
-private const val CACHE_MAGIC = 0x4550554257494E31L // EPUBWIN1, session-private, never a durable schema
+private const val CACHE_MAGIC = 0x4550554257494E32L // EPUBWIN2, session-private, never a durable schema
 
 /** Shared by this preparer's documents. Failed deletion keeps its reservation even
  * after a document closes, so repeated opens cannot accumulate orphaned cache files.
@@ -234,7 +234,7 @@ private fun utf8Size(value: String): Int {
 private fun stringSize(value: String) = 4 + utf8Size(value)
 private fun encodedSize(b: EpubBlock): Int = 4 + b.elementPath.size * 4 + 8 + 4 + 4 + 1 + (if (b.listMarker != null) 9 else 0) + 1 +
     (b.image?.let { stringSize(it.path.value) + stringSize(it.mediaType) + stringSize(it.alt) } ?: 0) + 4 +
-    b.runs.sumOf { 1 + stringSize(it.text) + (it.target?.let { t -> stringSize(t.path.value) + 1 + (t.anchor?.let(::stringSize) ?: 0) } ?: 0) }
+    b.runs.sumOf { 1 + stringSize(it.text) + (it.target?.let { t -> stringSize(t.path.value) + 1 + (t.anchor?.let(::stringSize) ?: 0) } ?: 0) + (it.externalReference?.let { ref -> stringSize(ref.uri) } ?: 0) }
 private fun writeString(out: DataOutputStream, value: String) { val bytes = value.encodeToByteArray(); out.writeInt(bytes.size); out.write(bytes) }
 private fun writeBlock(out: DataOutputStream, b: EpubBlock) {
     out.writeInt(b.elementPath.size); b.elementPath.forEach(out::writeInt); out.writeInt(b.startOffset); out.writeInt(b.logicalStart)
@@ -243,8 +243,9 @@ private fun writeBlock(out: DataOutputStream, b: EpubBlock) {
     out.writeBoolean(b.image != null); b.image?.let { writeString(out, it.path.value); writeString(out, it.mediaType); writeString(out, it.alt) }
     out.writeInt(b.runs.size)
     b.runs.forEach { r ->
-        out.writeByte((if (r.emphasis) 1 else 0) or (if (r.strong) 2 else 0) or (if (r.target != null) 4 else 0) or (if (!r.translatable) 8 else 0)); writeString(out, r.text)
+        out.writeByte((if (r.emphasis) 1 else 0) or (if (r.strong) 2 else 0) or (if (r.target != null) 4 else 0) or (if (!r.translatable) 8 else 0) or (if (r.externalReference != null) 16 else 0)); writeString(out, r.text)
         r.target?.let { writeString(out, it.path.value); out.writeBoolean(it.anchor != null); it.anchor?.let { a -> writeString(out, a) } }
+        r.externalReference?.let { writeString(out, it.uri) }
     }
 }
 private fun readAddress(input: DataInputStream): List<Int> {
@@ -272,7 +273,7 @@ private fun readBlock(input: DataInputStream, manifest: Map<EpubEntryPath, EpubM
     val count = input.readInt(); if (count !in 0..minOf(windowRuns, EpubWindowPolicy.APPEND_EVENTS)) throw CorruptSemanticCache()
     var units = 0
     val runs = List(count) {
-        val flags = input.readUnsignedByte(); if (flags and 15 != flags) throw CorruptSemanticCache()
+        val flags = input.readUnsignedByte(); if (flags and 31 != flags || flags and 20 == 20) throw CorruptSemanticCache()
         val text = readString(input, minOf(8192 - units, windowUnits - units)); units += text.length
         val target = if (flags and 4 != 0) {
             val targetPath = EpubEntryPath(readString(input, 512))
@@ -280,7 +281,12 @@ private fun readBlock(input: DataInputStream, manifest: Map<EpubEntryPath, EpubM
             if (targetPath !in spine) throw CorruptSemanticCache()
             EpubTarget(targetPath, anchor)
         } else null
-        EpubRun(text, flags and 1 != 0, flags and 2 != 0, target, flags and 8 == 0)
+        val external = if (flags and 16 != 0) {
+            val reference = readString(input, 512)
+            try { epubExternalReference(reference) ?: throw CorruptSemanticCache() }
+            catch (_: org.infinilect.app.reader.EpubException) { throw CorruptSemanticCache() }
+        } else null
+        EpubRun(text, flags and 1 != 0, flags and 2 != 0, target, flags and 8 == 0, external)
     }
     return EpubBlock(path, offset, EpubBlockKind.entries[kind], runs, logical, heading, marker, image)
 }

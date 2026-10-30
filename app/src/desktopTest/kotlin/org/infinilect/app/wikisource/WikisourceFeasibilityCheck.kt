@@ -3,7 +3,9 @@
 package org.infinilect.app.wikisource
 
 import java.nio.file.*
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import org.infinilect.app.reader.epub.*
 import org.infinilect.app.epub.FileEpubPreparer
 import org.infinilect.core.*
 
@@ -38,13 +40,35 @@ object WikisourceFeasibilityCheck {
                 )) {"Official export rights metadata changed; review required"}
                 println("Wikisource validation phase=chapters; rightsStatements=${document.metadata.rights.size}; spine=${document.spine.size}")
                 val parser=org.infinilect.app.reader.epub.defaultEpubParser()
+                check(document.metadata.title == "El Matadero")
+                check(document.metadata.creators == listOf("Esteban Echeverría"))
                 var points=0
+                val references=mutableSetOf<String>()
                 for (item in document.spine) {
                     val path=document.manifest.single {it.id==item.itemId}.path
-                    points+=parser.chapter(document,path).codePoints
+                    val chapter=parser.chapter(document,path)
+                    points+=chapter.codePoints
+                    references+=chapter.blocks.flatMap {it.runs}.mapNotNull {it.externalReference?.uri}
+                    check(chapter.blocks.flatMap {it.runs}.filter {it.externalReference!=null}.all {it.target==null})
                 }
                 check(points>1000) {"No substantial readable text"}
-                println("EPUB accepted by production preparer/parser; chapters=${document.spine.size}; readableCodePoints=$points")
+                check(references.size>=4) {"Attribution references were lost"}
+                val evidence=wikisourceExportEvidence(document)
+                check(evidence.references==references)
+                println("Wikisource semantic evidence="+evidence.spine.joinToString {"${it.codePoints}:${it.sha256}"})
+                val readerScope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
+                val reader=EpubReaderController(document,ReadingProgressId(id,resource.key,PublicationFormat.EPUB),readerScope)
+                try {
+                    reader.initialize(null)
+                    for(index in document.spine.indices.toList()+document.spine.indices.reversed().toList()) {
+                        reader.chapter(index)
+                        val state=withTimeout(10_000) {reader.state.first {it is EpubReaderState.Error || it is EpubReaderState.Ready && (it.spineIndex==index || it.error!=null)}}
+                        check(state is EpubReaderState.Ready && state.spineIndex==index && state.error==null) {"Reader navigation failed"}
+                        reader.presented(state.ticket)
+                    }
+                    check(reader.toc.isNotEmpty())
+                } finally {reader.close();readerScope.cancel()}
+                println("EPUB accepted by production preparer/parser/reader; chapters=${document.spine.size}; readableCodePoints=$points; passiveReferences=${references.size}; navigation=forward-and-back")
             }
             finally {document.close()}
         } finally {

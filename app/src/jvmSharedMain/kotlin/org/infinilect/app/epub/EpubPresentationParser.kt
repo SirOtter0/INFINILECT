@@ -26,7 +26,7 @@ internal class BoundedEpubParser : EpubParser {
         val root = parseEpubXml(bytes, EpubLimits(), currentCoroutineContext().job)
         val images = validateEpubContent(root, path, document.manifest, currentCoroutineContext().job)
         for (node in root.walk()) if (node.name == XmlName(XHTML, "a")) node.attr("href")?.let {
-            currentCoroutineContext().ensureActive(); ownedTarget(document, path, it, spineOnly = true)
+            currentCoroutineContext().ensureActive(); if (epubExternalReference(it) == null) ownedTarget(document, path, it, spineOnly = true)
         }
         return root to images
     }
@@ -135,21 +135,21 @@ internal class BoundedEpubParser : EpubParser {
             }
             runs.clear(); units = 0; blockEvents = 0
         }
-        fun append(text: String, em: Boolean, strong: Boolean, target: EpubTarget?, literal: Boolean = false, translatable: Boolean = true) {
+        fun append(text: String, em: Boolean, strong: Boolean, target: EpubTarget?, literal: Boolean = false, translatable: Boolean = true, externalReference: EpubExternalReference? = null) {
             if (text.isEmpty()) return
             if (units + text.length > 8192 || ++blockEvents > EpubWindowPolicy.APPEND_EVENTS || legacy && ++runCount > 8192) limit()
             units += text.length
             // Preserve Unicode/text order; collapse HTML whitespace only, not code points.
             val normalized = if (literal) text else text.replace(htmlWhitespace, " ")
             val previous = runStyle
-            if (previous == null || previous.emphasis != em || previous.strong != strong || previous.target != target || previous.translatable != translatable) {
-                finishRun(); runStyle = EpubRun("", em, strong, target, translatable)
+            if (previous == null || previous.emphasis != em || previous.strong != strong || previous.target != target || previous.translatable != translatable || previous.externalReference != externalReference) {
+                finishRun(); runStyle = EpubRun("", em, strong, target, translatable, externalReference)
             }
             // Linear coalescing: thousands of adjacent inline spans must not copy
             // the growing text/run object for every append event.
             runText.append(normalized)
         }
-        fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: EpubListMarker? = null, pre: Boolean = false, protectedText: Boolean = false) {
+        fun visit(node: EpubXmlNode, pathParts: List<Int>, em: Boolean = false, strong: Boolean = false, target: EpubTarget? = null, quote: Boolean = false, list: EpubListMarker? = null, pre: Boolean = false, protectedText: Boolean = false, externalReference: EpubExternalReference? = null) {
             job.ensureActive()
             val rasterWrapper = rasterWrappers[node]
             val tag = if (rasterWrapper != null) "img" else node.name.local
@@ -182,26 +182,28 @@ internal class BoundedEpubParser : EpubParser {
                 if (runs.isEmpty() && runText.isEmpty()) pendingAnchors.add(id)
                 else { anchors[id] = EpubPosition(contextPath.toList(), (offsets[contextPath] ?: 0) + runs.sumOf { it.text.epubCodePoints() } + runText.toString().epubCodePoints()); anchorBlocks[id] = blockCount }
             }
-            val nextTarget = if (tag == "a" && node.attr("href") != null) {
+            val href = if (tag == "a") node.attr("href") else null
+            val nextExternal = if (href != null) epubExternalReference(href) else externalReference
+            val nextTarget = if (href != null) {
                 if (++linkCount > 512) limit()
-                ownedTarget(document, path, node.attr("href")!!, true)
+                if (nextExternal != null) null else ownedTarget(document, path, href, true)
             } else target
             if (tag == "hr") { /* semantic separator, no injected reading text */ }
-            else if (tag == "br") append("\n", em, strong, nextTarget, literal = true)
+            else if (tag == "br") append("\n", em, strong, nextTarget, literal = true, externalReference = nextExternal)
             else if (tag == "img") append("[Image${node.attr("alt")?.let { alt -> alt.substring(0, alt.epubUtf16(alt.epubPointAtUtf16(minOf(256, alt.length)))) }?.let { ": $it" } ?: " not rendered"}]", em, strong, null, translatable = false)
             else {
                 var child = 0
                 var ordinal = if (tag == "ol") node.attr("start")?.toIntOrNull()?.also { requireEpub(it in 1..9999) } ?: 1 else 1
                 if (tag == "ol" && node.attr("start") != null) requireEpub(node.attr("start")!!.toIntOrNull() != null)
                 for (part in node.content) when (part) {
-                    is EpubXmlContent.Text -> append(part.value.toString(), em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, literal = pre || tag == "pre", translatable = !(protectedText || pre || tag == "pre" || tag in untranslatedTags))
+                    is EpubXmlContent.Text -> append(part.value.toString(), em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, literal = pre || tag == "pre", translatable = !(protectedText || pre || tag == "pre" || tag in untranslatedTags), externalReference = nextExternal)
                     is EpubXmlContent.Element -> {
                         val childList = if ((tag == "ol" || tag == "ul") && part.value.name.local == "li") {
                             val depth = (list?.depth ?: -1) + 1
                             if (depth > 7 || ordinal > 9999) limit()
                             EpubListMarker(tag == "ol", ordinal++, depth)
                         } else list
-                        visit(part.value, pathParts + child++, em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, quote || tag == "blockquote", childList, pre || tag == "pre", protectedText || tag in untranslatedTags)
+                        visit(part.value, pathParts + child++, em || tag == "em" || tag == "i", strong || tag == "strong" || tag == "b", nextTarget, quote || tag == "blockquote", childList, pre || tag == "pre", protectedText || tag in untranslatedTags, nextExternal)
                     }
                 }
             }

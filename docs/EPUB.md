@@ -4,7 +4,9 @@ PR #13 introduced **structural EPUB3 preparation, not a renderer**. These valida
 and resource-ownership guarantees remain unchanged. Merged PR #15 added a separate
 [passive semantic reader](EPUB_READER.md) and original development route; Draft PR #16 extends its bounded semantic
 presentation/local raster boundary; production
-EPUB acquisition remains disabled. No script execution or acquisition fallback.
+PR #39 adds a narrowly reviewed Wikisource EPUB 3 acquisition route, after a real
+production-preparer/reader/offline check. Other providers require their own
+acquisition authority. No script execution or acquisition fallback.
 
 ## Boundary
 
@@ -145,9 +147,23 @@ to 8 KiB even when a caller supplies a larger buffer.
   XHTML declarations, `&nbsp;` maps to the fixed U+00A0 character; comments/CDATA
   stay literal. Other named/custom entities remain unsupported. No entity table,
   DTD evaluator, external lookup or encoding fallback is added.
+- PR #39 also recognizes the exact inert HTML5 `<!DOCTYPE html>`, allowing XML
+  spaces/tabs/CR/LF between tokens, at most 512 units in the declaration and the
+  existing bounded prolog. The resulting root must be XHTML `html`; it cannot
+  authorize OPF/container/NCX or unnamespaced HTML. Only this recognized token is
+  removed from the parser's in-memory view, never from the original file. It
+  declares no named entities: `&nbsp;` without a supported legacy PUBLIC
+  declaration remains invalid XML. SYSTEM/external identifiers outside the old
+  exact PUBLIC allowlist, arbitrary internal subsets, custom entities, malformed
+  or repeated declarations remain rejected before SAX. All required entity/DTD
+  flags, lexical rejection, byte/tree and path controls remain enabled.
 - Validate all manifest XHTML for basic root/head/body structure, local
-  manifest-owned references, duplicate IDs and navigation `toc`. Reject remote
-  references, scripts/event handlers and embedded active elements. At the structural-preparation boundary XHTML is not rendered and
+  manifest-owned resources, duplicate IDs and navigation `toc`. Reject remote
+  resources, scripts/event handlers and embedded active elements. An ordinary
+  XHTML `a[href]` outside actual TOC navigation can instead carry a bounded,
+  strictly parsed HTTPS-only passive citation. Internal links/fragments still
+  resolve only to owned entries. Images, stylesheets, fonts, SVG and other
+  resources never receive this exception. At the structural-preparation boundary XHTML is not rendered and
   CSS/images/fonts and standalone SVG assets remain **opaque inert bytes**, not
   sanitized browser content. A narrow inline SVG cover wrapper containing exactly
   one manifest-owned PNG/JPEG projects to the existing image model. Only explicitly
@@ -160,6 +176,30 @@ to 8 KiB even when a caller supplies a larger buffer.
   than pretending to decrypt/verify them. No DRM/LCP support. Recognizable nested
   ZIP signatures/archive filename extensions are rejected; opaque assets are
   never recursively opened or decompressed as archives.
+
+### Passive hyperlinks (PR #39)
+
+`EpubExternalReference(uri)` preserves the original HTTPS destination independently
+of internal `EpubTarget`. Limits: 512 UTF-16 units, DNS-form public host, ordinary
+443/default port, no credentials, whitespace/controls, backslashes, IP literals,
+private suffixes or malformed UTF-8 percent escapes. HTTP, javascript/data/file/
+content/intent/mailto and scheme-relative URLs are rejected. Parsing a URL does
+not resolve DNS, follow redirects or fetch it. This is an inert data model,
+not authority for the resource loader or a guarantee about a hostname's DNS.
+
+The current Compose reader renders the anchor's text with its ordinary styles;
+it creates no URL annotation, UriHandler, webview or external opener. The original
+XHTML and URI remain intact; opening a browser is **not implemented**. Internal
+links/TOC still use only the existing reader navigation. External references
+survive mixed-style runs, translation copies and bounded semantic caching; URI
+bytes count against cache limits and are revalidated on cache reading. The private
+session format is `EPUBWIN2`; no Library/progress/import record changes.
+
+The source-specific optional rejection hook in `FileEpubPreparer` runs only after
+all structural/security validation. It cannot bypass it. Wikisource uses it to
+bind the reviewed complete work, all credit sections and exact reference set;
+unrelated imports keep normal EPUB rules. [Live evidence, restricted catalog and
+offline reproduction](WIKISOURCE.md).
 
 ## Storage, ownership and errors
 
@@ -213,6 +253,12 @@ Official compatibility sources inspected on 2026-10-07:
   — external-entity feature handling and the SAX lexical-handler property.
 - [JDK21 ZipFile](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/zip/ZipFile.html)
   and [SAX XMLReader](https://docs.oracle.com/en/java/javase/21/docs/api/java.xml/org/xml/sax/XMLReader.html).
+
+Additional primary sources checked on 2026-10-30:
+[EPUB 3.3 XML constraints](https://www.w3.org/TR/epub-33/#sec-xml-constraints),
+[HTML XML syntax](https://html.spec.whatwg.org/multipage/xhtml.html) and
+[XML 1.0 prolog/DTD grammar](https://www.w3.org/TR/xml/#sec-prolog-dtd).
+Optional inert document declarations do not require external-DTD/entity support.
 
 Existing JDK/Android ZIP, SAX, NIO and coroutines suffice; no new dependency,
 license, database schema or manifest/permission change. PR #15 explicitly includes

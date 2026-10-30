@@ -544,4 +544,6 @@
     <string name="source_show_catalog_only">Mostra fonts sense lectura integrada</string>
     <string name="source_show_catalog_only_description">Inclou catàlegs els llibres dels quals encara no es poden obrir directament a INFINILECT.</string>
     <string name="source_catalog_only_name">%1$s · només catàleg</string>
+    <string name="wikisource_source_label">Wikisource (espanyol, catàleg verificat)</string>
+    <string name="wikisource_review_required">Wikisource no disposa d’una exportació completa revisada per a aquesta revisió.</string>
 </resources>
