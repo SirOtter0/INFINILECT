@@ -541,4 +541,7 @@
     <string name="dl_http_error">La fuente ha rechazado la descarga o no está disponible temporalmente. Vuelve a intentarlo más tarde.</string>
     <string name="dl_rights_unverified">INFINILECT no ha podido verificar un permiso explícito para conservar esta publicación sin conexión. No se ha descargado ningún archivo.</string>
     <string name="dl_unsupported_format">Esta publicación no ofrece un archivo autorizado en un formato compatible dentro de los límites de descarga. Internet Archive admite actualmente TXT y PDF; este adaptador no ofrece EPUB ni CBZ.</string>
+    <string name="source_show_catalog_only">Mostrar fuentes sin lectura integrada</string>
+    <string name="source_show_catalog_only_description">Incluye catálogos cuyos libros todavía no pueden abrirse directamente en INFINILECT.</string>
+    <string name="source_catalog_only_name">%1$s · solo catálogo</string>
 </resources>

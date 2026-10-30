@@ -541,4 +541,7 @@
     <string name="dl_http_error">La font ha rebutjat la baixada o no està disponible temporalment. Torna-ho a provar més tard.</string>
     <string name="dl_rights_unverified">INFINILECT no ha pogut verificar un permís explícit per conservar aquesta publicació sense connexió. No s’ha baixat cap fitxer.</string>
     <string name="dl_unsupported_format">Aquesta publicació no ofereix cap fitxer autoritzat en un format compatible dins dels límits de baixada. Internet Archive admet actualment TXT i PDF; aquest adaptador no ofereix EPUB ni CBZ.</string>
+    <string name="source_show_catalog_only">Mostra fonts sense lectura integrada</string>
+    <string name="source_show_catalog_only_description">Inclou catàlegs els llibres dels quals encara no es poden obrir directament a INFINILECT.</string>
+    <string name="source_catalog_only_name">%1$s · només catàleg</string>
 </resources>

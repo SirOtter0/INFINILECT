@@ -163,6 +163,16 @@ tasks.register<JavaExec>("gutenbergSearchCheck") {
     mainClass.set("org.infinilect.app.gutenberg.GutenbergIntegrationCheck")
 }
 
+// Opt-in local WS Export compatibility probe; never downloads and is not part of check/build.
+tasks.register<JavaExec>("wikisourceFeasibilityCheck") {
+    group = "verification"
+    description = "Validate a locally supplied official Wikisource EPUB with the real preparer and chapter parser."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.wikisource.WikisourceFeasibilityCheck")
+}
+
 // Opt-in access diagnostic, independent of Gutenberg and of test/check/build.
 tasks.register<JavaExec>("oapenApiAccessCheck") {
     group = "verification"

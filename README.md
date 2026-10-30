@@ -103,7 +103,8 @@ is INTERNET; AndroidX also declares an internal app-scoped signature permission
 for non-exported receiver protection. The launcher icon remains original provisional
 geometry, not the final project logo; the application toolbar uses the wordmark.
 
-For Gutenberg catalog examples, search `Frankenstein` or `shakespeare`; you can
+Catalog-only sources are hidden by default. Enable **Settings → Discovery → Show sources without integrated reading** to inspect them; this does not enable acquisition.
+For Gutenberg catalog examples after opting in, search `Frankenstein` or `shakespeare`; you can
 save metadata to Library, but EPUB/TEXT opening is unavailable for this source.
 For an Archive reading example, select Internet Archive and search
 `identifier:gmb-2015-93040`, then press **Open text**. This is a public CC0 Dutch
@@ -171,6 +172,7 @@ file store. Readium is not included and may only be used by an Android-specific 
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Sources](docs/SOURCES.md)
+- [Source visibility and blocked Wikisource feasibility](docs/WIKISOURCE.md)
 - [Cache and downloads](docs/CACHE.md)
 - [Persistent reading progress](docs/PROGRESS.md)
 - [Local library and reading history](docs/LIBRARY_HISTORY.md)

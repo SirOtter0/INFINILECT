@@ -63,7 +63,7 @@ class HomeDepartureTest {
         val beforeLibrary = data.saved.toMap(); val beforeHistory = data.opened.toMap()
         val collections = ApplicationCollections(data.library, data.history, dispatcher)
         val preferences = ApplicationPreferences(profile = LocalProfile(interfaceLanguage = listOf("en", "es", "ca")[round % 3], setupHandled = true),
-            discovery = DiscoveryPreferences(homeEnabled = true))
+            discovery = DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true))
         val appearance = ApplicationAppearancePreferences(object : ApplicationAppearanceStore {
             override suspend fun load() = ApplicationThemeMode.LIGHT
             override suspend fun save(mode: ApplicationThemeMode) = true

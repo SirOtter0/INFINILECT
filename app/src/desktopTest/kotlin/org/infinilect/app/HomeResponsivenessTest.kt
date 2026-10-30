@@ -117,7 +117,7 @@ class HomeResponsivenessTest {
         val owner = ApplicationSources(listOf(SourceOption("Fixture", source)), covers = covers, sessionDispatcher = dispatcher) {}
         val app = owner.applicationSession()
         val preferences = ApplicationAppearanceState(loaded = true, profile = LocalProfile(setupHandled = true),
-            discovery = DiscoveryPreferences(homeEnabled = true))
+            discovery = DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true))
         val position = LazyListState()
         val scene = ImageComposeScene(390, 720, Density(1f), coroutineContext = dispatcher)
         var frame = 0L

@@ -193,7 +193,7 @@ class GutenbergAndroidFailureTest {
         })
         val archive=InternetArchiveSource(MockEngine {respond("""{"response":{"numFound":1,"docs":[{"identifier":"original-fixture","title":"Original Cervantes fixture"}]}}""",headers=headers())})
         val catalog=DiscoveryCatalog(listOf(archive,gutenberg),this){0}
-        val controller=DiscoveryController(listOf(SourceOption("Archive",archive),SourceOption("Gutenberg",gutenberg)),catalog,this)
+        val controller=DiscoveryController(listOf(SourceOption("Archive",archive),SourceOption("Gutenberg",gutenberg)),catalog,this).also { it.catalogOnlyVisibility(true) }
         try {
             controller.edit("cervantes");controller.submit()
             val first=controller.state.first{it.request!=null && !it.loading}

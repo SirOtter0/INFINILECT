@@ -65,6 +65,9 @@ class AndroidSourcesTest {
         try {
             assertEquals(listOf("internet-archive","gutenberg","local-imports"),sources.options.map { it.source.id.value })
             assertEquals(listOf(true,false,true),sources.options.map { it.textReadingEnabled })
+            assertEquals(listOf(true,false,true),sources.options.map { it.supportsIntegratedReading })
+            assertEquals(listOf("internet-archive","local-imports"),sources.options.filter { it.visibleInCatalogs(false) }.map { it.source.id.value })
+            assertEquals(sources.options,sources.options.filter { it.visibleInCatalogs(true) })
             assertEquals("INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)",PROJECT_USER_AGENT)
         } finally { sources.close(); sources.close(); directory.toFile().deleteRecursively() }
     }

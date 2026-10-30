@@ -8,6 +8,9 @@ import org.jetbrains.compose.resources.StringResource
 
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
+    SOURCE_SHOW_CATALOG_ONLY(Res.string.source_show_catalog_only, "Show sources without integrated reading"),
+    SOURCE_SHOW_CATALOG_ONLY_DESCRIPTION(Res.string.source_show_catalog_only_description, "Includes catalogs whose books cannot yet be opened directly in INFINILECT."),
+    SOURCE_CATALOG_ONLY_NAME(Res.string.source_catalog_only_name, "%1\$s · catalog only"),
     DL_TITLE(Res.string.dl_title, "Downloads"),
     DL_DOWNLOAD(Res.string.dl_download, "Download"),
     DL_CANCEL(Res.string.dl_cancel, "Cancel download"),

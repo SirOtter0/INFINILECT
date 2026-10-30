@@ -34,7 +34,8 @@ internal interface DiscoverySource {
     suspend fun discover(request: DiscoveryRequest, token: String? = null): DiscoveryPage
 }
 internal data class DiscoveryPreferences(val homeEnabled: Boolean = false, val personalized: Boolean = true,
-    val interests: Set<Genre> = emptySet(), val inferenceAfter: Long = 0) {
+    val interests: Set<Genre> = emptySet(), val inferenceAfter: Long = 0,
+    val showCatalogOnlySources: Boolean = false) {
     init { require(inferenceAfter >= 0) }
 }
 internal object DiscoveryStrings {

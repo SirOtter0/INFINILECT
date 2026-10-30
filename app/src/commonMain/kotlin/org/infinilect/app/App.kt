@@ -52,7 +52,11 @@ import org.infinilect.app.ui.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.isSystemInDarkTheme
 
-internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false, val pdfReadingEnabled: Boolean = false, val developmentOnly: Boolean = false)
+internal data class SourceOption(val name: String, val source: PublicationSource, val textReadingEnabled: Boolean = false, val epubReadingEnabled: Boolean = false, val pageReadingEnabled: Boolean = false, val pdfReadingEnabled: Boolean = false, val developmentOnly: Boolean = false) {
+    /** Declared, implemented source-to-reader routes, never advertised MIME types or network health. */
+    val supportsIntegratedReading get() = textReadingEnabled || epubReadingEnabled || pageReadingEnabled || pdfReadingEnabled
+    fun visibleInCatalogs(showCatalogOnly: Boolean) = supportsIntegratedReading || showCatalogOnly
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -239,7 +243,7 @@ fun App(
 internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPosition: LazyListState,
     sources: List<SourceOption>, selected: Int, onSource: (Int) -> Unit,
     collections: CollectionsController, onOpen: (org.infinilect.core.Publication) -> Unit = session::open,
-    modifier: Modifier = Modifier, progressRecords: List<org.infinilect.core.ReadingProgress> = emptyList(), descriptions: PublicationDescriptions? = null, applicationSession: ApplicationSession? = null) {
+    modifier: Modifier = Modifier, progressRecords: List<org.infinilect.core.ReadingProgress> = emptyList(), descriptions: PublicationDescriptions? = null, applicationSession: ApplicationSession? = null, showCatalogOnlySources: Boolean = false) {
     val strings = LocalAppStrings.current
     var detail by remember(session) { mutableStateOf<org.infinilect.core.Publication?>(null) }
     val query by session.query.collectAsState()
@@ -254,6 +258,12 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         SearchState.Idle -> null
     }
     BoxWithConstraints(modifier.fillMaxSize().padding(24.dp)) {
+        val showCatalogOnly = applicationSession?.discovery?.state?.collectAsState()?.value?.showCatalogOnlySources ?: showCatalogOnlySources
+        val visible = sources.indices.filter { sources[it].visibleInCatalogs(showCatalogOnly) }
+        if (selected !in visible) {
+            Text(strings[UiText.SOURCE_SHOW_CATALOG_ONLY_DESCRIPTION])
+            return@BoxWithConstraints
+        }
         val headerMaxHeight = maxHeight / 2
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Long headers/source rows may scroll, but can never consume the result viewport.
@@ -261,8 +271,9 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                 .verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ScreenHeading(strings[UiText.SEARCH], strings[UiText.UI_EXPLORE_THE_EXISTING_CATALOGS_OR_YOUR_IMPORTED_FILES])
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    sources.forEachIndexed { index, source ->
-                        androidx.compose.material.OutlinedButton(enabled = index != selected, onClick = { onSource(index) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.sourceName(source.name)) }
+                    visible.forEach { index ->
+                        val source = sources[index]
+                        androidx.compose.material.OutlinedButton(enabled = index != selected, onClick = { onSource(index) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (source.supportsIntegratedReading) strings.sourceName(source.name) else strings.format(UiText.SOURCE_CATALOG_ONLY_NAME, strings.sourceName(source.name))) }
                     }
                 }
                 Text(strings.format(UiText.UI_SOURCE_1_S, strings.sourceName(sources[selected].name)))

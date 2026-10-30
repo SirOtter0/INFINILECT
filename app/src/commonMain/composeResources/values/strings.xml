@@ -541,4 +541,7 @@
     <string name="dl_http_error">The source rejected the download or is temporarily unavailable. Retry later.</string>
     <string name="dl_rights_unverified">INFINILECT could not verify an explicit permission to keep this publication offline. No file was downloaded.</string>
     <string name="dl_unsupported_format">This publication has no authorized file in a supported format within the download limits. Internet Archive currently supports TXT and PDF; EPUB and CBZ are not offered by this adapter.</string>
+    <string name="source_show_catalog_only">Show sources without integrated reading</string>
+    <string name="source_show_catalog_only_description">Includes catalogs whose books cannot yet be opened directly in INFINILECT.</string>
+    <string name="source_catalog_only_name">%1$s · catalog only</string>
 </resources>

@@ -26,9 +26,10 @@ internal class ApplicationSession(
     private val scope=CoroutineScope(scope.coroutineContext+job)
     private val discoveryOptions = sources.options.filterNot { it.developmentOnly }
     private val discoveryCatalog = DiscoveryCatalog(discoveryOptions.map { it.source }, this.scope, sources.discoveryDiagnostics, clock)
-    val discovery = DiscoveryController(discoveryOptions, discoveryCatalog, this.scope)
+    val discovery = DiscoveryController(discoveryOptions, discoveryCatalog, this.scope).also { it.pause() }
     val homeDiscovery = HomeDiscovery(discoveryOptions.filter { it.source is DiscoverySource }, discoveryCatalog, this.scope, sources.technicalDiagnostics, clock)
-    val catalogOptions get() = discoveryOptions
+    val catalogOptions get() = discovery.visibleOptions
+    private var preferredSource = sources.options.first().source.id
     private val mutableSelected=MutableStateFlow(0)
     val selected=mutableSelected.asStateFlow()
     private val mutableDestination=MutableStateFlow(Destination.HOME)
@@ -83,15 +84,32 @@ internal class ApplicationSession(
         observe(searchSession.value); collections.refreshHistory()
         this.scope.launch { collections.history.collect { if (destination.value == Destination.HOME && !it.loading) refreshHomeProgress() } }
         sources.appearance?.let { preferences -> this.scope.launch { preferences.state.collect { current ->
+            if (current.loaded) {
+                discovery.catalogOnlyVisibility(current.discovery.showCatalogOnlySources)
+                homeDiscovery.catalogOnlyVisibility(current.discovery.showCatalogOnlySources)
+                reconcileSourceVisibility()
+            }
             if (current.loaded) sources.translation?.defaultLanguage?.value = current.readingLanguage
                 ?: org.infinilect.app.ui.resolveInterfaceLanguage(current.profile.interfaceLanguage, org.infinilect.app.ui.deviceInterfaceLanguage())
         } } }
+        reconcileSourceVisibility()
     }
     private fun observe(session: ReadingSession) {
         observer?.cancel(); mutableOpening.value=session.opening.state.value
         observer=scope.launch { session.opening.state.collect { mutableOpening.value=it } }
     }
     fun selectSource(index: Int) {
+        if (index !in sources.options.indices || !sources.options[index].visibleInCatalogs(discovery.state.value.showCatalogOnlySources)) return
+        if(closed || importing.value.busy || opening.value !is OpenPublicationState.Idle) return
+        preferredSource = sources.options[index].source.id
+        selectEffectiveSource(index)
+    }
+    private fun reconcileSourceVisibility() {
+        val visible = sources.options.indices.filter { sources.options[it].visibleInCatalogs(discovery.state.value.showCatalogOnlySources) }
+        val index = visible.firstOrNull { sources.options[it].source.id == preferredSource } ?: visible.firstOrNull() ?: return
+        selectEffectiveSource(index)
+    }
+    private fun selectEffectiveSource(index: Int) {
         if(closed || importing.value.busy || index !in sources.options.indices || index==selected.value || opening.value !is OpenPublicationState.Idle) return
         searchSession.value.close()
         mutableSelected.value=index; mutableSearch.value=session(sources.options[index]); observe(searchSession.value)
@@ -156,6 +174,7 @@ internal class ApplicationSession(
     }
     fun canRetry(publication: Publication)=sources.options.any { it.source.id==publication.id.sourceId && (it.textReadingEnabled || it.epubReadingEnabled || it.pageReadingEnabled || it.pdfReadingEnabled) }
     fun sourceName(id: SourceId)=sources.options.firstOrNull { it.source.id==id }?.name ?: id.value
+    fun supportsIntegratedReading(id: SourceId)=sources.options.firstOrNull { it.source.id==id }?.supportsIntegratedReading == true
     fun retry(publication: Publication) {
         if(closed || !canRetry(publication)) return
         val active=savedReader ?: searchSession.value
