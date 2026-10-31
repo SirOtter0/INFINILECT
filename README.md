@@ -32,13 +32,16 @@ with known size≤**16MiB**. Back retains source/query/results. Text is prepared
 private temporary storage and displayed through bounded lazy windows;
 [reader policy](docs/TEXT_READER.md).
 
-This is a conservative remote reading path, with local approximate TEXT progress across restarts,
-without remote EPUB/PDF acquisition or explicit downloads. Automatic bounded disk caching
-only reuses resources with trustworthy revisions; current Archive resources have
-no revision and reopening still acquires again. See [cache policy](docs/CACHE.md).
+Authorized remote routes include Internet Archive TXT/PDF and, in PR #39,
+**Wikisource's Spanish reviewed selection: El matadero only**. Wikisource's general
+catalog, other editions and PDF exports are not enabled. [Verified scope](docs/WIKISOURCE.md).
+Explicit retained downloads are independent of Library membership and can reopen
+without the source network connection. Automatic temporary caching separately
+requires trustworthy revisions; dynamic resources are reacquired when no retained
+copy exists. See [downloads](docs/OFFLINE_DOWNLOADS.md) and [cache policy](docs/CACHE.md).
 Library saves publication metadata locally; History records successful opens.
-Both survive restarts and cache deletion. Saved entries reopen through their source,
-with normal acquisition and reading-progress restoration. History Clear requires
+Both survive restarts and cache deletion. Saved entries first use a valid retained
+copy, then their source, with reading-progress restoration. History Clear requires
 confirmation and keeps Library/progress. [Local storage policy](docs/LIBRARY_HISTORY.md).
 **v0.0.1 is not complete**. [Acquisition scope](docs/INTERNET_ARCHIVE.md).
 
@@ -52,7 +55,7 @@ Desktop uses a native picker. [Ownership, limits and pending manual checks](docs
 OAPEN's official alternate metadata interface is accessible and supplies download
 links; REST rejects this environment with HTTP 403 and PDF transfer remains
 blocked/unverified. See [OAPEN](docs/OAPEN.md) and the
-[comparison](docs/ACQUISITION_COMPARISON.md). Gutenberg remains experimental catalog-only; no bulk crawling. No OAPEN source/UI or remote PDF acquisition is claimed. Local PDF reading uses
+[comparison](docs/ACQUISITION_COMPARISON.md). Gutenberg remains experimental catalog-only; no bulk crawling. No OAPEN source/UI or OAPEN PDF acquisition is claimed. Local PDF reading uses
 owned contracts, Android framework PdfRenderer on API 26+, and Desktop PDFBox 3.0.8.
 [PDF limits and pending acceptance](docs/PDF_READER.md).
 
@@ -99,11 +102,12 @@ the reader. Process death creates a new runtime; durable progress restores when 
 publication is reopened through its valid source (the existing validated local-PDF
 recreation route is also retained). Pixel offsets are not durable progress. There
 is no tracking or extra device-data access. The only requested platform capability
-is INTERNET; AndroidX also declares an internal app-scoped signature permission
+consists of INTERNET and ACCESS_NETWORK_STATE; AndroidX also declares an internal app-scoped signature permission
 for non-exported receiver protection. The launcher icon remains original provisional
 geometry, not the final project logo; the application toolbar uses the wordmark.
 
-For Gutenberg catalog examples, search `Frankenstein` or `shakespeare`; you can
+Catalog-only sources are hidden by default. Enable **Settings → Discovery → Show sources without integrated reading** to inspect them; this does not enable acquisition.
+For Gutenberg catalog examples after opting in, search `Frankenstein` or `shakespeare`; you can
 save metadata to Library, but EPUB/TEXT opening is unavailable for this source.
 For an Archive reading example, select Internet Archive and search
 `identifier:gmb-2015-93040`, then press **Open text**. This is a public CC0 Dutch
@@ -171,6 +175,7 @@ file store. Readium is not included and may only be used by an Android-specific 
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Sources](docs/SOURCES.md)
+- [Wikisource reviewed EPUB catalog, offline evidence and source visibility](docs/WIKISOURCE.md)
 - [Cache and downloads](docs/CACHE.md)
 - [Persistent reading progress](docs/PROGRESS.md)
 - [Local library and reading history](docs/LIBRARY_HISTORY.md)
@@ -196,7 +201,8 @@ Android debug builds offer **EPUB development demo**: select it, search `origina
 and Open EPUB. Desktop opt-in: `INFINILECT_EPUB_DEMO=1 ./gradlew :desktopApp:run`.
 This original three-chapter publication exercises shared passive Compose reading,
 TOC/internal navigation, durable semantic progress and Library/History reopen.
-**Production EPUB acquisition is disabled.** PR #16 adds persistent global EPUB font/spacing/margin/
+PR #39 enables EPUB 3 acquisition for the single reviewed Spanish Wikisource work;
+[scope and physical validation pending](docs/WIKISOURCE.md). PR #16 adds persistent global EPUB font/spacing/margin/
 theme controls, semantic numbered lists and bounded local PNG/JPEG presentation. SVG
 remains alt text; publisher CSS/scripts and generic EPUB compatibility are not claimed. Existing TEXT behavior is retained. [Subset,
 security, limits and manual test plans](docs/EPUB_READER.md). v0.0.1 remains unfinished.

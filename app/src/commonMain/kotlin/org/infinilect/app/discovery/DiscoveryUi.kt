@@ -108,7 +108,9 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                 Column(Modifier.heightIn(max = maxHeight * .6f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(strings[UiText.UI_SOURCES], style = MaterialTheme.typography.subtitle2)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        application.catalogOptions.forEach { option -> FilterChoice(strings.sourceName(option.name), option.source.id in state.enabled) { controller.filter(option.source.id) } }
+                        application.catalogOptions.forEach { option -> FilterChoice(
+                            if (option.supportsIntegratedReading) strings.sourceName(option.name) else strings.format(UiText.SOURCE_CATALOG_ONLY_NAME, strings.sourceName(option.name)),
+                            option.source.id in state.enabled) { controller.filter(option.source.id) } }
                     }
                     Text(strings[UiText.UI_LANGUAGE], style = MaterialTheme.typography.subtitle2)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -160,7 +162,9 @@ internal fun DiscoveryTile(entry: DiscoveryEntry, application: ApplicationSessio
         // as different cards enter the horizontal viewport. Empty slots invent no metadata.
         Text(entry.publication.authors.joinToString("; "), minLines = 1, maxLines = 1,
             overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
-        Text(LocalAppStrings.current.sourceName(application.sourceName(entry.publication.id.sourceId)), minLines = 1, maxLines = 1,
+        val strings = LocalAppStrings.current
+        val sourceName = strings.sourceName(application.sourceName(entry.publication.id.sourceId))
+        Text(if (application.supportsIntegratedReading(entry.publication.id.sourceId)) sourceName else strings.format(UiText.SOURCE_CATALOG_ONLY_NAME, sourceName), minLines = 1, maxLines = 1,
             overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
         Text(entry.publication.languages.joinToString(", "), minLines = 1, maxLines = 1,
             overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
@@ -173,7 +177,7 @@ internal fun DiscoveryDetails(entry: DiscoveryEntry, application: ApplicationSes
     val record = detailsProgress(application, entry.publication.id, null)
     PublicationDetails(entry.publication, application.sourceName(entry.publication.id.sourceId), entry.publication.resources.map { it.format },
         record, close, cover = { DetailsCover(entry.publication, if (entry.thumbnail != null || entry.publication.id.sourceId.value == "local-imports") application.covers else null) },
-        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,downloads=application.downloads,organizationCovers=application.covers) {
+        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,downloads=application.downloads,organizationCovers=application.covers,catalog=application.catalogSource(entry.publication.id)) {
         if (application.canRetry(entry.publication)) PublicationReadAction(record) { close(); application.openDiscovered(entry.publication) }
         else Text(strings[UiText.UI_CATALOG_METADATA_ONLY_ACQUISITION_IS_UNAVAILABLE_FOR_THIS_SOURCE], style = MaterialTheme.typography.body2)
         if (entry.publication.rights == null) Text(strings[UiText.UI_NO_SOURCE_RIGHTS_STATEMENT_WAS_SUPPLIED_LEGAL_AVAILABILITY_IS_UNDETERMINED], style = MaterialTheme.typography.caption)
@@ -186,6 +190,16 @@ internal fun DiscoveryPreferenceControls(preferences: DiscoveryPreferences, chan
     val strings = org.infinilect.app.ui.LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(strings[org.infinilect.app.ui.UiText.DISCOVERY], style = MaterialTheme.typography.h6, modifier = Modifier.semantics { heading() })
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
+            value = preferences.showCatalogOnlySources, role = Role.Switch,
+            onValueChange = { change(preferences.copy(showCatalogOnlySources = it)) }),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(strings[UiText.SOURCE_SHOW_CATALOG_ONLY])
+                Text(strings[UiText.SOURCE_SHOW_CATALOG_ONLY_DESCRIPTION], style = MaterialTheme.typography.caption)
+            }
+            Switch(preferences.showCatalogOnlySources, null)
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(strings[org.infinilect.app.ui.UiText.ONLINE_DISCOVERY], Modifier.weight(1f)); Switch(preferences.homeEnabled, { change(preferences.copy(homeEnabled = it)) }, Modifier.semantics { contentDescription = strings[org.infinilect.app.ui.UiText.ONLINE_DISCOVERY] })
         }

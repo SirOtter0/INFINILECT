@@ -76,7 +76,7 @@ class StartupNavigationTest {
             val prefs=ApplicationAppearancePreferences(object:ApplicationAppearanceStore {
                 override suspend fun load()=ApplicationThemeMode.LIGHT
                 override suspend fun save(mode:ApplicationThemeMode)=true
-                override suspend fun loadPreferences():ApplicationPreferences {gate.await();if(fail)throw java.io.IOException("Controlled preferences failure");return ApplicationPreferences(profile=LocalProfile(interfaceLanguage=code,setupHandled=true),discovery=DiscoveryPreferences(homeEnabled=true))}
+                override suspend fun loadPreferences():ApplicationPreferences {gate.await();if(fail)throw java.io.IOException("Controlled preferences failure");return ApplicationPreferences(profile=LocalProfile(interfaceLanguage=code,setupHandled=true),discovery=DiscoveryPreferences(homeEnabled=true,showCatalogOnlySources=true))}
             },dispatcher)
             val owner=ApplicationSources(listOf(SourceOption("Original source",source)),collections=collection,appearance=prefs,sessionDispatcher=dispatcher) {}
             val app=owner.applicationSession();val scene=ImageComposeScene(360,640,coroutineContext=dispatcher)
@@ -115,7 +115,7 @@ class StartupNavigationTest {
                     val destination by app.destination.collectAsState()
                     ApplicationTheme(ApplicationThemeMode.LIGHT) {ApplicationShell(destination,false,app::navigate) {
                         when(destination){
-                            Destination.HOME->HomeScreen(app,ApplicationAppearanceState(loaded=true,profile=LocalProfile(setupHandled=true),discovery=DiscoveryPreferences(homeEnabled=true)),emptyList(),null,home,null,{})
+                            Destination.HOME->HomeScreen(app,ApplicationAppearanceState(loaded=true,profile=LocalProfile(setupHandled=true),discovery=DiscoveryPreferences(homeEnabled=true,showCatalogOnlySources=true)),emptyList(),null,home,null,{})
                             Destination.LIBRARY,Destination.HISTORY->CollectionScreen(destination,app,library)
                             Destination.SEARCH->UnifiedSearchScreen(app,search,viewport)
                             Destination.SETTINGS->ApplicationSettingsScreen(ApplicationThemeMode.LIGHT,{},false)

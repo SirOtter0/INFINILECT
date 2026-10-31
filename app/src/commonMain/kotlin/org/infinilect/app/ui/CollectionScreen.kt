@@ -148,7 +148,7 @@ internal fun CollectionScreen(destination: Destination, application: Application
         val progress = detailsProgress(application, publication.id, progress[publication.id])
         PublicationDetails(publication.displayPublication(), application.sourceName(publication.id.sourceId),
             formats = progress?.let { listOf(it.id.format) } ?: detailFormat?.let { listOf(it) } ?: emptyList(),
-            progress = progress, close = { detail = null }, descriptions=application.descriptions,
+            progress = progress, close = { detail = null }, descriptions=application.descriptions,catalog=application.catalogSource(publication.id),
             collections=controller,downloads=application.downloads,organizationCovers=application.covers,cover={DetailsCover(publication.displayPublication(),application.covers)}) {
             PublicationReadAction(progress) {detail=null;application.openSaved(publication)}
         }

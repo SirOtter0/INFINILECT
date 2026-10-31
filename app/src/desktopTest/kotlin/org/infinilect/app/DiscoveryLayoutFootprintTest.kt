@@ -49,7 +49,7 @@ class DiscoveryLayoutFootprintTest {
                 val nodes = scene.semanticsOwners.flatMap { walk(it.unmergedRootSemanticsNode) }
                 val texts = nodes.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
                 assertTrue(publication.title in texts); assertTrue("Original author" in texts)
-                assertTrue("Original source" in texts); assertTrue("es, ca" in texts)
+                assertTrue("Original source · catalog only" in texts); assertTrue("es, ca" in texts)
                 val title = nodes.first { it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == publication.title } == true }
                 var info = title.layoutInfo
                 var depth = 0

@@ -22,7 +22,7 @@ class HomeDiagnosticEventsTest {
         owner.technicalDiagnostics = TechnicalDiagnostics { event, generation, _ -> events += event to generation }
         val app = owner.applicationSession()
         try {
-            app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true)); runCurrent()
+            app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true)); runCurrent()
             val firstGeneration = events.first { it.first == TechnicalEvent.HOME_LOADING }.second
             app.navigate(Destination.LIBRARY); runCurrent()
             assertEquals(Destination.LIBRARY, app.destination.value); assertFalse(app.homeDiscovery.state.value.loading)
@@ -42,10 +42,10 @@ class HomeDiagnosticEventsTest {
         val home = HomeDiscovery(listOf(SourceOption("Original fixture", source)), catalog, backgroundScope,
             TechnicalDiagnostics { event, _, _ -> events += event }) { 0 }
         try {
-            home.refresh(DiscoveryPreferences(homeEnabled = true)); runCurrent()
+            home.refresh(DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true)); runCurrent()
             assertTrue(home.state.value.failed); assertFalse(home.state.value.loading)
             assertTrue(TechnicalEvent.REQUEST_FAILED in events); assertTrue(TechnicalEvent.HOME_COMPLETE in events)
-            fails = false; home.refresh(DiscoveryPreferences(homeEnabled = true), retry = true); runCurrent()
+            fails = false; home.refresh(DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true), retry = true); runCurrent()
             assertFalse(home.state.value.failed); assertFalse(home.state.value.loading)
             assertTrue(TechnicalEvent.REQUEST_COMPLETE in events); assertTrue(home.state.value.rows.isNotEmpty())
         } finally { home.close(); catalog.close(); catalog.awaitClosed() }

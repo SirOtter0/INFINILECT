@@ -5,7 +5,37 @@ package org.infinilect.app.epub
 import java.net.URI
 import java.text.Normalizer
 import org.infinilect.app.reader.epub.EpubTarget
+import org.infinilect.app.reader.epub.EpubExternalReference
 import org.infinilect.core.*
+
+/** No DNS, IO, redirects or opener. Only XHTML a[href] calls this classifier.
+ * Only HTTPS destinations are retained, as non-actionable text references.
+ * They are never retrieved. Relative paths return null
+ * and still undergo the existing owned-path validation, not URI/browser resolution.
+ */
+internal fun epubExternalReference(reference: String): EpubExternalReference? {
+    requireEpub(reference.length in 1..512)
+    if (!Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(reference)) return null
+    requireEpub(reference.none { it.isWhitespace() || it.isISOControl() || it == '\\' })
+    val uri = try { URI(reference) } catch (_: Exception) { invalid() }
+    val scheme = uri.scheme?.lowercase()
+    requireEpub(scheme == "https" && !uri.isOpaque && uri.rawUserInfo == null)
+    val host = uri.host?.lowercase() ?: invalid()
+    requireEpub(uri.rawAuthority == host || uri.rawAuthority?.lowercase() == host ||
+        uri.rawAuthority?.lowercase() == "$host:443")
+    requireEpub(uri.port == -1 || uri.port == 443)
+    val labels = host.split('.')
+    requireEpub(host.length <= 253 && labels.size >= 2 && labels.all {
+        it.length in 1..63 && Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?").matches(it)
+    } && Regex("[a-z]{2,63}").matches(labels.last()))
+    requireEpub(labels.last() !in setOf("localhost", "local", "internal", "lan", "home", "test", "invalid", "onion"))
+    requireEpub(host != "localhost" && !host.endsWith(".localhost"))
+    // Preserve the original spelling while rejecting encoded control/backslash and
+    // invalid UTF-8 escapes. No decoded value is ever used as a filesystem path.
+    val decoded = decodeEpubComponent(reference)
+    requireEpub(decoded.none { it.isISOControl() || it == '\\' })
+    return EpubExternalReference(reference)
+}
 
 /** Safe recovery of legacy numeric XHTML IDs; not OPF/NCX identifier validation. */
 internal fun validEpubContentAnchor(value: String): Boolean =

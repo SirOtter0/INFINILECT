@@ -152,7 +152,7 @@ internal fun HomeScreen(application: ApplicationSession, preferences: Applicatio
         val record=detailsProgress(application,publication.id,publicationProgress(progress,publication.id))
         PublicationDetails(publication.displayPublication(),application.sourceName(publication.id.sourceId),
             formats=record?.let {listOf(it.id.format)}?:format?.let {listOf(it)}?:emptyList(),progress=record,close={detail=null},
-            collections=application.collections,downloads=application.downloads,organizationCovers=application.covers,descriptions=application.descriptions,
+            collections=application.collections,downloads=application.downloads,organizationCovers=application.covers,descriptions=application.descriptions,catalog=application.catalogSource(publication.id),
             cover={DetailsCover(publication.displayPublication(),application.covers)}) {
             PublicationReadAction(record) {detail=null;application.openSaved(publication)}
         }

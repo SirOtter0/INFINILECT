@@ -1,5 +1,23 @@
 # Offline publication downloads — PR #36
 
+PR #39 registers the shared Wikisource adapter for **es/en/ca**, with general
+under-demand catalog queries, separate positive source-rights evidence and full
+EPUB validation. It reuses this manager; Archive's policy is unchanged. There is
+no title/revision/text-hash whitelist. Pages lacking sufficient rights evidence
+remain catalog-only. Sizes are not invented; progress may be indeterminate.
+
+The stable identity remains `wikisource-<language>` plus MediaWiki page ID and
+resource `epub3-policy1-r<root revision>`. Existing El Matadero copies keep their
+IDs/bytes/locators and reopen from the retained snapshot without a network or
+new rights determination. A new acquisition may lack automatic rights evidence.
+The root revision does not freeze every transclusion or dynamic export byte;
+`resource.revision` stays null and the full retained-file SHA-256 is verified.
+Completed copies cannot be silently replaced; explicit removal/reacquisition is
+required. Consent, leases, quotas, recovery, partial cleanup, progress/history
+independence and safe deletion below remain unchanged. [Policy, actual live
+results and physical checklist](WIKISOURCE.md). The original PR #36 audit below
+is historical; its statement that no remote EPUB adapter exists is superseded.
+
 ## Audit before implementation
 
 Base: main `1d8235e294079844118e0125c5170e6f10c32df1` (PR #35 merged). Existing Library/History live in SQLDelight schema v2; locators, imports, preferences, translation models and disposable reading preparation have independent owners. Saving metadata never authorizes bytes. `OpenPublicationController` normally resolves fresh source metadata and then feeds the existing format preparer through `ResourceLoader` / streaming `ResourceContent`.

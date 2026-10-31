@@ -3,6 +3,13 @@
 Current retained-download behavior (PR #36): the existing strict explicit-CC0
 Internet Archive adapter supports TXT and PDF retained copies, independently of
 Library membership. Gutenberg remains catalogue-only; imports are not duplicated.
+PR #39 adds a shared **Wikisource es/en/ca** adapter with general under-demand
+search/pagination and a real EPUB acquisition/retained-reading route. Individual
+pages have separate content classification, rights evidence and technical EPUB
+state. An unknown page is not automatically a complete book or a downloadable
+resource. No title/revision allowlist is used. [API, rights, verified samples and
+limits](WIKISOURCE.md). The existing capability-based visibility preference stays
+off by default; catalog-only providers are hidden without hiding saved books.
 The initial acquisition experiments below are historical and do not describe the
 new download manager. See [offline acquisition/storage/lifecycle policy](OFFLINE_DOWNLOADS.md).
 

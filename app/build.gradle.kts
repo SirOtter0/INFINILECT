@@ -163,6 +163,36 @@ tasks.register<JavaExec>("gutenbergSearchCheck") {
     mainClass.set("org.infinilect.app.gutenberg.GutenbergIntegrationCheck")
 }
 
+// Opt-in local WS Export compatibility probe; never downloads and is not part of check/build.
+tasks.register<JavaExec>("wikisourceFeasibilityCheck") {
+    group = "verification"
+    description = "Validate a locally supplied official Wikisource EPUB with the real preparer and chapter parser."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.wikisource.WikisourceFeasibilityCheck")
+}
+
+// Explicit network/retained-file check; never a dependency of test/check/build.
+tasks.register<JavaExec>("wikisourceOfflineCheck") {
+    group = "verification"
+    description = "Fetch one dynamically authorized Wikisource EPUB (edition/page ID arguments) and reopen offline."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.wikisource.WikisourceOfflineCheck")
+}
+
+// Small, deliberate metadata sample; never a build/check dependency or an exporter.
+tasks.register<JavaExec>("wikisourceCatalogCheck") {
+    group = "verification"
+    description = "Check bounded live Wikisource search, pagination and selected page classifications."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.wikisource.WikisourceCatalogCheck")
+}
+
 // Opt-in access diagnostic, independent of Gutenberg and of test/check/build.
 tasks.register<JavaExec>("oapenApiAccessCheck") {
     group = "verification"
