@@ -1,17 +1,22 @@
 # Offline publication downloads — PR #36
 
-PR #39 extends the existing provider list with **Wikisource, Spanish reviewed
-subset**. The actual EPUB 3 export of _El matadero_ passes full validation,
-atomic retained publication and reopening after closing the network source and
-recreating storage. Initial coverage is one complete reviewed work/revision,
-not all search results. A source-specific rejection policy verifies semantic
-spine/credit fingerprints and exact original attribution links after ordinary
-EPUB validation, without replacing the existing manager or changing Archive's
-policy. Dynamic export size is not invented; real progress may be indeterminate.
-All quota, consent, leases, cancellation/recovery and safe-deletion guarantees
-below remain. [Current evidence and physical checklist](WIKISOURCE.md).
-The original PR #36 audit/table below is historical; its statement that no remote
-EPUB adapter exists is superseded by this narrow route.
+PR #39 registers the shared Wikisource adapter for **es/en/ca**, with general
+under-demand catalog queries, separate positive source-rights evidence and full
+EPUB validation. It reuses this manager; Archive's policy is unchanged. There is
+no title/revision/text-hash whitelist. Pages lacking sufficient rights evidence
+remain catalog-only. Sizes are not invented; progress may be indeterminate.
+
+The stable identity remains `wikisource-<language>` plus MediaWiki page ID and
+resource `epub3-policy1-r<root revision>`. Existing El Matadero copies keep their
+IDs/bytes/locators and reopen from the retained snapshot without a network or
+new rights determination. A new acquisition may lack automatic rights evidence.
+The root revision does not freeze every transclusion or dynamic export byte;
+`resource.revision` stays null and the full retained-file SHA-256 is verified.
+Completed copies cannot be silently replaced; explicit removal/reacquisition is
+required. Consent, leases, quotas, recovery, partial cleanup, progress/history
+independence and safe deletion below remain unchanged. [Policy, actual live
+results and physical checklist](WIKISOURCE.md). The original PR #36 audit below
+is historical; its statement that no remote EPUB adapter exists is superseded.
 
 ## Audit before implementation
 

@@ -28,7 +28,7 @@ internal fun androidEpubDirectory(cacheDir: Path): Path?  = cacheDir.takeIf {
 */
 
 internal class FileEpubPreparer(private val directory: Path?, private val limits: EpubLimits = EpubLimits(), private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val validateDocument:suspend(EpubDocument,PublicationResource)->Unit={_,_->}): EpubPreparer {
+    private val validateDocument:suspend(EpubDocument,PublicationResource,Publication)->Unit={_,_,_->}): EpubPreparer {
     private val closed = AtomicBoolean()
     private val mutex = Mutex()
     private val cleanup = CoroutineScope(SupervisorJob()+dispatcher)
@@ -97,7 +97,10 @@ internal class FileEpubPreparer(private val directory: Path?, private val limits
                                 }
                                 // Additional owning-source authorization can only reject. It
                                 // cannot skip structural validation or publish an unverified file.
-                                validateDocument(value,resource)
+                                // The original source snapshot is part of the context: a
+                                // retained copy can be bound to its canonical identity
+                                // without consulting a live source during offline opening.
+                                validateDocument(value,resource,publication)
                                 value
                             }
                             finally {

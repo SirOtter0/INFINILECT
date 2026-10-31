@@ -41,28 +41,28 @@ internal fun createSources(
     val gutenberg = try { GutenbergSource(diagnostics = gutenbergDiagnostics) } catch (error: Throwable) { collections?.close(); cache.close(); throw error }
     val archive = try { InternetArchiveSource() }
     catch (error: Throwable) { collections?.close(); try { gutenberg.close() } finally { cache.close() }; throw error }
-    val wikisource = try { org.infinilect.app.wikisource.WikisourceSource() }
-    catch (error: Throwable) { collections?.close(); try { archive.close() } finally { try { gutenberg.close() } finally { cache.close() } }; throw error }
+    val wikisources = mutableListOf<org.infinilect.app.wikisource.WikisourceSource>()
+    try { org.infinilect.app.wikisource.WikisourceEdition.entries.forEach { wikisources += org.infinilect.app.wikisource.WikisourceSource(it) } }
+    catch (error: Throwable) { wikisources.forEach { it.close() }; collections?.close(); try { archive.close() } finally { try { gutenberg.close() } finally { cache.close() } }; throw error }
     val progress = ProgressPersistence(
         FileReadingProgressStore(progressDirectory, onFailure = progressDiagnostics), clock = ::progressTime,
     )
     val textPreparer = org.infinilect.app.reader.FileTextPreparer(textDirectory)
-    val epubPolicies=mapOf(wikisource.id to wikisource::validateDocument)
-    val epubPreparer = org.infinilect.app.epub.FileEpubPreparer(epubDirectory,validateDocument={document,resource->
-        epubPolicies[document.publicationId.sourceId]?.invoke(document,resource)
+    val epubPolicies=wikisources.associate { it.id to it::validateDocument }
+    val epubPreparer = org.infinilect.app.epub.FileEpubPreparer(epubDirectory,validateDocument={document,resource,publication->
+        epubPolicies[document.publicationId.sourceId]?.invoke(document,resource,publication)
     })
     val epubSettings = EpubSettingsPersistence(FileEpubReaderSettingsStore(epubSettingsDirectory), clock = ::epubPreferenceTime)
     val pageSettings = PageSettingsPersistence(FilePageReaderSettingsStore(pageSettingsDirectory), clock = ::pagePreferenceTime)
     val pagePreparer = org.infinilect.app.reader.page.CbzPagePreparer(cbzPreparationDirectory)
     val pdfPreparer = org.infinilect.app.reader.pdf.FilePdfPreparer(pdfDirectory)
-    val downloads=downloadDirectory?.let {org.infinilect.app.downloads.OfflineDownloads(org.infinilect.app.downloads.FileOfflineDownloads(it,listOf(archive,wikisource),org.infinilect.app.downloads.downloadValidator(textPreparer,epubPreparer,pagePreparer,pdfPreparer)))}
+    val downloads=downloadDirectory?.let {org.infinilect.app.downloads.OfflineDownloads(org.infinilect.app.downloads.FileOfflineDownloads(it,listOf(archive)+wikisources,org.infinilect.app.downloads.downloadValidator(textPreparer,epubPreparer,pagePreparer,pdfPreparer)))}
     val local = org.infinilect.app.imports.FileLocalPublicationSource(importDirectory, textPreparer, epubPreparer, pagePreparer, pdf = pdfPreparer)
     return ApplicationSources(listOf(
         SourceOption("Internet Archive", archive, textReadingEnabled = true, pdfReadingEnabled = true),
         SourceOption("Project Gutenberg (experimental)", gutenberg, textReadingEnabled = false),
         SourceOption("Imported files", local, textReadingEnabled = true, epubReadingEnabled = true, pageReadingEnabled = true, pdfReadingEnabled = true),
-        SourceOption(org.infinilect.app.wikisource.WIKISOURCE_NAME,wikisource,epubReadingEnabled=true),
-    ) + (if (developmentEpubEnabled) listOf(SourceOption("EPUB development demo", org.infinilect.app.epub.DevelopmentEpubSource(), epubReadingEnabled = true, developmentOnly = true)) else emptyList()) + (if (developmentComicEnabled) listOf(SourceOption("Comic development demo", org.infinilect.app.page.DevelopmentComicSource(), pageReadingEnabled = true, developmentOnly = true), SourceOption("CBZ development demo", org.infinilect.app.page.DevelopmentCbzSource(), pageReadingEnabled = true, developmentOnly = true)) else emptyList()), createLoader = { if(it === local) DirectResourceLoader(it) else cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer, epubSettings = epubSettings, pagePreparer = pagePreparer, pageSettings = pageSettings, localImports = local, covers = org.infinilect.app.covers.PublicationCovers(load = { id -> when (id.sourceId) { local.id -> local.cover(id); gutenberg.id -> gutenberg.coverThumbnail(id); else -> null } }), descriptions = org.infinilect.app.ui.PublicationDescriptions(local::description), appearance = org.infinilect.app.ui.ApplicationAppearancePreferences(org.infinilect.app.ui.FileApplicationAppearanceStore(appearanceDirectory)), pdfPreparer = pdfPreparer, translation = translation, discoveryDiagnostics = discoveryDiagnostics, updates = updates, downloads = downloads) {
-        try { cache.close() } finally { try { gutenberg.close() } finally { try {archive.close()} finally {wikisource.close()} } }
+    ) + wikisources.map { SourceOption(it.edition.displayName,it,epubReadingEnabled=true) } + (if (developmentEpubEnabled) listOf(SourceOption("EPUB development demo", org.infinilect.app.epub.DevelopmentEpubSource(), epubReadingEnabled = true, developmentOnly = true)) else emptyList()) + (if (developmentComicEnabled) listOf(SourceOption("Comic development demo", org.infinilect.app.page.DevelopmentComicSource(), pageReadingEnabled = true, developmentOnly = true), SourceOption("CBZ development demo", org.infinilect.app.page.DevelopmentCbzSource(), pageReadingEnabled = true, developmentOnly = true)) else emptyList()), createLoader = { if(it === local) DirectResourceLoader(it) else cache.loader(it.id, DirectResourceLoader(it)) }, progress = progress, collections = collections, textPreparer = textPreparer, epubPreparer = epubPreparer, epubSettings = epubSettings, pagePreparer = pagePreparer, pageSettings = pageSettings, localImports = local, covers = org.infinilect.app.covers.PublicationCovers(load = { id -> when (id.sourceId) { local.id -> local.cover(id); gutenberg.id -> gutenberg.coverThumbnail(id); else -> null } }), descriptions = org.infinilect.app.ui.PublicationDescriptions(local::description), appearance = org.infinilect.app.ui.ApplicationAppearancePreferences(org.infinilect.app.ui.FileApplicationAppearanceStore(appearanceDirectory)), pdfPreparer = pdfPreparer, translation = translation, discoveryDiagnostics = discoveryDiagnostics, updates = updates, downloads = downloads, awaitSourcesClosed = { wikisources.forEach { it.awaitClosed() } }) {
+        try { cache.close() } finally { try { gutenberg.close() } finally { try {archive.close()} finally {wikisources.forEach {it.close()}} } }
     }
 }

@@ -176,11 +176,21 @@ tasks.register<JavaExec>("wikisourceFeasibilityCheck") {
 // Explicit network/retained-file check; never a dependency of test/check/build.
 tasks.register<JavaExec>("wikisourceOfflineCheck") {
     group = "verification"
-    description = "Fetch one reviewed Spanish Wikisource EPUB and reopen it with the network source closed."
+    description = "Fetch one dynamically authorized Wikisource EPUB (edition/page ID arguments) and reopen offline."
     dependsOn("desktopTestClasses")
     val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
     classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
     mainClass.set("org.infinilect.app.wikisource.WikisourceOfflineCheck")
+}
+
+// Small, deliberate metadata sample; never a build/check dependency or an exporter.
+tasks.register<JavaExec>("wikisourceCatalogCheck") {
+    group = "verification"
+    description = "Check bounded live Wikisource search, pagination and selected page classifications."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.wikisource.WikisourceCatalogCheck")
 }
 
 // Opt-in access diagnostic, independent of Gutenberg and of test/check/build.

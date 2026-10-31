@@ -4,8 +4,8 @@ PR #13 introduced **structural EPUB3 preparation, not a renderer**. These valida
 and resource-ownership guarantees remain unchanged. Merged PR #15 added a separate
 [passive semantic reader](EPUB_READER.md) and original development route; Draft PR #16 extends its bounded semantic
 presentation/local raster boundary; production
-PR #39 adds a narrowly reviewed Wikisource EPUB 3 acquisition route, after a real
-production-preparer/reader/offline check. Other providers require their own
+PR #39 adds a dynamically validated Wikisource EPUB 3 acquisition route, with
+rights checked separately from structural validity. Other providers require their own
 acquisition authority. No script execution or acquisition fallback.
 
 ## Boundary
@@ -195,10 +195,32 @@ survive mixed-style runs, translation copies and bounded semantic caching; URI
 bytes count against cache limits and are revalidated on cache reading. The private
 session format is `EPUBWIN2`; no Library/progress/import record changes.
 
+### Passive RDFa link metadata (PR #39 general catalog)
+
+A further real Catalan export contains an XHTML `link` with the qualified
+relation `mw:PageProp/Language`. It is language metadata, not an embedded image,
+stylesheet or browser action. A bounded generic qualified-relation form (not a
+Wikisource host/name exception) is recognized only on an empty XHTML `link` with
+**exactly rel/href attributes** and a URI accepted by the existing strict HTTPS
+citation validator. The reader neither evaluates RDFa nor creates a resource or
+semantic navigation target from it. Original markup is retained in the ZIP.
+
+Standard/mixed `stylesheet`, `preload`, `prefetch`/`modulepreload` relations, loading
+hints (`as`, `type`), other attributes/nodes, unsafe schemes/authorities and
+non-owned relative paths remain subject to ordinary resource rejection. Tests
+assert a single book-loader request, unchanged bytes and readable text, no
+metadata target in semantic runs, and negative resource/scheme cases.
+[RDFa Core](https://www.w3.org/TR/rdfa-core/) / [HTML link
+relations](https://html.spec.whatwg.org/multipage/links.html#links). No XML, ZIP,
+text, path, memory or asset limit is raised.
+
 The source-specific optional rejection hook in `FileEpubPreparer` runs only after
 all structural/security validation. It cannot bypass it. Wikisource uses it to
-bind the reviewed complete work, all credit sections and exact reference set;
-unrelated imports keep normal EPUB rules. [Live evidence, restricted catalog and
+bind the configured project/canonical identifier to the original acquired or
+retained publication snapshot, then parse every spine item with bounded windows.
+It does not require a fixed title, revision, chapter count, rights list, URL list
+or semantic hash. The hook receives the snapshot so offline reopening needs no
+network. Unrelated imports keep normal EPUB rules. [Live evidence, catalog and
 offline reproduction](WIKISOURCE.md).
 
 ## Storage, ownership and errors

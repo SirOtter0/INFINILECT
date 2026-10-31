@@ -12,21 +12,11 @@ import org.infinilect.core.*
 import kotlin.test.*
 
 /** Real adapter, transport and retained-file pipeline, with original synthetic books.
- * The production review list is never populated from HTTP or these fixtures. */
+ * Dynamic technical validation never relies on approved fixture text or hashes. */
 class WikisourceOfflineTest {
-    private suspend fun fixture(root:Path):WikisourceSourceTest.Fixture {
-        val original=EpubFixture().apply {opf {it.replace("urn:synthetic:foundation","https://es.wikisource.org/wiki/Original_work")
-            .replace("Résumé 📚","Original work").replace("<dc:language>fr</dc:language><dc:language>en</dc:language>","<dc:language>es</dc:language>")}}
-        val bytes=original.zip();val preparer=FileEpubPreparer(root.resolve("review"))
-        try {
-            val doc=preparer.prepare(epubPublication,epubResource,epubLoader(EpubBytes(bytes)))
-            try {
-                val evidence=wikisourceExportEvidence(doc)
-                val approval=WikisourceApproval(101,77,"Original work","Original_work",doc.metadata.creators,doc.metadata.rights,emptySet(),evidence.spine)
-                return WikisourceSourceTest.Fixture(approval,bytes)
-            } finally {doc.close()}
-        } finally {preparer.close();preparer.awaitClosed()}
-    }
+    private fun original():EpubFixture=EpubFixture().apply {opf {it.replace("urn:synthetic:foundation","https://en.wikisource.org/wiki/Original_work")
+        .replace("Résumé 📚","Original work").replace("<dc:language>fr</dc:language><dc:language>en</dc:language>","<dc:language>en</dc:language>")}}
+    private fun fixture(root:Path)=WikisourceSourceTest.Fixture(zip=original().zip())
     private class Owner(val root:Path,val source:WikisourceSource) {
         val others=OfflineFixtureOwner(root,OfflineFixtureSource())
         val epub=FileEpubPreparer(root.resolve("authorized-epub"),validateDocument=source::validateDocument)
@@ -36,7 +26,7 @@ class WikisourceOfflineTest {
     }
     @Test fun restartAndClosedNetworkSourceStillOpenTheSameRetainedBookAndPreserveBytes()=runBlocking<Unit> {
         val root=Files.createTempDirectory("wiki-retained");val f=fixture(root);val owner=Owner(root,f.source);var store=owner.store()
-        val id=PublicationId(WIKISOURCE_ID,"101")
+        val id=f.id
         try {
             store.load();val offer=store.offers(id).single();assertNull(offer.size)
             val done=store.download(store.pending(offer),{},{})
@@ -60,20 +50,18 @@ class WikisourceOfflineTest {
             store.remove(id);assertNull(store.acquire(id));assertTrue(store.snapshot().entries.isEmpty())
         }finally{store.close();owner.close();root.toFile().deleteRecursively()}
     }
-    @Test fun corruptAndStructurallyValidUnreviewedContentNeverPublishARetainedCopy()=runBlocking<Unit> {
-        for(mode in listOf("corrupt","changed-text","changed-attribution","changed-revision")) {
-            val root=Files.createTempDirectory("wiki-reject");val f=fixture(root);val owner=Owner(root,f.source);val store=owner.store();val id=PublicationId(WIKISOURCE_ID,"101")
+    @Test fun corruptUnsafeAndWrongIdentityContentNeverPublishARetainedCopy()=runBlocking<Unit> {
+        for(mode in listOf("corrupt","wrong-identity","remote-resource","changed-revision")) {
+            val root=Files.createTempDirectory("wiki-reject");val f=fixture(root);val owner=Owner(root,f.source);val store=owner.store();val id=f.id
             try {
                 store.load();val row=store.pending(store.offers(id).single())
                 when(mode) {
                     "corrupt"->f.exportBytes="<html>not EPUB</html>".toByteArray()
                     "changed-revision"->f.afterExport={f.revision++}
                     else->{
-                        // Modify a valid original fixture with identical reviewed metadata.
-                        val zip=EpubFixture().apply {opf {it.replace("urn:synthetic:foundation",f.approval.identifier)
-                            .replace("Résumé 📚",f.approval.title).replace("<dc:language>fr</dc:language><dc:language>en</dc:language>","<dc:language>es</dc:language>")}}
-                        if(mode=="changed-text")zip.change("OPS/chapter.xhtml"){it.replace("Hello, 世界 📖","Unreviewed replacement text")}
-                        else zip.opf {it.replace("Original test fixture","Different unreviewed attribution")}
+                        val zip=original()
+                        if(mode=="wrong-identity")zip.opf {it.replace("https://en.wikisource.org/wiki/Original_work","https://en.wikisource.org/wiki/Other_work")}
+                        else zip.change("OPS/chapter.xhtml"){it.replace("</body>","<img src=\"https://example.org/remote.png\"/></body>")}
                         f.exportBytes=zip.zip()
                     }
                 }
@@ -85,7 +73,7 @@ class WikisourceOfflineTest {
         }
     }
     @Test fun cancellationAndRestartRequireExplicitRetryWithoutDuplicateExportOrPartialPublication()=runBlocking<Unit> {
-        val root=Files.createTempDirectory("wiki-cancel");val f=fixture(root);val owner=Owner(root,f.source);var store=owner.store();val id=PublicationId(WIKISOURCE_ID,"101")
+        val root=Files.createTempDirectory("wiki-cancel");val f=fixture(root);val owner=Owner(root,f.source);var store=owner.store();val id=f.id
         val entered=CompletableDeferred<Unit>();val cancelled=CompletableDeferred<Unit>()
         f.beforeExport={entered.complete(Unit);try{awaitCancellation()}finally{cancelled.complete(Unit)}}
         try {
@@ -100,8 +88,22 @@ class WikisourceOfflineTest {
             assertEquals(2,f.exports.get());assertNotNull(store.acquire(id)).close()
         }finally{store.close();owner.close();root.toFile().deleteRecursively()}
     }
+    @Test fun aNewRemoteRevisionCannotOverwriteAnExistingEditionOrChangeItsProgressKey()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("wiki-editions");val f=fixture(root);val owner=Owner(root,f.source);val store=owner.store()
+        try {
+            store.load();val offer=store.offers(f.id).single();val done=store.download(store.pending(offer),{},{})
+            val before=ReadingProgressId(f.id,done.resource!!.key,PublicationFormat.EPUB)
+            f.revision++
+            val next=store.offers(f.id).single();assertNotEquals(offer.resource.key,next.resource.key)
+            assertEquals(DownloadFailure.BUSY,assertFailsWith<DownloadException>{store.pending(next)}.failure)
+            val copy=assertNotNull(store.acquire(f.id))
+            try {assertEquals(offer.resource,copy.publication.resources.single());assertEquals(before,ReadingProgressId(copy.publication.id,copy.publication.resources.single().key,PublicationFormat.EPUB))}
+            finally{copy.close()}
+            assertEquals(done.sha256,store.snapshot().entries.single().sha256);assertEquals(1,f.exports.get())
+        }finally{store.close();owner.close();root.toFile().deleteRecursively()}
+    }
     @Test fun insufficientSpaceRejectsBeforeExportAndRetainsNoPayload()=runBlocking<Unit> {
-        val root=Files.createTempDirectory("wiki-space");val f=fixture(root);val owner=Owner(root,f.source);val store=owner.store {0};val id=PublicationId(WIKISOURCE_ID,"101")
+        val root=Files.createTempDirectory("wiki-space");val f=fixture(root);val owner=Owner(root,f.source);val store=owner.store {0};val id=f.id
         try {
             store.load();val row=store.pending(store.offers(id).single())
             assertEquals(DownloadFailure.SPACE,assertFailsWith<DownloadException>{store.download(row,{},{})}.failure)

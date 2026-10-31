@@ -280,6 +280,7 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                 Text(if (session.textReadingEnabled && session.epubReadingEnabled && session.pageReadingEnabled) strings[UiText.UI_SEARCH_YOUR_IMPORTED_TEXT_EPUB_CBZ_AND_PDF_PUBLICATIONS_USE_TO_LIST_ALL_IMPORTS]
                     else if (session.textReadingEnabled) strings[UiText.UI_SEARCH_PUBLICATIONS_OPEN_COMPATIBLE_UTF_8_TEXT_UP_TO_16_MIB]
                     else if (session.pageReadingEnabled) strings[UiText.UI_ORIGINAL_DEVELOPMENT_COMIC_NO_PRODUCTION_COMIC_ACQUISITION_IS_ENABLED]
+                    else if (sources[selected].source is org.infinilect.app.discovery.CatalogPublicationSource) strings[UiText.WIKI_SEARCH_INTRO]
                     else if (session.epubReadingEnabled) strings[UiText.UI_ORIGINAL_DEVELOPMENT_EPUB_NO_PRODUCTION_EPUB_ACQUISITION_IS_ENABLED]
                     else strings[UiText.UI_EXPERIMENTAL_CATALOG_ONLY_TEXT_OPENING_IS_UNAVAILABLE_FOR_THIS_SOURCE])
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -327,7 +328,8 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
                 if (displayed != null) {
                     items(displayed.page.publications, key = { it.id.resultKey() }) { publication ->
                         PublicationCard(publication, sources[selected].name, publicationProgress(progressRecords, publication.id), details = { detail = publication }) {
-                            if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
+                            if ((session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) &&
+                                (sources[selected].source !is org.infinilect.app.discovery.CatalogPublicationSource || publication.resources.isNotEmpty())) {
                                 Button(enabled = !loading, onClick = { onOpen(publication) }, modifier = Modifier.heightIn(min = 48.dp)) {
                                     Text(if (session.pdfReadingEnabled) strings[UiText.UI_OPEN] else if (session.pageReadingEnabled) strings[UiText.UI_OPEN_PAGES] else if (session.epubReadingEnabled && !session.textReadingEnabled) strings[UiText.UI_OPEN_EPUB] else strings[UiText.UI_OPEN_TEXT])
                                 }
@@ -350,7 +352,8 @@ internal fun SearchScreen(session: ReadingSession, state: SearchState, resultsPo
         val known = publicationProgress(progressRecords, publication.id)
         val record = if (applicationSession != null) detailsProgress(applicationSession, publication.id, known) else known
         PublicationDetails(publication, sources[selected].name, publication.resources.map { it.format },
-            record, close = { detail = null }, descriptions = descriptions, collections=collections,downloads=applicationSession?.downloads,organizationCovers=applicationSession?.covers) {
+            record, close = { detail = null }, descriptions = descriptions, collections=collections,downloads=applicationSession?.downloads,organizationCovers=applicationSession?.covers,
+            catalog=applicationSession?.catalogSource(publication.id) ?: (sources[selected].source as? org.infinilect.app.discovery.CatalogPublicationSource)) {
             if (session.textReadingEnabled || session.epubReadingEnabled || session.pageReadingEnabled || session.pdfReadingEnabled) {
                 PublicationReadAction(record,enabled=!loading) {detail=null;onOpen(publication)}
             }

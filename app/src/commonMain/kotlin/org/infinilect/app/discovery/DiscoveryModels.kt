@@ -28,7 +28,7 @@ internal fun normalizedQuery(raw: String): String {
 internal data class DiscoveryRequest(val query: String, val genre: Genre? = null, val language: String? = null) {
     init { require(query == normalizedQuery(query)); require(language == null || language in DISCOVERY_LANGUAGES.keys) }
 }
-internal val DISCOVERY_LANGUAGES = linkedMapOf("en" to "English", "es" to "Spanish", "fr" to "French", "de" to "German", "pt" to "Portuguese")
+internal val DISCOVERY_LANGUAGES = linkedMapOf("en" to "English", "es" to "Spanish", "ca" to "Catalan", "fr" to "French", "de" to "German", "pt" to "Portuguese")
 internal interface DiscoverySource {
     val canBrowseGenres: Boolean get() = false
     suspend fun discover(request: DiscoveryRequest, token: String? = null): DiscoveryPage
@@ -113,9 +113,9 @@ internal fun catalogPlainText(raw: String): String? {
     return text.takeIf { it.isNotBlank() }
 }
 
-/** Five explicit BCP47/ISO639 aliases, not a guessed language. */
+/** Explicit BCP47/ISO639 aliases, not a guessed language. */
 internal fun languageMatches(tag: String, selected: String): Boolean {
     val base = tag.lowercase().substringBefore('-').substringBefore('_')
-    return base in when (selected) { "en" -> setOf("en", "eng"); "es" -> setOf("es", "spa");
+    return base in when (selected) { "en" -> setOf("en", "eng"); "es" -> setOf("es", "spa"); "ca" -> setOf("ca", "cat");
         "fr" -> setOf("fr", "fra", "fre"); "de" -> setOf("de", "deu", "ger"); "pt" -> setOf("pt", "por"); else -> emptySet() }
 }

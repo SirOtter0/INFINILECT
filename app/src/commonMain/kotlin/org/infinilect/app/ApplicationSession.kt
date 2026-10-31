@@ -37,6 +37,7 @@ internal class ApplicationSession(
     val technicalDiagnostics get() = sources.technicalDiagnostics
     val covers get() = sources.covers
     val descriptions get() = sources.descriptions
+    fun catalogSource(id: PublicationId) = sources.options.firstOrNull { it.source.id == id.sourceId }?.source as? CatalogPublicationSource
     /** Details may query one existing progress summary after a restart; never save/normalize it. */
     suspend fun savedPublicationProgress(id: PublicationId) = sources.progress?.publicationSummaries(listOf(id))
         ?.filter { it.id.publicationId == id }?.maxByOrNull { it.updatedAtEpochMillis }

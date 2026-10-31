@@ -21,6 +21,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import org.infinilect.core.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import org.infinilect.app.discovery.CatalogPublicationSource
 
 internal fun PublicationSnapshot.displayPublication() = Publication(id, title, type, authors, languages = languages, sourceUrl = sourceUrl, rights = rights)
 
@@ -93,18 +97,28 @@ internal fun PublicationCard(publication: Publication, source: String, progress:
 @Composable
 internal fun PublicationDetails(publication: Publication, source: String, formats: List<PublicationFormat> = emptyList(),
     progress: ReadingProgress? = null, close: () -> Unit, cover: (@Composable () -> Unit)? = null,
-    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, collections: org.infinilect.app.collections.CollectionsController? = null, organizationCovers: org.infinilect.app.covers.PublicationCovers? = null, downloads: org.infinilect.app.downloads.OfflineDownloads? = null, actions: @Composable () -> Unit) {
+    descriptions: PublicationDescriptions? = null, suppliedSynopsis: String? = null, subjects: List<String> = emptyList(), dismissOverlay: (() -> Boolean)? = null, collections: org.infinilect.app.collections.CollectionsController? = null, organizationCovers: org.infinilect.app.covers.PublicationCovers? = null, downloads: org.infinilect.app.downloads.OfflineDownloads? = null, catalog: CatalogPublicationSource? = null, actions: @Composable () -> Unit) {
     val strings = LocalAppStrings.current
     val feedback = remember {SnackbarHostState()}
     val focus = remember { FocusRequester() }
-    val synopsis by produceState<String?>(null, publication.id, descriptions) {
+    val synopsis by key(publication.id,descriptions) { produceState<String?>(null, publication.id, descriptions) {
         try { value = descriptions?.get(publication.id) }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { /* Optional metadata must not prevent opening a publication. */ }
-    }
+    } }
     var expanded by remember(publication.id) { mutableStateOf(false) }
+    var catalogRetry by remember(publication.id,catalog) {mutableIntStateOf(0)}
+    val catalogState by catalogPresentation(catalog,publication.id,catalogRetry)
+    val uriHandler=androidx.compose.ui.platform.LocalUriHandler.current
+    val displayed=catalogState.info?.metadata?.takeIf {it.id==publication.id} ?: publication
+    val retained by key(downloads,publication.id) {
+        remember(downloads,publication.id) {
+            downloads?.available?.map {publication.id in it}?.distinctUntilChanged() ?: flowOf(false)
+        }.collectAsState(false)
+    }
     val scroll = remember(publication.id) { androidx.compose.foundation.ScrollState(0) }
     val dismiss = { if(dismissOverlay?.invoke()!=true) close() }
+    CompositionLocalProvider(LocalCatalogActions provides catalogActionPolicy(catalog!=null,catalogState,retained)) {
     Dialog(dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
             val compact = maxWidth < 600.dp
@@ -123,18 +137,19 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                             cover?.invoke()
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(publication.title, style = MaterialTheme.typography.h5)
-                                if (publication.authors.isNotEmpty()) Text(publication.authors.joinToString("; "),style=MaterialTheme.typography.body2)
+                                Text(displayed.title, style = MaterialTheme.typography.h5)
+                                if (displayed.authors.isNotEmpty()) Text(displayed.authors.joinToString("; "),style=MaterialTheme.typography.body2)
                                 if(formats.isNotEmpty()) Text(publicationFormat(formats),style=MaterialTheme.typography.caption)
-                                if(publication.languages.isNotEmpty()) Text(publication.languages.joinToString(", "),style=MaterialTheme.typography.caption)
+                                if(displayed.languages.isNotEmpty()) Text(displayed.languages.joinToString(", "),style=MaterialTheme.typography.caption)
                                 if(progress!=null) {
                                     Text(strings.format(UiText.UI_1_S_READ,(progress.progression*100).toInt()),style=MaterialTheme.typography.caption)
                                     LinearProgressIndicator(progress.progression.toFloat(),Modifier.fillMaxWidth().height(3.dp),backgroundColor=MaterialTheme.colors.onSurface.copy(alpha=.12f))
                                 }
                             }
                         }
-                        if(collections!=null) PublicationOrganizationActions(publication,collections,organizationCovers,feedback,downloads)
-                        else downloads?.let {Row {org.infinilect.app.downloads.DownloadAction(publication,it)}}
+                        if(catalog!=null) CatalogPublicationStatus(catalogState,uriHandler::openUri) {catalogRetry++}
+                        if(collections!=null) PublicationOrganizationActions(displayed,collections,organizationCovers,feedback,downloads)
+                        else downloads?.let {Row {org.infinilect.app.downloads.DownloadAction(displayed,it)}}
                         downloads?.let {manager ->
                             org.infinilect.app.downloads.DownloadFailureMessage(publication.id,manager)
                             when(manager.backend.capability(publication.id)) {
@@ -144,7 +159,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                             }
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
-                        (suppliedSynopsis ?: synopsis)?.let { text ->
+                        (suppliedSynopsis ?: catalogState.info?.description ?: synopsis)?.let { text ->
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(strings[UiText.UI_SYNOPSIS], style = MaterialTheme.typography.subtitle1, modifier = Modifier.semantics { heading() })
                                 Text(if (expanded) text else descriptionExcerpt(text), style = MaterialTheme.typography.body1)
@@ -157,10 +172,10 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         if (subjects.isNotEmpty()) DetailLine(strings[UiText.UI_CATEGORIES], subjects.joinToString("; "))
                         DetailLine(strings[UiText.UI_SOURCE], strings.sourceName(source))
                         DetailLine(strings[UiText.UI_FORMAT], if(formats.isEmpty()) strings[UiText.UI_FORMAT_CHECKED_WHEN_OPENING] else publicationFormat(formats))
-                        if (publication.languages.isNotEmpty()) DetailLine(strings[UiText.UI_LANGUAGES], publication.languages.joinToString(", "))
+                        if (displayed.languages.isNotEmpty()) DetailLine(strings[UiText.UI_LANGUAGES], displayed.languages.joinToString(", "))
                         if (progress != null) DetailLine(strings[UiText.UI_READING_PROGRESS], strings.format(UiText.UI_1_S_READ, (progress.progression * 100).toInt()))
-                        publication.rights?.let { DetailLine(strings[UiText.UI_SOURCE_RIGHTS_STATEMENT], it) }
-                        publication.sourceUrl?.let { DetailLine(strings[UiText.UI_SOURCE_REFERENCE], it) }
+                        displayed.rights?.let { DetailLine(strings[UiText.UI_SOURCE_RIGHTS_STATEMENT], it) }
+                        displayed.sourceUrl?.let { DetailLine(strings[UiText.UI_SOURCE_REFERENCE], it) }
                         Surface(color=MaterialTheme.colors.onSurface.copy(alpha=.05f),shape=MaterialTheme.shapes.small) {
                             Text(strings[UiText.UI_AVAILABILITY_DOES_NOT_ESTABLISH_RIGHTS_IN_EVERY_COUNTRY_SAVED_METADATA_DOES_NOT],Modifier.padding(12.dp),style = MaterialTheme.typography.caption)
                         }
@@ -171,6 +186,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
             }
         }
         LaunchedEffect(Unit) { focus.requestFocus() }
+    }
     }
 }
 

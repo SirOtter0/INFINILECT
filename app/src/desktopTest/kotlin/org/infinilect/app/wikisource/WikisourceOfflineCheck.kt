@@ -11,30 +11,34 @@ import org.infinilect.app.progress.*
 import org.infinilect.app.reader.epub.*
 import org.infinilect.core.*
 
-/** One deliberate real export, not a fixture-based availability claim or a normal test.
+/** One deliberate dynamically authorized real export, not a universal availability claim or a normal test.
  * Library identity and a durable reader locator survive reopening without a live source. */
 object WikisourceOfflineCheck {
     @JvmStatic fun main(args:Array<String>)=runBlocking<Unit> {
-        require(args.isEmpty())
+        require(args.size==2) {"Usage: <es|en|ca> <positive page ID>"}
+        val edition=WikisourceEdition.entries.single {it.language==args[0]}
+        val pageId=args[1].toInt().also {require(it>0)}
+        val id=PublicationId(edition.id,pageId.toString())
         val root=Files.createTempDirectory("wiki-live-offline")
-        val source=WikisourceSource()
+        val source=WikisourceSource(edition)
         val otherFormats=OfflineFixtureOwner(root,OfflineFixtureSource())
-        val epub=FileEpubPreparer(root.resolve("validated-epub"),validateDocument={doc,resource->
-            val approval=wikisourceApprovals.single()
-            val evidence=wikisourceExportEvidence(doc)
-            println("Wikisource live approval identifiers=${doc.metadata.identifier==approval.identifier}; title=${doc.metadata.title==approval.title}; authors=${doc.metadata.creators==approval.creators}; language=${doc.metadata.languages==listOf("es")}; rights=${doc.metadata.rights==approval.rights}; references=${evidence.references==approval.attributionReferences}")
-            println("Wikisource live semantic="+evidence.spine.joinToString {"${it.codePoints}:${it.sha256}"})
-            source.validateDocument(doc,resource)
+        val epub=FileEpubPreparer(root.resolve("validated-epub"),validateDocument=source::validateDocument)
+        val validator=downloadValidator(otherFormats.text,epub,otherFormats.pages,otherFormats.pdf)
+        fun newStore()=FileOfflineDownloads(root.resolve("retained"),listOf(source),{offer,loader->
+            try {validator(offer,loader)}catch(e:org.infinilect.app.reader.EpubException) {
+                println("Wikisource live phase=validation-failed; reason=${e.failure}; frames="+e.stackTrace.filter{it.className.startsWith("org.infinilect.app")}.take(6).joinToString{"${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}"})
+                throw e
+            }
         })
-        fun newStore()=FileOfflineDownloads(root.resolve("retained"),listOf(source),downloadValidator(otherFormats.text,epub,otherFormats.pages,otherFormats.pdf))
         var store=newStore()
         val progressDirectory=root.resolve("progress")
         val readerScope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
         try {
-            val results=source.search("El Matadero").publications
-            check(results.any {it.id==PublicationId(WIKISOURCE_ID,"1425")})
-            println("Wikisource live phase=search; reviewedMatches=${results.size}")
-            store.load();val offer=store.offers(PublicationId(WIKISOURCE_ID,"1425")).single()
+            val publication=checkNotNull(source.getPublication(id))
+            val info=source.catalogInfo(id)
+            println("Wikisource live edition=${edition.language}; pageId=$pageId; kind=${info.kind}; epub=${info.epubState}; authorized=${info.authorized}")
+            if(!info.authorized)return@runBlocking
+            store.load();val offer=store.offers(id).single()
             val done=store.download(store.pending(offer),{},{})
             check(done.status==DownloadStatus.DOWNLOADED && done.sha256!=null && done.size!=null)
             println("Wikisource live phase=download; bytes=${done.size}; sha256=${done.sha256}; date=${java.time.Instant.now()}")
@@ -68,8 +72,8 @@ object WikisourceOfflineCheck {
                     val ready=readerAgain.state.value as EpubReaderState.Ready
                     check(ready.spineIndex==second.spine.lastIndex)
                     check(ready.chapter.locator(ready.initialPosition.first,ready.initialPosition.second)==restored.locator)
-                    check(second.metadata.rights.size==2)
-                    println("Wikisource live phase=offline; networkSource=closed; chapters=${second.spine.size}; rights=2; navigation=passed; durableLocator=restored")
+                    check(second.metadata.rights.isNotEmpty())
+                    println("Wikisource live phase=offline; networkSource=closed; chapters=${second.spine.size}; rights=${second.metadata.rights.size}; navigation=passed; durableLocator=restored")
                 }finally{readerAgain.close();second.close()}
             }finally{copy.close()}
             store.remove(offer.publication.id);check(store.acquire(offer.publication.id)==null)

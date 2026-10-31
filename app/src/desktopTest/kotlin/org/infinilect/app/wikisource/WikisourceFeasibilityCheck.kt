@@ -15,10 +15,10 @@ object WikisourceFeasibilityCheck {
         require(args.size==1)
         val file=Path.of(args.single());require(Files.size(file) in 1..16L*1024*1024)
         val root=Files.createTempDirectory("ws-feasibility")
-        val id=PublicationId(SourceId("wikisource-feasibility"),"es:1425")
-        val resource=PublicationResource(id,"official-export",PublicationFormat.EPUB,"application/epub+zip")
-        val publication=Publication(id,"Official export verification",PublicationType.BOOK,resources=listOf(resource))
-        val preparer=FileEpubPreparer(root)
+        val id=PublicationId(WikisourceEdition.ES.id,"1425")
+        val resource=PublicationResource(id,"epub3-policy1-r1393104",PublicationFormat.EPUB,"application/epub+zip")
+        val publication=Publication(id,"El Matadero",PublicationType.BOOK,resources=listOf(resource),languages=listOf("es"),sourceUrl=WikisourceEdition.ES.canonical("El Matadero"))
+        val preparer=FileEpubPreparer(root,validateDocument={doc,res,snapshot->validateWikisourceExport(doc,res,snapshot,WikisourceEdition.ES)})
         val loader=object:ResourceLoader {
             override suspend fun load(resource:PublicationResource):ResourceContent {
                 val input=Files.newInputStream(file)

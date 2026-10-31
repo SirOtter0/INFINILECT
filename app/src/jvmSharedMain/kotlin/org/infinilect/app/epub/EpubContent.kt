@@ -11,6 +11,17 @@ private const val XHTML = "http://www.w3.org/1999/xhtml"
 private const val SVG = "http://www.w3.org/2000/svg"
 private const val XLINK = "http://www.w3.org/1999/xlink"
 private val activeContent = setOf("script", "iframe", "object", "embed", "form", "input", "button", "textarea", "select", "audio", "video", "canvas", "base", "applet")
+private val metadataRelation = Regex("[A-Za-z][A-Za-z0-9._-]{0,31}:[A-Za-z][A-Za-z0-9._/-]{0,127}")
+
+/** A qualified RDFa relation on an otherwise attribute-free link is inert
+ * metadata, not an HTML resource link type. The reader does not evaluate RDFa,
+ * render HTML or fetch these targets. Mixed stylesheet/preload relations, type/
+ * as hints and all other URL-bearing nodes keep ordinary resource validation.
+ * No publisher/project-specific relation or host is privileged. */
+private fun passiveMetadata(node:EpubXmlNode):Boolean =
+    node.name==XmlName(XHTML,"link") && node.children.isEmpty() && node.text.isBlank() &&
+        node.attributes.keys.all {it.namespace.isEmpty() && it.local in setOf("rel","href")} &&
+        node.attr("rel")?.let {metadataRelation.matches(it)}==true
 
 /** Shared preparation/presentation boundary. SVG is never rendered: a very narrow
  * static one-raster cover wrapper projects onto the existing owned-image model. */
@@ -58,7 +69,9 @@ internal fun validateEpubContent(root: EpubXmlNode, base: EpubEntryPath, manifes
             if (name.local == "id") requireEpub(validEpubContentAnchor(value) && ids.add(value))
             if (name.local in setOf("href", "src", "poster", "data")) {
                 requireEpub(value.length <= 512)
-                val citation = node.name == XmlName(XHTML, "a") && node !in navigationAnchors && name == XmlName("", "href") && epubExternalReference(value) != null
+                val citation = name == XmlName("", "href") &&
+                    (node.name == XmlName(XHTML, "a") && node !in navigationAnchors || passiveMetadata(node)) &&
+                    epubExternalReference(value) != null
                 if (!citation) resolveEpubTarget(base, value, manifest)
             }
         }

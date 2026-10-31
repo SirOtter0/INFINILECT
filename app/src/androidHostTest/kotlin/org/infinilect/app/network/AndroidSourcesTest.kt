@@ -63,10 +63,10 @@ class AndroidSourcesTest {
         val directory = java.nio.file.Files.createTempDirectory("infinilect-android-sources")
         val sources = createApplicationSources(directory.toFile())
         try {
-            assertEquals(listOf("internet-archive","gutenberg","local-imports","wikisource-es"),sources.options.map { it.source.id.value })
-            assertEquals(listOf(true,false,true,false),sources.options.map { it.textReadingEnabled })
-            assertEquals(listOf(true,false,true,true),sources.options.map { it.supportsIntegratedReading })
-            assertEquals(listOf("internet-archive","local-imports","wikisource-es"),sources.options.filter { it.visibleInCatalogs(false) }.map { it.source.id.value })
+            assertEquals(listOf("internet-archive","gutenberg","local-imports","wikisource-es","wikisource-en","wikisource-ca"),sources.options.map { it.source.id.value })
+            assertEquals(listOf(true,false,true,false,false,false),sources.options.map { it.textReadingEnabled })
+            assertEquals(listOf(true,false,true,true,true,true),sources.options.map { it.supportsIntegratedReading })
+            assertEquals(listOf("internet-archive","local-imports","wikisource-es","wikisource-en","wikisource-ca"),sources.options.filter { it.visibleInCatalogs(false) }.map { it.source.id.value })
             assertEquals(sources.options,sources.options.filter { it.visibleInCatalogs(true) })
             assertEquals("INFINILECT/0.0.1-SNAPSHOT (+https://github.com/SirOtter0/INFINILECT/issues)",PROJECT_USER_AGENT)
         } finally { sources.close(); sources.close(); directory.toFile().deleteRecursively() }
