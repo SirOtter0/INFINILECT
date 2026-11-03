@@ -183,6 +183,16 @@ tasks.register<JavaExec>("wikisourceOfflineCheck") {
     mainClass.set("org.infinilect.app.wikisource.WikisourceOfflineCheck")
 }
 
+// Explicit rights/technical sample. Never exports an unauthorized page.
+tasks.register<JavaExec>("wikisourceAvailabilityCheck") {
+    group = "verification"
+    description = "Evaluate a bounded real sample and validate only positively authorized EPUBs."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.wikisource.WikisourceAvailabilityCheck")
+}
+
 // Small, deliberate metadata sample; never a build/check dependency or an exporter.
 tasks.register<JavaExec>("wikisourceCatalogCheck") {
     group = "verification"

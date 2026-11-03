@@ -52,6 +52,9 @@ internal fun createSources(
     val epubPreparer = org.infinilect.app.epub.FileEpubPreparer(epubDirectory,validateDocument={document,resource,publication->
         epubPolicies[document.publicationId.sourceId]?.invoke(document,resource,publication)
     })
+    wikisources.forEach { source -> source.epubInspector { publication,resource ->
+        epubPreparer.prepare(publication,resource,DirectResourceLoader(source)).close()
+    } }
     val epubSettings = EpubSettingsPersistence(FileEpubReaderSettingsStore(epubSettingsDirectory), clock = ::epubPreferenceTime)
     val pageSettings = PageSettingsPersistence(FilePageReaderSettingsStore(pageSettingsDirectory), clock = ::pagePreferenceTime)
     val pagePreparer = org.infinilect.app.reader.page.CbzPagePreparer(cbzPreparationDirectory)

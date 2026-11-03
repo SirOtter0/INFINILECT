@@ -50,5 +50,8 @@ internal fun wikiResourceKey(revision:Int)="epub3-policy1-r$revision"
 internal fun wikiRevision(key:String):Int?=key.removePrefix("epub3-policy1-r").toIntOrNull()?.takeIf {it>0 && wikiResourceKey(it)==key}
 internal data class WikiPage(val edition:WikisourceEdition,val pageId:Int,val revision:Int,val namespace:Int,val title:String,
     val kind:CatalogPageKind,val wikitext:String="",val authors:List<String> = emptyList(),val description:String?=null,val language:String=edition.language)
-internal data class WikiGrant(val authorized:Boolean=false,val statements:List<String> = emptyList())
+internal data class WikiGrant(val state:CatalogRightsState=CatalogRightsState.UNKNOWN,val statements:List<String> = emptyList(),val rule:String?=null) {
+    constructor(authorized:Boolean,statements:List<String> = emptyList(),rule:String?=null):this(if(authorized)CatalogRightsState.VERIFIED else CatalogRightsState.UNKNOWN,statements,rule)
+    val authorized get()=state==CatalogRightsState.VERIFIED
+}
 internal data class WikiRecord(val page:WikiPage,val publication:Publication,val grant:WikiGrant)

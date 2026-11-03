@@ -556,7 +556,7 @@
     <string name="wiki_kind_versions">Versions page</string>
     <string name="wiki_kind_disambiguation">Disambiguation page</string>
     <string name="wiki_kind_unknown">Page without a reliable classification</string>
-    <string name="wiki_epub_potential">EPUB export is possible; compatibility will be checked when opening.</string>
+    <string name="wiki_epub_potential">EPUB not checked. An export route exists; compatibility is not yet established.</string>
     <string name="wiki_epub_validated">An EPUB export passed technical validation in this session.</string>
     <string name="wiki_epub_web_only">This page provides web or bibliographic information without an integrated EPUB.</string>
     <string name="wiki_epub_unavailable">An EPUB export is not currently available for this page.</string>
@@ -566,4 +566,15 @@
     <string name="wiki_catalog_error">Page capabilities could not be checked. Reading and download availability are unconfirmed.</string>
     <string name="wiki_official_page">Open official page</string>
     <string name="wiki_official_open_failed">The official page could not be opened.</string>
+    <string name="wiki_kind_text">Work text · completeness unverified</string>
+    <string name="wiki_epub_exportable">The service offered an EPUB; file validation is pending.</string>
+    <string name="wiki_epub_temporary">The EPUB check could not finish. Try again later.</string>
+    <string name="wiki_rights_verified">Source declarations authorize acquisition; territorial restrictions may still apply.</string>
+    <string name="wiki_rights_unknown">Download authorization could not be verified. EPUB availability is a separate check.</string>
+    <string name="wiki_rights_restricted">This page declares restrictions that prevent acquisition.</string>
+    <string name="wiki_rights_pending">Checking download authorization…</string>
+    <string name="wiki_check_epub">Check EPUB</string>
+    <string name="wiki_recheck_rights">Review source declarations</string>
+    <string name="wiki_checking_epub">Checking authorization and EPUB compatibility…</string>
+    <string name="wiki_check_consent">This action temporarily downloads an authorized export for validation, then discards it. It does not save an offline copy.</string>
 </resources>

@@ -60,6 +60,14 @@ class CatalogPublicationUiTest {
                 assertTrue(strings[UiText.WIKI_KIND_UNKNOWN] in text(scene));assertFalse(strings[UiText.WIKI_KIND_WORK] in text(scene))
                 assertTrue(strings[UiText.WIKI_EPUB_POTENTIAL] in text(scene));assertTrue("Original resolved creator" in text(scene))
                 assertFalse(action(scene,strings[UiText.UI_START_READING]).config.contains(SemanticsProperties.Disabled))
+                // Large localized explanations can place the link below the viewport.
+                // Exercise the real scroll action; keep the 48px accessibility assertion.
+                repeat(3) {
+                    if(action(scene,strings[UiText.WIKI_OFFICIAL_PAGE]).boundsInRoot.height<48f) {
+                        val scroll=nodes(scene).first{it.config.contains(SemanticsActions.ScrollBy)}
+                        assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f,120f));draw()
+                    }
+                }
                 val official=action(scene,strings[UiText.WIKI_OFFICIAL_PAGE]);assertTrue(official.boundsInRoot.height>=48f)
                 assertTrue(opened.size==if(code=="en")0 else if(code=="es")1 else 2)
                 assertTrue(official.config[SemanticsActions.OnClick].action!!.invoke())
@@ -90,6 +98,50 @@ class CatalogPublicationUiTest {
             assertTrue(strings[UiText.WIKI_KIND_AUTHOR] in text(scene));assertFalse(strings[UiText.WIKI_KIND_WORK] in text(scene))
             assertTrue(action(scene,strings[UiText.UI_START_READING]).config.contains(SemanticsProperties.Disabled))
         }finally{gate.complete(Unit);scene.close();runCurrent()}
+    }
+
+    @Test fun explicitCompatibilityCheckShowsConsentAndNeverRunsDuringComposition()=runTest {
+        val dispatcher=StandardTestDispatcher(testScheduler);val gate=CompletableDeferred<Unit>();var checks=0
+        val source=object:CatalogPublicationSource {
+            override val canCheckEpub=true
+            override suspend fun catalogInfo(id:PublicationId)=CatalogPublicationInfo(CatalogPageKind.TEXT,CatalogEpubState.POTENTIAL,authorized=true)
+            override suspend fun checkEpub(id:PublicationId):CatalogPublicationInfo {checks++;gate.await();return CatalogPublicationInfo(CatalogPageKind.TEXT,CatalogEpubState.VALIDATED,authorized=true)}
+        }
+        val strings=table("es");val scene=ImageComposeScene(360,720,Density(1f,1.5f),coroutineContext=dispatcher)
+        var frame=0L;fun draw(){repeat(8){runCurrent();scene.render(++frame*16_666_667L).close()};runCurrent()}
+        try {
+            scene.setContent {CompositionLocalProvider(LocalAppStrings provides strings) {ApplicationTheme(ApplicationThemeMode.DARK) {
+                PublicationDetails(book,"Wikisource (es)",close={},catalog=source){PublicationReadAction(null){}}
+            }}}
+            draw();assertEquals(0,checks);assertTrue(strings[UiText.WIKI_CHECK_CONSENT] in text(scene))
+            assertFalse(strings[UiText.UI_FORMAT_CHECKED_WHEN_OPENING] in text(scene))
+            action(scene,strings[UiText.WIKI_CHECK_EPUB]).config[SemanticsActions.OnClick].action!!.invoke();draw()
+            assertEquals(1,checks);assertTrue(strings[UiText.WIKI_CHECKING_EPUB] in text(scene))
+            assertTrue(action(scene,strings[UiText.UI_START_READING]).config.contains(SemanticsProperties.Disabled))
+            gate.complete(Unit);draw();assertTrue(strings[UiText.WIKI_EPUB_VALIDATED] in text(scene));assertTrue(strings[UiText.WIKI_RIGHTS_VERIFIED] in text(scene))
+            assertFalse(action(scene,strings[UiText.UI_START_READING]).config.contains(SemanticsProperties.Disabled));assertEquals(1,checks)
+        }finally{gate.complete(Unit);scene.close();runCurrent()}
+    }
+
+    @Test fun reviewingRightsCannotImplicitlyStartAnExportWhenANewGrantAppears()=runTest {
+        val dispatcher=StandardTestDispatcher(testScheduler);var metadata=0;var checks=0
+        val source=object:CatalogPublicationSource {
+            override val canCheckEpub=true
+            override suspend fun catalogInfo(id:PublicationId)=CatalogPublicationInfo(CatalogPageKind.TEXT,CatalogEpubState.POTENTIAL,authorized=metadata++>0)
+            override suspend fun checkEpub(id:PublicationId):CatalogPublicationInfo {checks++;return CatalogPublicationInfo(CatalogPageKind.TEXT,CatalogEpubState.VALIDATED,authorized=true)}
+        }
+        val strings=table("es");val scene=ImageComposeScene(360,720,Density(1f,1.5f),coroutineContext=dispatcher)
+        var frame=0L;fun draw(){repeat(8){runCurrent();scene.render(++frame*16_666_667L).close()};runCurrent()}
+        try {
+            scene.setContent {CompositionLocalProvider(LocalAppStrings provides strings) {ApplicationTheme(ApplicationThemeMode.DARK) {
+                PublicationDetails(book,"Wikisource (es)",close={},catalog=source){PublicationReadAction(null){}}
+            }}}
+            draw();assertEquals(0,checks)
+            action(scene,strings[UiText.WIKI_RECHECK_RIGHTS]).config[SemanticsActions.OnClick].action!!.invoke();draw()
+            assertEquals(0,checks);assertEquals(2,metadata)
+            assertTrue(strings[UiText.WIKI_RIGHTS_VERIFIED] in text(scene))
+            assertTrue(strings[UiText.WIKI_CHECK_CONSENT] in text(scene))
+        }finally{scene.close();runCurrent()}
     }
 
     private class RetainedBackend(val publication:Publication):DownloadBackend {

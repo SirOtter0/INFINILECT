@@ -10,7 +10,7 @@ internal data class WikiTemplate(val name:String,val arguments:List<String>,val 
         if(split>=0 && part.substring(0,split).trim().equals(name,true))part.substring(split+1).trim() else null
     }.singleOrNull()
 }
-internal fun wikiDeclarations(input:String):List<WikiTemplate> {
+internal fun wikiEvidenceText(input:String,includeCitations:Boolean=false):String {
     if(input.length>524288)throw WikisourceInvalid()
     // Monotonic scanning also bounds malformed inputs with many unterminated
     // comments/tags; do not repeatedly regex-scan the remaining document.
@@ -21,7 +21,8 @@ internal fun wikiDeclarations(input:String):List<WikiTemplate> {
             if(end<0)throw WikisourceInvalid()
             visible.append(' ');cursor=end+3;continue
         }
-        val ignored=if(input[cursor]=='<')listOf("nowiki","pre","syntaxhighlight","source").firstOrNull {tag->
+        val ignored=if(input[cursor]=='<')(listOf("nowiki","pre","syntaxhighlight","source","includeonly","noinclude","onlyinclude","code","samp")+
+            if(includeCitations)emptyList() else listOf("ref","blockquote","q")).firstOrNull {tag->
             input.regionMatches(cursor+1,tag,0,tag.length,true) &&
                 input.getOrNull(cursor+1+tag.length)?.let {it.isWhitespace() || it=='/' || it=='>'}==true
         } else null
@@ -38,7 +39,10 @@ internal fun wikiDeclarations(input:String):List<WikiTemplate> {
             visible.append(' ')
         }else visible.append(input[cursor++])
     }
-    val text=visible.toString()
+    return visible.toString()
+}
+internal fun wikiDeclarations(input:String,includeCitations:Boolean=false):List<WikiTemplate> {
+    val text=wikiEvidenceText(input,includeCitations)
     data class Frame(val start:Int,val parent:String?,val pieces:MutableList<String>,var from:Int)
     val stack=mutableListOf<Frame>();val result=mutableListOf<WikiTemplate>();var links=0;var i=0
     while(i<text.length) {

@@ -10,6 +10,8 @@ import org.infinilect.app.epub.*
 import org.infinilect.app.progress.*
 import org.infinilect.app.reader.epub.*
 import org.infinilect.core.*
+import org.infinilect.app.acquisition.DirectResourceLoader
+import org.infinilect.app.discovery.CatalogEpubState
 
 /** One deliberate dynamically authorized real export, not a universal availability claim or a normal test.
  * Library identity and a durable reader locator survive reopening without a live source. */
@@ -33,11 +35,28 @@ object WikisourceOfflineCheck {
         var store=newStore()
         val progressDirectory=root.resolve("progress")
         val readerScope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
+        source.epubInspector{pub,res->
+            val doc=epub.prepare(pub,res,DirectResourceLoader(source))
+            val reader=EpubReaderController(doc,ReadingProgressId(pub.id,res.key,PublicationFormat.EPUB),readerScope)
+            try {
+                reader.initialize(null)
+                for(index in doc.spine.indices) {
+                    reader.chapter(index)
+                    val state=withTimeout(10000){reader.state.first{it is EpubReaderState.Error || it is EpubReaderState.Ready && (it.spineIndex==index || it.error!=null)}}
+                    check(state is EpubReaderState.Ready && state.error==null && state.spineIndex==index);reader.presented(state.ticket)
+                }
+            }finally{reader.close();doc.close()}
+        }
         try {
             val publication=checkNotNull(source.getPublication(id))
+            val search=source.search("intitle:\"${publication.title}\"")
+            check(search.publications.any{it.id==id}) {"The selected page was not returned by its real title search"}
             val info=source.catalogInfo(id)
             println("Wikisource live edition=${edition.language}; pageId=$pageId; kind=${info.kind}; epub=${info.epubState}; authorized=${info.authorized}")
             if(!info.authorized)return@runBlocking
+            val checked=source.checkEpub(id)
+            println("Wikisource live phase=explicit-check-and-read; technical=${checked.epubState}; rule=${checked.rightsRule}")
+            if(checked.epubState!=CatalogEpubState.VALIDATED)return@runBlocking
             store.load();val offer=store.offers(id).single()
             val done=store.download(store.pending(offer),{},{})
             check(done.status==DownloadStatus.DOWNLOADED && done.sha256!=null && done.size!=null)

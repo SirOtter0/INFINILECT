@@ -18,14 +18,14 @@ import org.infinilect.core.PublicationId
 /** Dialog-local presentation only; source/reader/download owners remain authoritative. */
 internal data class CatalogActionPolicy(val mayRead:Boolean=true,val mayDownload:Boolean=true)
 internal val LocalCatalogActions=staticCompositionLocalOf {CatalogActionPolicy()}
-internal data class CatalogPresentation(val info:CatalogPublicationInfo?=null,val checking:Boolean=false,val failed:Boolean=false)
+internal data class CatalogPresentation(val info:CatalogPublicationInfo?=null,val checking:Boolean=false,val failed:Boolean=false,val verifying:Boolean=false)
 
 @Composable
-internal fun catalogPresentation(source:CatalogPublicationSource?,id:PublicationId,retry:Int):State<CatalogPresentation> = key(source,id,retry) {
-    produceState(CatalogPresentation(checking=source!=null),source,id,retry) {
+internal fun catalogPresentation(source:CatalogPublicationSource?,id:PublicationId,retry:Int,verify:Boolean=false):State<CatalogPresentation> = key(source,id,retry) {
+    produceState(CatalogPresentation(checking=source!=null,verifying=verify),source,id,retry) {
         if(source!=null) {
             try {
-                val info=source.catalogInfo(id)
+                val info=if(verify)source.checkEpub(id) else if(retry>0)source.refreshCatalogInfo(id) else source.catalogInfo(id)
                 currentCoroutineContext().ensureActive()
                 value=CatalogPresentation(info=info)
             }catch(e:CancellationException){throw e}
@@ -40,6 +40,7 @@ internal fun catalogActionPolicy(sourcePresent:Boolean,presentation:CatalogPrese
 )
 
 internal fun CatalogPageKind.label()=when(this) {
+    CatalogPageKind.TEXT->UiText.WIKI_KIND_TEXT
     CatalogPageKind.WORK->UiText.WIKI_KIND_WORK
     CatalogPageKind.CHAPTER->UiText.WIKI_KIND_CHAPTER
     CatalogPageKind.AUTHOR->UiText.WIKI_KIND_AUTHOR
@@ -54,7 +55,16 @@ internal fun CatalogEpubState.label()=when(this) {
     CatalogEpubState.WEB_ONLY->UiText.WIKI_EPUB_WEB_ONLY
     CatalogEpubState.UNAVAILABLE->UiText.WIKI_EPUB_UNAVAILABLE
     CatalogEpubState.INCOMPATIBLE->UiText.WIKI_EPUB_INCOMPATIBLE
-    CatalogEpubState.RIGHTS_UNVERIFIED->UiText.WIKI_EPUB_RIGHTS_UNVERIFIED
+    CatalogEpubState.EXPORTABLE->UiText.WIKI_EPUB_EXPORTABLE
+    CatalogEpubState.TEMPORARY_ERROR->UiText.WIKI_EPUB_TEMPORARY
+}
+
+internal fun CatalogRightsState.label()=when(this) {
+    CatalogRightsState.VERIFIED->UiText.WIKI_RIGHTS_VERIFIED
+    CatalogRightsState.INSUFFICIENT->UiText.WIKI_EPUB_RIGHTS_UNVERIFIED
+    CatalogRightsState.UNKNOWN->UiText.WIKI_RIGHTS_UNKNOWN
+    CatalogRightsState.RESTRICTED->UiText.WIKI_RIGHTS_RESTRICTED
+    CatalogRightsState.PENDING->UiText.WIKI_RIGHTS_PENDING
 }
 
 /** Defense in depth for an adapter-validated page URL. No URI is resolved/fetched.
@@ -69,11 +79,11 @@ internal fun safeCatalogOfficialPage(value:String):Boolean {
 }
 
 @Composable
-internal fun CatalogPublicationStatus(presentation:CatalogPresentation,openOfficialPage:(String)->Unit,retry:()->Unit) {
+internal fun CatalogPublicationStatus(presentation:CatalogPresentation,openOfficialPage:(String)->Unit,checkEpub:(()->Unit)?=null,retry:()->Unit) {
     val strings=LocalAppStrings.current
     var openFailed by remember(presentation.info?.officialUrl) {mutableStateOf(false)}
     Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        if(presentation.checking) Text(strings[UiText.WIKI_CATALOG_CHECKING],style=MaterialTheme.typography.caption,
+        if(presentation.checking) Text(strings[if(presentation.verifying)UiText.WIKI_CHECKING_EPUB else UiText.WIKI_CATALOG_CHECKING],style=MaterialTheme.typography.caption,
             modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
         if(presentation.failed) {
             Text(strings[UiText.WIKI_CATALOG_ERROR],style=MaterialTheme.typography.body2,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
@@ -82,8 +92,13 @@ internal fun CatalogPublicationStatus(presentation:CatalogPresentation,openOffic
         presentation.info?.let {info ->
             Text(strings[info.kind.label()],style=MaterialTheme.typography.subtitle2)
             Text(strings[info.epubState.label()],style=MaterialTheme.typography.body2)
-            if(!info.authorized && info.epubState in setOf(CatalogEpubState.POTENTIAL,CatalogEpubState.VALIDATED))
-                Text(strings[UiText.WIKI_EPUB_RIGHTS_UNVERIFIED],style=MaterialTheme.typography.body2)
+            if(info.epubState!=CatalogEpubState.WEB_ONLY) {
+                Text(strings[info.rightsState.label()],style=MaterialTheme.typography.body2)
+                if(checkEpub!=null) {
+                    TextButton(if(info.authorized)checkEpub else retry,Modifier.heightIn(min=48.dp)) {Text(strings[if(info.authorized)UiText.WIKI_CHECK_EPUB else UiText.WIKI_RECHECK_RIGHTS])}
+                    if(info.authorized)Text(strings[UiText.WIKI_CHECK_CONSENT],style=MaterialTheme.typography.caption)
+                }
+            }
             info.officialUrl?.takeIf(::safeCatalogOfficialPage)?.let {url ->
                 TextButton({try {openOfficialPage(url);openFailed=false}catch(_:Exception){openFailed=true}},Modifier.heightIn(min=48.dp)) {Text(strings[UiText.WIKI_OFFICIAL_PAGE])}
             }

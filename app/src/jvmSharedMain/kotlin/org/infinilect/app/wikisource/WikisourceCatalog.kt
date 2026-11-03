@@ -58,7 +58,9 @@ internal class WikisourceCatalog(private val edition:WikisourceEdition,private v
             ns==edition.indexNamespace->CatalogPageKind.INDEX
             props?.containsKey("disambiguation")==true->CatalogPageKind.DISAMBIGUATION
             versions->CatalogPageKind.VERSIONS
-            header?.field("section")?.isNotBlank()==true || Regex("<pages\\b",RegexOption.IGNORE_CASE).containsMatchIn(text)->CatalogPageKind.CHAPTER
+            header?.let {h->listOf("section","sección","secció","previous","next","anterior","siguiente").any {h.field(it)?.isNotBlank()==true}}==true || Regex("<pages\\b",RegexOption.IGNORE_CASE).containsMatchIn(text)->CatalogPageKind.CHAPTER
+            detailed && try {wikiDeclarations(text).any {it.parent==null && it.name in setOf("dicc","navegarendiccionarios")}}catch(_:WikisourceInvalid){false}->CatalogPageKind.CHAPTER
+            header!=null->CatalogPageKind.TEXT
             else->CatalogPageKind.UNKNOWN // no assertion of completeness from namespace, title, header or export alone
         }
         val description=props?.get("wikibase-shortdesc")?.let {it as? JsonPrimitive}?.contentOrNull?.let(::catalogPlainText)
@@ -66,8 +68,8 @@ internal class WikisourceCatalog(private val edition:WikisourceEdition,private v
     }
     private fun publication(page:WikiPage,grant:WikiGrant=WikiGrant()):Publication {
         val id=PublicationId(edition.id,page.pageId.toString())
-        val candidate=page.kind !in setOf(CatalogPageKind.AUTHOR,CatalogPageKind.INDEX,CatalogPageKind.VERSIONS,CatalogPageKind.DISAMBIGUATION)
-        val resources=if(grant.authorized && candidate)listOf(PublicationResource(id,wikiResourceKey(page.revision),PublicationFormat.EPUB,"application/epub+zip")) else emptyList()
+        val candidate=!page.wikitext.trimStart().startsWith("#REDIR",true) && page.kind !in setOf(CatalogPageKind.AUTHOR,CatalogPageKind.INDEX,CatalogPageKind.VERSIONS,CatalogPageKind.DISAMBIGUATION)
+        val resources=if(candidate)listOf(PublicationResource(id,wikiResourceKey(page.revision),PublicationFormat.EPUB,"application/epub+zip")) else emptyList()
         return Publication(id,page.title,if(page.kind==CatalogPageKind.WORK)PublicationType.BOOK else PublicationType.DOCUMENT,
             page.authors,resources,listOf(page.language),edition.canonical(page.title),grant.statements.takeIf {it.isNotEmpty()}?.joinToString("\n"))
     }
@@ -87,10 +89,9 @@ internal class WikisourceCatalog(private val edition:WikisourceEdition,private v
         val row=record(id);val candidate=row.publication.resources.isNotEmpty()
         return CatalogPublicationInfo(row.page.kind,when {
             row.page.kind in setOf(CatalogPageKind.AUTHOR,CatalogPageKind.INDEX,CatalogPageKind.VERSIONS,CatalogPageKind.DISAMBIGUATION)->CatalogEpubState.WEB_ONLY
-            !row.grant.authorized->CatalogEpubState.RIGHTS_UNVERIFIED
             candidate->CatalogEpubState.POTENTIAL
             else->CatalogEpubState.UNAVAILABLE
-        },row.page.description,row.publication.sourceUrl,row.grant.authorized,row.publication)
+        },row.page.description,row.publication.sourceUrl,row.grant.authorized,row.publication,row.grant.state,row.grant.rule)
     }
     suspend fun search(raw:String,token:String?):SearchPage {
         val query=normalizedQuery(raw);if(query.isEmpty())return SearchPage(emptyList())

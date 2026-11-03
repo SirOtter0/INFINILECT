@@ -556,7 +556,7 @@
     <string name="wiki_kind_versions">Página de versiones</string>
     <string name="wiki_kind_disambiguation">Página de desambiguación</string>
     <string name="wiki_kind_unknown">Página sin clasificación fiable</string>
-    <string name="wiki_epub_potential">La exportación EPUB es posible; se comprobará la compatibilidad al abrirla.</string>
+    <string name="wiki_epub_potential">EPUB sin comprobar. Existe una vía de exportación; la compatibilidad aún no está establecida.</string>
     <string name="wiki_epub_validated">Una exportación EPUB superó la validación técnica en esta sesión.</string>
     <string name="wiki_epub_web_only">Esta página ofrece información web o bibliográfica sin EPUB integrado.</string>
     <string name="wiki_epub_unavailable">La exportación EPUB no está disponible actualmente para esta página.</string>
@@ -566,4 +566,15 @@
     <string name="wiki_catalog_error">No se han podido comprobar las capacidades de la página. La lectura y la descarga no están confirmadas.</string>
     <string name="wiki_official_page">Abrir página oficial</string>
     <string name="wiki_official_open_failed">No se ha podido abrir la página oficial.</string>
+    <string name="wiki_kind_text">Texto de una obra · completitud sin verificar</string>
+    <string name="wiki_epub_exportable">El servicio ofrece un EPUB; falta validar el archivo.</string>
+    <string name="wiki_epub_temporary">No se pudo completar la comprobación del EPUB. Inténtalo más tarde.</string>
+    <string name="wiki_rights_verified">Las declaraciones de la fuente permiten obtener el archivo; pueden existir restricciones territoriales.</string>
+    <string name="wiki_rights_unknown">No se ha podido verificar la autorización de descarga. La disponibilidad del EPUB se comprueba por separado.</string>
+    <string name="wiki_rights_restricted">Esta página declara restricciones que impiden obtener el archivo.</string>
+    <string name="wiki_rights_pending">Comprobando la autorización de descarga…</string>
+    <string name="wiki_check_epub">Comprobar EPUB</string>
+    <string name="wiki_recheck_rights">Revisar las declaraciones de la fuente</string>
+    <string name="wiki_checking_epub">Comprobando autorización y compatibilidad del EPUB…</string>
+    <string name="wiki_check_consent">Esta acción descarga temporalmente una exportación autorizada para validarla y la descarta. No guarda una copia offline.</string>
 </resources>

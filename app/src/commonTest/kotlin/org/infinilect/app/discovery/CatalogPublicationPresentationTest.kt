@@ -13,12 +13,12 @@ class CatalogPublicationPresentationTest {
         }
     }
     @Test fun anAuthorizedExploratoryPageDoesNotBecomeACompleteWork() {
-        for(state in listOf(CatalogEpubState.POTENTIAL,CatalogEpubState.VALIDATED)) {
+        for(state in listOf(CatalogEpubState.POTENTIAL,CatalogEpubState.EXPORTABLE,CatalogEpubState.VALIDATED)) {
             val info=CatalogPublicationInfo(CatalogPageKind.UNKNOWN,state,authorized=true)
             assertTrue(info.mayRead);assertTrue(info.mayDownload)
             assertEquals(CatalogPageKind.UNKNOWN,info.kind)
         }
-        for(state in CatalogEpubState.entries-listOf(CatalogEpubState.POTENTIAL,CatalogEpubState.VALIDATED)) {
+        for(state in CatalogEpubState.entries-listOf(CatalogEpubState.POTENTIAL,CatalogEpubState.EXPORTABLE,CatalogEpubState.VALIDATED)) {
             val info=CatalogPublicationInfo(CatalogPageKind.WORK,state,authorized=true)
             assertFalse(info.mayRead);assertFalse(info.mayDownload)
         }

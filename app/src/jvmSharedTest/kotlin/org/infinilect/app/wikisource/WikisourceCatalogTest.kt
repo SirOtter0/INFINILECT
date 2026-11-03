@@ -32,10 +32,19 @@ class WikisourceCatalogTest {
             for(text in listOf("", "{{header|title=Complete works}}", "{{header|title=Novel|author=Original creator}}\n{{PD-old}}")) {
                 f.text=text;f.clock+=121001
                 val publication=assertNotNull(f.source.getPublication(f.id));assertEquals(PublicationType.DOCUMENT,publication.type)
-                assertEquals(CatalogPageKind.UNKNOWN,f.source.catalogInfo(f.id).kind)
+                assertEquals(if(text.isEmpty())CatalogPageKind.UNKNOWN else CatalogPageKind.TEXT,f.source.catalogInfo(f.id).kind)
             }
             f.text="{{header|section=Section one|author=Original creator}}\n{{PD-old}}";f.clock+=121001
             assertEquals(CatalogPageKind.CHAPTER,f.source.catalogInfo(f.id).kind)
+        }finally{f.close()}
+    }
+    @Test fun appliedDictionaryNavigationIdentifiesASectionWithoutInventingRights()=runBlocking<Unit> {
+        val f=WikisourceSourceTest.Fixture(WikisourceEdition.ES)
+        try {
+            f.text="{{Dicc|Original author|Original dictionary}}\n{{navegarendiccionarios|Índice=Original dictionary: Índice|Anterior=Other entry}}\nOriginal entry.<ref>Original note.</ref>"
+            val info=f.source.catalogInfo(f.id)
+            assertEquals(CatalogPageKind.CHAPTER,info.kind);assertEquals(CatalogEpubState.POTENTIAL,info.epubState)
+            assertEquals(CatalogRightsState.UNKNOWN,info.rightsState);assertFalse(info.mayDownload);assertEquals(0,f.exports.get())
         }finally{f.close()}
     }
     @Test fun selectedMetadataCacheHasABoundedNumberOfEntriesAndNoBookTextRetention()=runBlocking<Unit> {

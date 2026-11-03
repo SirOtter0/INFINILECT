@@ -95,7 +95,7 @@ class WikisourceSourceTest {
             f.next=20
             val first=f.source.search("Original")
             assertEquals(listOf("101","99999"),first.publications.map{it.id.localId})
-            assertTrue(first.publications.all{it.type==PublicationType.DOCUMENT && it.resources.isEmpty()})
+            assertTrue(first.publications.all{it.type==PublicationType.DOCUMENT && it.resources.single().format==PublicationFormat.EPUB})
             val token=assertNotNull(first.nextPageToken)
             assertEquals("20",wikiContinuation(f.edition,"search:Original",token))
             f.rows=emptyList();f.next=null;assertTrue(f.source.search("Original",token).publications.isEmpty())
@@ -116,7 +116,7 @@ class WikisourceSourceTest {
             f.source.downloadOffers(f.id);assertEquals(2,f.contents.get()) // acquiring always checks fresh evidence
             f.clock+=121000;f.source.getPublication(f.id);assertEquals(3,f.contents.get())
             f.text="{{header|title=Unknown rights}}";f.clock+=121000
-            val info=f.source.catalogInfo(f.id);assertFalse(info.authorized);assertEquals(CatalogEpubState.RIGHTS_UNVERIFIED,info.epubState)
+            val info=f.source.catalogInfo(f.id);assertFalse(info.authorized);assertEquals(CatalogEpubState.POTENTIAL,info.epubState);assertEquals(CatalogRightsState.UNKNOWN,info.rightsState);assertFalse(info.mayRead);assertEquals(1,info.metadata!!.resources.size)
             assertEquals(DownloadFailure.RIGHTS_UNVERIFIED,assertFailsWith<DownloadException>{f.source.downloadOffers(f.id)}.failure)
             assertEquals(0,f.exports.get())
         }finally{f.close()}

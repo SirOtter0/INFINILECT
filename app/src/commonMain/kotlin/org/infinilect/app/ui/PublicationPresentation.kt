@@ -108,7 +108,8 @@ internal fun PublicationDetails(publication: Publication, source: String, format
     } }
     var expanded by remember(publication.id) { mutableStateOf(false) }
     var catalogRetry by remember(publication.id,catalog) {mutableIntStateOf(0)}
-    val catalogState by catalogPresentation(catalog,publication.id,catalogRetry)
+    var verifyEpub by remember(publication.id,catalog) {mutableStateOf(false)}
+    val catalogState by catalogPresentation(catalog,publication.id,catalogRetry,verifyEpub)
     val uriHandler=androidx.compose.ui.platform.LocalUriHandler.current
     val displayed=catalogState.info?.metadata?.takeIf {it.id==publication.id} ?: publication
     val retained by key(downloads,publication.id) {
@@ -147,7 +148,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                                 }
                             }
                         }
-                        if(catalog!=null) CatalogPublicationStatus(catalogState,uriHandler::openUri) {catalogRetry++}
+                        if(catalog!=null) CatalogPublicationStatus(catalogState,uriHandler::openUri,if(catalog.canCheckEpub)({verifyEpub=true;catalogRetry++}) else null) {verifyEpub=false;catalogRetry++}
                         if(collections!=null) PublicationOrganizationActions(displayed,collections,organizationCovers,feedback,downloads)
                         else downloads?.let {Row {org.infinilect.app.downloads.DownloadAction(displayed,it)}}
                         downloads?.let {manager ->
@@ -171,7 +172,7 @@ internal fun PublicationDetails(publication: Publication, source: String, format
                         }
                         if (subjects.isNotEmpty()) DetailLine(strings[UiText.UI_CATEGORIES], subjects.joinToString("; "))
                         DetailLine(strings[UiText.UI_SOURCE], strings.sourceName(source))
-                        DetailLine(strings[UiText.UI_FORMAT], if(formats.isEmpty()) strings[UiText.UI_FORMAT_CHECKED_WHEN_OPENING] else publicationFormat(formats))
+                        DetailLine(strings[UiText.UI_FORMAT], if(catalog!=null) catalogState.info?.let {strings[it.epubState.label()]} ?: strings[UiText.WIKI_CATALOG_CHECKING] else if(formats.isEmpty()) strings[UiText.UI_FORMAT_CHECKED_WHEN_OPENING] else publicationFormat(formats))
                         if (displayed.languages.isNotEmpty()) DetailLine(strings[UiText.UI_LANGUAGES], displayed.languages.joinToString(", "))
                         if (progress != null) DetailLine(strings[UiText.UI_READING_PROGRESS], strings.format(UiText.UI_1_S_READ, (progress.progression * 100).toInt()))
                         displayed.rights?.let { DetailLine(strings[UiText.UI_SOURCE_RIGHTS_STATEMENT], it) }

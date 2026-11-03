@@ -37,7 +37,14 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     private val client=HttpClient(engine) {followRedirects=false;expectSuccess=false;install(HttpTimeout) {connectTimeoutMillis=5000;requestTimeoutMillis=20000;socketTimeoutMillis=15000}}
     private val rights=WikisourceRights(::bytes)
     private val catalog=WikisourceCatalog(edition,::bytes,now,rights::assess)
-    private val validated=linkedMapOf<Pair<PublicationId,String>,Unit>()
+    private val observations=linkedMapOf<Pair<PublicationId,String>,CatalogEpubState>()
+    private var inspectExport:(suspend (Publication,PublicationResource)->Unit)?=null
+    fun epubInspector(block:suspend(Publication,PublicationResource)->Unit) {check(inspectExport==null);inspectExport=block}
+    override val canCheckEpub get()=inspectExport!=null
+    private fun observed(resource:PublicationResource,state:CatalogEpubState) = synchronized(observations) {
+        observations[resource.publicationId to resource.key]=state
+        while(observations.size>32)observations.remove(observations.keys.first())
+    }
     private fun throttle(seconds:Long=30) {cooldown.set(now()+seconds.coerceIn(30,300)*1000)}
     private suspend fun <T> operation(block:suspend()->T):T {
         check(!closed.get());currentCoroutineContext().ensureActive()
@@ -85,7 +92,12 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     override suspend fun catalogInfo(id:PublicationId):CatalogPublicationInfo=operation {
         val info=catalog.info(id)
         val resource=catalog.record(id).publication.resources.singleOrNull()
-        if(resource!=null && synchronized(validated){validated.containsKey(id to resource.key)})info.copy(epubState=CatalogEpubState.VALIDATED) else info
+        val state=resource?.let {synchronized(observations){observations[id to it.key]}}
+        if(state!=null)info.copy(epubState=state) else info
+    }
+    override suspend fun refreshCatalogInfo(id:PublicationId):CatalogPublicationInfo {
+        operation {catalog.record(id,fresh=true)}
+        return catalogInfo(id)
     }
     private suspend fun <T> downloading(block:suspend()->T):T=try {block()}
     catch(e:CancellationException){throw e}
@@ -108,11 +120,41 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     /** Pure technical validation also works with a closed source and no network. */
     suspend fun validateDocument(document:EpubDocument,resource:PublicationResource,publication:Publication) {
         validateWikisourceExport(document,resource,publication,edition)
-        synchronized(validated) {
-            validated[publication.id to resource.key]=Unit
-            while(validated.size>32)validated.remove(validated.keys.first())
-        }
+        observed(resource,CatalogEpubState.VALIDATED)
     }
+    override suspend fun checkEpub(id:PublicationId):CatalogPublicationInfo {
+        val row=operation {catalog.record(id,fresh=true)}
+        val resource=row.publication.resources.singleOrNull() ?: return catalogInfo(id)
+        // An unknown legal state is never an assertion that no EPUB exists.
+        // Do not acquire protected bytes just to inspect their format.
+        if(!row.grant.authorized || inspectExport==null)return catalogInfo(id)
+        try {
+            inspectExport!!.invoke(row.publication,resource)
+            currentCoroutineContext().ensureActive()
+            observed(resource,CatalogEpubState.VALIDATED)
+        }catch(e:CancellationException){throw e}
+        catch(e:Exception) {
+            currentCoroutineContext().ensureActive()
+            // Preparers wrap transport failures; retain numeric HTTP semantics
+            // instead of mislabelling a server outage as an incompatible book.
+            var cause:Throwable?=e;var status:Int?=null;var epub:org.infinilect.app.reader.EpubException?=null
+            repeat(8) {
+                val value=cause
+                if(value is WikiHttp)status=value.status
+                if(value is DownloadException && value.httpStatus!=null)status=value.httpStatus
+                if(value is org.infinilect.app.reader.EpubException)epub=value
+                cause=value?.cause
+            }
+            observed(resource,when {
+                status==404->CatalogEpubState.UNAVAILABLE
+                status!=null->CatalogEpubState.TEMPORARY_ERROR
+                epub?.failure in setOf(org.infinilect.app.reader.EpubFailure.INVALID,org.infinilect.app.reader.EpubFailure.LIMIT,org.infinilect.app.reader.EpubFailure.ENCRYPTED)->CatalogEpubState.INCOMPATIBLE
+                else->CatalogEpubState.TEMPORARY_ERROR
+            })
+        }
+        return catalogInfo(id)
+    }
+
     private suspend fun current(resource:PublicationResource):WikiRecord=operation {
         val record=catalog.record(resource.publicationId,fresh=true)
         if(!record.grant.authorized || record.publication.resources.singleOrNull()!=resource)throw WikisourceReviewRequired()
@@ -132,6 +174,7 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
                 }.execute {response ->
                     response.success()
                     if(response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase()!=resource.mediaType)throw WikisourceInvalid()
+                    observed(resource,CatalogEpubState.EXPORTABLE)
                     val expected=response.size(WIKISOURCE_BYTES);val channel=response.bodyAsChannel();val released=CompletableDeferred<Unit>();val handleClosed=AtomicBoolean()
                     val content=object:ResourceContent {
                         override val sizeBytes=expected

@@ -1,4 +1,225 @@
-# Wikisource: under-demand catalog, EPUB and retained reading — PR #39
+# Wikisource: availability and rights follow-up — PR #39
+
+## Current result — 3 November 2026
+
+Continues `8a41360aeaa22b49c36994042270d3b0614709c0`. The realme C55
+report was reproduced **at the production source/metadata/UI-policy boundary**,
+using official Action API responses. No Android device was available here.
+The application previously recognized only English direct `PD-old` and a narrow
+Commons scan chain. It also omitted the candidate EPUB resource whenever rights
+were unknown. Thus missing positive legal evidence appeared together with an
+apparently unavailable format and a generic “checked when opening” message,
+although opening was disabled. This is a confirmed implementation problem;
+it does not establish that the ten user-selected pages were legally downloadable.
+
+The exact reported page, **Cardenal A. Mattei (Juicios)**, remains unavailable for
+new acquisition: it is a dictionary entry, and its own revision provides no
+recognized work/translation/edition permission. Its author cannot be inferred
+from the historical person described by the entry. We do not inherit permission
+from a dictionary index, an author biography or the general site footer.
+
+Changes:
+
+- Independent `CatalogPageKind`, `CatalogEpubState` and `CatalogRightsState`.
+  A header identifies a **text with unverified extent**, not a complete book.
+  Applied dictionary-navigation templates identify a section. Author/index/
+  versions/disambiguation pages remain web-only.
+- Non-auxiliary pages retain a candidate resource even when rights are unknown.
+  **POTENTIAL means an unchecked export route, not proof that a file exists.**
+  It never grants byte acquisition by itself. `EXPORTABLE` records the service's
+  accepted response; only full production preparation records `VALIDATED`.
+- Explicit, localized **Check EPUB** action for authorized pages, with notice
+  that it temporarily downloads and discards an export. No export during search,
+  composition or ordinary metadata lookup. Unknown rights instead offer a fresh
+  source-declaration review; they do not trigger an exploratory binary download.
+- Four direct work rules and one scan-chain rule, documented with scope,
+  exclusions and revision evidence in [Wikisource rights](WIKISOURCE_RIGHTS.md).
+  New ES/CA `DP-100` and EN `PD-release` rules do not depend on titles.
+  Quoted/commented examples cannot authorize. Translations, edition fields,
+  unknown transclusions, artwork and contradictory statements block direct grants.
+  Rendered citations are checked for these additional scope hazards too.
+- Bounded technical observations (32 revision-bound resources), distinct HTTP
+  404, temporary service error and reader incompatibility. Cancellation, including
+  a late non-cooperative inspector result, cannot publish a completed UI check.
+- Retained copies still open from their original snapshot/hash without live rights
+  checks. No migration, resource-key change, second download manager, parser
+  relaxation, new permission/dependency or changes to other providers.
+
+## Ten Spanish pages: reproducible before/after audit
+
+Date: **3 November 2026**. All ten pages were inspected through real APIs before implementation. Baseline
+`8a41360` source probes completed for six cohort pages; a second probe was
+interrupted by the source rate-limit/cooldown and produced no page outcomes.
+For the other four rows (marked †), the before state is **static evaluation of
+the baseline classification/rights code against those real metadata responses**,
+not an executed baseline source probe. The updated production source evaluated
+all ten successfully. This distinction applies to the aggregate before counts.
+Metadata requests used the identifying
+INFINILECT User-Agent, HTTPS, `maxlag=5`, bounded responses and official APIs.
+Samples were selected from real query results/linked pages, including applied
+`DP-100` examples returned by the official `embeddedin` query. No embedded title
+allowlist is used by the application. This is a deliberately mixed diagnostic
+cohort, **not an estimate of the percentage of readable books in Wikisource**.
+
+Before: “candidate” below means a `PublicationResource`, not a downloaded file.
+Baseline runs checked metadata/rights only; they did **not** measure baseline
+EPUB readability. After: real exports were acquired only for positively authorized
+pages, then checked with `FileEpubPreparer` and every bounded spine window.
+All other pages deliberately remained unexported.
+
+| Page / official revision | NS | Before: type; rights; candidate | After: type; rights / evidence | Actual EPUB / decision |
+| --- | --- | --- | --- | --- |
+| [Cardenal A. Mattei (Juicios)](https://es.wikisource.org/w/index.php?curid=51981&oldid=154306) | 0 | Unknown; unknown; no | Section; unknown. Applied `Dicc`/`navegarendiccionarios`; no effective work-rights declaration. | Unchecked candidate; new reading/download blocked, official page available. |
+| [El Matadero](https://es.wikisource.org/w/index.php?curid=1425&oldid=1393104) | 0 | Unknown; unknown; no | Text, extent unverified; unknown. Header/author alone do not grant permission. | Unchecked candidate; new acquisition blocked. Existing retained copies unaffected. |
+| [Canción del pirata](https://es.wikisource.org/w/index.php?curid=2331&oldid=1248127) | 0 | Section; verified; yes | Section; verified `commons.scan.pd100.v1`. Single ProofreadPage slice → exact index → Commons declaration. | **Validated and readable** with real production preparation. No whole-volume claim. |
+| [Rimas (Bécquer, 1885)/Rima LIII](https://es.wikisource.org/w/index.php?curid=1630&oldid=1614255) | 0 | Section; verified; yes | Section; verified `commons.scan.pd100.v1`. Exact scan declaration, not the author's age. | **Validated, read, downloaded and reopened offline**, three spine items. |
+| [Autor:Miguel de Cervantes](https://es.wikisource.org/w/index.php?curid=3830&oldid=1626564) | 106 | Author; unknown; no | Author; rights not assessed as a book. | Web-only; not an EPUB work. |
+| [Don Quijote de la Mancha](https://es.wikisource.org/w/index.php?curid=18672&oldid=1626565) | 0 | † Versions; unknown; no | Versions; applied editions/version evidence. | Web-only; does not choose a particular edition silently. |
+| [Índice:José de Espronceda - Obras poéticas completas.djvu](https://es.wikisource.org/w/index.php?curid=256323&oldid=1607011) | 104 | † Index; unknown; no | Index; `proofread-index` model. | Web-only; an index is not a downloadable book. |
+| [Coplas por la muerte de su padre](https://es.wikisource.org/w/index.php?curid=1563&oldid=1290321) | 0 | † Section; unknown; no | Section/composite; unknown. Scanned cover and forty linked descendants require separate scope evidence. | Unchecked candidate. Multi-chapter/illustrated scan graph deliberately not exported. |
+| [A un olmo seco](https://es.wikisource.org/w/index.php?curid=15758&oldid=1564295) | 0 | † Unknown; unknown; no | Text, extent unverified; unknown. No applied recognized declaration. | Unchecked candidate; no author-age inference. |
+| [A Venus](https://es.wikisource.org/w/index.php?curid=1927&oldid=1393137) | 0 | Unknown; unknown; no | Text, extent unverified; **verified `es.work.dp100.v1`**, applied direct `DP-100`. | **Validated, read, downloaded and reopened offline**, three spine items. Newly accepted by the general rule. |
+
+The scan chain for Canción uses index `256323/r1607011` and Commons
+`84568029/r1121815753`; Rima LIII uses index `148915/r1614406` and Commons
+`26316893/r1189166312`. Both explicitly use `PD-scan|PD-old-100-expired`.
+
+| Metric, fixed ten-page cohort | Baseline | Updated | Interpretation |
+| --- | --- | --- | --- |
+| Useful non-UNKNOWN classification | 6/10 | 10/10 | Text is not promoted to complete work. |
+| Candidate resource represented | 2/10 | 7/10 | Five additional routes represented; no legal grant implied. |
+| Positive rights evidence | 2/10 | 3/10 | A Venus newly accepted. |
+| Authorized acquisition/read routes | 2/10 | 3/10 | All three updated routes passed actual EPUB preparation. |
+| EPUB files actually checked in this audit | Not checked in baseline | 3/10 validated | Cannot claim a measured baseline reading-success increase. |
+| Auxiliary exclusions | 3/10 | 3/10 | Appropriate author/index/versions exclusions. |
+| Non-auxiliary rights unresolved | 5/10 | 4/10 | Insufficient evidence is not a copyright verdict or a technical failure. |
+
+**Seven of ten still cannot be newly read/downloaded.** Three are auxiliary pages;
+four lack a verified, sufficiently scoped grant. The remaining constraints are
+missing original/translation/edition evidence or an unverified descendant graph,
+not a demonstrated EPUB failure. The audit does not establish that those four
+are protected or that no EPUB exists. Removing this block by inheriting the site
+license, guessing lifespan, or licensing forty children from one cover would
+introduce false authorizations. General availability is therefore **not declared
+solved**; these rules reduce demonstrated false rejections while exposing the
+remaining evidence gap honestly.
+
+## Actual reading and retained-file checks
+
+The opt-in `:app:wikisourceOfflineCheck --args='<language> <page ID>'` now performs:
+real title search → details/rights → explicit production check + chapter navigation
+→ existing manager download → close source/store → recreate store → prepare/read
+using retained bytes with the network source closed → restore the durable locator
+→ delete download while retaining progress → close resources/remove scratch files.
+These are host integration results, not Android physical validation. Dynamic
+exports can differ between requests; hashes below identify the retained artifacts
+from this run and are **not application allowlists**.
+
+| Edition / page / root revision | Rule | Bytes / SHA-256 | Result on 3 November 2026 |
+| --- | --- | --- | --- |
+| ES [A Venus](https://es.wikisource.org/w/index.php?curid=1927&oldid=1393137) | `es.work.dp100.v1` | 21,380 / `03ec8548258bfee945562f301d70fe6431740dbc406ed73e586807b452a3e2cb` | Explicit check, read all 3 spine items, retained reopen/locator/deletion passed; 2 rights statements retained. |
+| ES [Rima LIII](https://es.wikisource.org/w/index.php?curid=1630&oldid=1614255) | `commons.scan.pd100.v1` | 19,593 / `b46a42e254aae3d8f91cbdabf2075f84cf1ad85e662ecf88542d9b23c989b517` | Same full flow passed; 3 spine items, 2 rights statements. |
+| EN [Smokey the Bear Sutra](https://en.wikisource.org/w/index.php?curid=3879&oldid=15899522) | `en.work.release.v1` | 23,772 / `ccc1bfa5ee3889fd5ae6ea9a632a0d9b41823684f556d6648089232b0f699cd7` | Same full flow passed; 3 spine items, 2 rights statements. Release by copyright holder, not an age assumption. |
+| CA [L'emigrant](https://ca.wikisource.org/w/index.php?curid=1683&oldid=63283) | `ca.work.dp100.v1` | 20,571 / `d4baa79d87ba34ba3c60f3fcda4b4308aba8fc656e825442fa6a7dc0c44532f3` | Same full flow passed; 3 spine items, 2 rights statements. |
+| CA [Introducció](https://ca.wikisource.org/w/index.php?curid=3094&oldid=178423) | `commons.scan.pd100.v1` | 66,314 / `461012a10a630573a7e98a279b8beca7cd9caaa7a32605c2791cea275d068779` | Existing scan-chain regression passed; 3 spine items, 2 rights statements. Check current root revision in probe output when repeating. |
+
+English **The New Colossus** (`72137/r15492692`) also passed the complete flow:
+22,448 bytes, SHA-256 `4a5c8c3d905f75150b6dc3584cdb791cb0cb61804a63af9caacb448a3ea6488c`,
+three spine items and two retained rights statements, using `en.work.pdold.v1`.
+The first rerun found a newly overstrict rejection of the reviewed
+`WP link` header annotation. Its official template `14965389` only constructs a
+Wikipedia link. Acceptance is now restricted to EN/header/one plain bounded
+positional argument; arbitrary templates, top-level use and parameter injection
+remain rejected. This is a template-pattern rule, not a book exception.
+
+## Additional deterministic regressions
+
+A new rights-scope fixture demonstrated that a direct work banner could otherwise
+license an unverified relative child-page graph (`[[/Different edition chapter]]`).
+It failed before the guard was added; direct grants now require that graph to be
+absent. This is independent of a chapter's own explicit grant and does not rewrite
+retained files. A separate UI regression ensures that **Review source declarations**
+only refreshes metadata, even if a new positive grant appears. Only the subsequent
+explicit **Check EPUB** action may acquire the export with the displayed notice.
+The production refresh path bypasses the selected-page TTL without exporting.
+
+## Reproduction, tests and physical acceptance
+
+Ordinary suites use synthetic public-API/EPUB fixtures, never live network. Added
+regressions cover independent candidates/rights, applied-vs-cited declarations,
+translation/edition/artwork hazards including notes, contradictory licenses,
+dictionary classification, real preparer checks/corrupt ZIP recovery, 404/503,
+cooperative and delayed cancellation, explicit UI consent, localized large-font
+layout, and search → retained offline progress/delete behavior.
+
+Opt-in metadata/limited authorized-export audit (not a normal build dependency):
+
+```sh
+./gradlew :app:wikisourceAvailabilityCheck --args='es 51981 1425 2331 1630 3830 18672 256323 1563 15758 1927'
+./gradlew :app:wikisourceOfflineCheck --args='es 1927'
+./gradlew :app:wikisourceOfflineCheck --args='es 1630'
+./gradlew :app:wikisourceOfflineCheck --args='en 3879'
+./gradlew :app:wikisourceOfflineCheck --args='ca 1683'
+```
+
+The availability probe exports only authorized entries. No bulk crawl, speculative
+unknown-rights downloads or personal/profile data is involved. Prior bounds,
+source visibility preference, stable IDs, resource keys and retained revisions
+remain in force. The actual parser and downloader, not fixtures, were used for
+live checks. No remote images/scripts/CSS, XML entities/DTDs or external resource
+requests become permitted. Passive attribution links and separate rights remain
+preserved by the existing parser.
+
+Final full-suite/build, manifest, packaged-resource and lint results are recorded
+in the verification table below after the frozen-source run. The initial new
+child-graph regression failed on Android-host, and the new consent UI regression
+failed with one unexpected export call. Both passed the focused rerun after the
+minimal fixes. No existing test was disabled or weakened to hide those failures.
+
+| Final executed suite | Cases | Failures / errors / skipped |
+| --- | ---: | --- |
+| Desktop | 1802 | 0 / 0 / 0 |
+| Android-host | 1516 | 0 / 0 / 0 |
+| Core JVM | 60 | 0 / 0 / 0 |
+| Core Android-host | 60 | 0 / 0 / 0 |
+| **Total** | **3438** | **0 / 0 / 0** |
+
+**BUILD SUCCESSFUL in 15m 2s.** All four suites actually executed with final code.
+Android debug, Android unsigned release, Desktop compilation, Android check,
+Lint debug/release (**zero issues**) and both final merged-manifest checks passed.
+Eight synthetic updater-manifest safety cases also passed (additional to JUnit).
+Localization: **577 strings and three plurals** in en/es/ca; all six prepared
+resource assets in each APK matched byte-for-byte. No probe/test classes,
+private keys, fixture EPUBs or partial files were found in either packaged APK.
+
+Both manifests retain `org.infinilect.app`, minSdk 26/targetSdk 37, INTERNET,
+ACCESS_NETWORK_STATE and the existing internal AndroidX permission. No install
+permission; updater receiver remains non-exported with no intent filter. Debug
+signature validation passed; release remains unsigned. No APK was published.
+The 457 source/configuration files were unchanged during this final run.
+Protected provider/download/reader/updater/Android configurations are unchanged
+from the starting commit. `git diff --check` passed.
+
+
+Realme C55 checklist: find A Venus and Rima LIII in ES; verify page type and
+separate rights/EPUB explanation; explicitly Check EPUB; read and navigate; download
+with consent; close/reopen with airplane mode and confirm position; delete only
+the download and confirm Library/history/progress remain. Repeat EN Smokey the
+Bear Sutra and CA L'emigrant; try cancellation/tab switching. Cardenal must show
+section + unchecked EPUB + unresolved authorization and official-page access,
+without falsely offering acquisition. Author/index/versions pages stay web-only.
+Check ES/EN/CA, light/dark and large fonts. Do not treat this as physical acceptance
+until the user runs it. PR #39 remains Draft; no APK/release is published.
+
+---
+
+## Previous 31 October implementation record (historical)
+
+The record below describes the preceding two-rule implementation. The states,
+rights-rule list and observed availability above supersede it; retained-file,
+network, parser and identity limits continue to apply.
+
+### Wikisource: under-demand catalog, EPUB and retained reading — PR #39
 
 Continuation of `3ff47bba94dbeead061d5dac5e3e24c0fd453f09`, **31 October 2026**.
 The catalog no longer intersects results with an incorporated list of titles,
@@ -18,7 +239,7 @@ PR #39 remains Draft. Android physical acceptance is pending. No APK/release is
 published. PR #38/OAPEN, Gutenberg, Internet Archive's policy, updater, permissions,
 signing, SDK, dependencies and persistent schemas are unchanged.
 
-## Official references and observations
+### Official references and observations
 
 - [Action API](https://www.mediawiki.org/wiki/API:Action_API),
   [Search / generator](https://www.mediawiki.org/wiki/API:Search),
@@ -47,7 +268,7 @@ index 106; CA author 106 / index 104 (`Llibre`). Site rightsinfo declares CC BY-
 4.0 for contributions; **this is not an original-work license**. No HTML scraping,
 service protection bypass, massive crawl or private wiki request was used.
 
-## Architecture and API
+### Architecture and API
 
 `WikisourceEdition` internally fixes project, API, language and namespace IDs.
 Only `es.wikisource.org`, `en.wikisource.org`, `ca.wikisource.org`, the fixed
@@ -105,7 +326,7 @@ Author/index/disambiguation/versions evidence excludes acquisition; a header's
 nonempty section or proofread slice is displayed as a section, without promising
 the entire source volume. No generic complete-work inference is introduced.
 
-## Rights policy, independent of parser validity
+### Rights policy, independent of parser validity
 
 Positive rules currently implemented:
 
@@ -147,7 +368,7 @@ one of the automatic positive declarations, so a **new acquisition** can be
 catalog-only. This does not revoke, overwrite, hide or reauthorize old saved
 copies. Additional general rights rules would need independently verified data.
 
-## Dynamic EPUB validation, limits and versioning
+### Dynamic EPUB validation, limits and versioning
 
 No exact chapter count, text/reference hash, fixed rights list or known revision
 is required. After complete structural validation, the policy binds configured
@@ -201,7 +422,7 @@ an approximate position or fall back to a valid location. No exact cross-edit
 position guarantee is made. All actual acquisitions
 are fully validated regardless of the last observed session state.
 
-## Offline route and source visibility
+### Offline route and source visibility
 
 The existing manager owns consent, streamed progress (indeterminate when size is
 unknown), cancellation, explicit retry, quotas, atomic publish, partial cleanup,
@@ -223,7 +444,7 @@ remains catalog-only/hidden initially. Capability is implementation-based, never
 source-name exceptions or transient network health. Library and History always
 use the full source registry, even when a discovery provider is hidden.
 
-## Reproducible checks and recorded results
+### Reproducible checks and recorded results
 
 Ordinary suites use original synthetic EPUBs and deterministic HTTP fixtures.
 Coverage includes es/en/ca, general queries/author namespaces, bound pagination,
@@ -345,7 +566,7 @@ git diff --check
 ```
 
 
-## Physical acceptance and remaining limits
+### Physical acceptance and remaining limits
 
 1. On Android/Desktop search arbitrary title/author terms with each of the three
    Wikisource editions; load another page. Main pages must not all say “complete
@@ -373,7 +594,7 @@ whole-transclusion revision snapshot, arbitrary external resource download or
 universal territorial clearance. No Android frame-time or physical acceptance
 claim follows from JVM probes. Keep Draft until review and physical validation.
 
-## Adding an edition
+### Adding an edition
 
 Verify official siteinfo/namespaces, copyright semantics, search and a real
 authorized export. Add an internally fixed `WikisourceEdition`, localized label

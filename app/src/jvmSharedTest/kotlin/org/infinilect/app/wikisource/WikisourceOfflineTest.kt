@@ -9,6 +9,8 @@ import org.infinilect.app.epub.*
 import org.infinilect.app.reader.*
 import org.infinilect.app.reader.epub.*
 import org.infinilect.core.*
+import org.infinilect.app.acquisition.DirectResourceLoader
+import org.infinilect.app.progress.*
 import kotlin.test.*
 
 /** Real adapter, transport and retained-file pipeline, with original synthetic books.
@@ -101,6 +103,38 @@ class WikisourceOfflineTest {
             finally{copy.close()}
             assertEquals(done.sha256,store.snapshot().entries.single().sha256);assertEquals(1,f.exports.get())
         }finally{store.close();owner.close();root.toFile().deleteRecursively()}
+    }
+    @Test fun searchDetailsCheckReadDownloadAndRestartKeepTheSameDurableProgress()=runBlocking<Unit> {
+        val root=Files.createTempDirectory("wiki-complete-flow");val f=fixture(root);val owner=Owner(root,f.source);var store=owner.store()
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
+        f.source.epubInspector{pub,res->owner.epub.prepare(pub,res,DirectResourceLoader(f.source)).close()}
+        try {
+            val found=f.source.search("Original work").publications.single{it.id==f.id}
+            val details=f.source.catalogInfo(found.id);assertTrue(details.authorized);assertEquals(0,f.exports.get())
+            assertEquals(org.infinilect.app.discovery.CatalogEpubState.VALIDATED,f.source.checkEpub(found.id).epubState)
+            val publication=details.metadata!!;val resource=publication.resources.single()
+            val document=owner.epub.prepare(publication,resource,DirectResourceLoader(f.source))
+            val progressId=ReadingProgressId(f.id,resource.key,PublicationFormat.EPUB)
+            val writer=ProgressPersistence(FileReadingProgressStore(root.resolve("progress")))
+            val reader=EpubReaderController(document,progressId,scope,persistence=writer)
+            try {
+                reader.initialize(null);val ready=reader.state.value as EpubReaderState.Ready
+                reader.presented(ready.ticket);reader.report(ready.ticket,0,1);reader.flush()
+            }finally{reader.close();writer.close();writer.awaitClosed();document.close()}
+            val saved=assertNotNull(FileReadingProgressStore(root.resolve("progress")).get(progressId))
+            store.load();val done=store.download(store.pending(store.offers(f.id).single()),{},{})
+            assertEquals(DownloadStatus.DOWNLOADED,done.status);assertEquals(3,f.exports.get()) // explicit check, direct read, retained acquisition
+            store.close();f.close();val requests=f.requests.get();store=owner.store();store.load()
+            val copy=assertNotNull(store.acquire(f.id))
+            try {
+                val offline=owner.epub.prepare(copy.publication,resource,copy.loader)
+                val again=EpubReaderController(offline,progressId,scope)
+                try {again.initialize(saved);val ready=again.state.value as EpubReaderState.Ready;assertEquals(saved.locator,ready.chapter.locator(ready.initialPosition.first,ready.initialPosition.second))}
+                finally{again.close();offline.close()}
+            }finally{copy.close()}
+            assertEquals(requests,f.requests.get());store.remove(f.id)
+            assertNotNull(FileReadingProgressStore(root.resolve("progress")).get(progressId))
+        }finally{scope.cancel();store.close();owner.close();root.toFile().deleteRecursively()}
     }
     @Test fun insufficientSpaceRejectsBeforeExportAndRetainsNoPayload()=runBlocking<Unit> {
         val root=Files.createTempDirectory("wiki-space");val f=fixture(root);val owner=Owner(root,f.source);val store=owner.store {0};val id=f.id

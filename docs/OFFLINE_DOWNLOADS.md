@@ -18,6 +18,26 @@ independence and safe deletion below remain unchanged. [Policy, actual live
 results and physical checklist](WIKISOURCE.md). The original PR #36 audit below
 is historical; its statement that no remote EPUB adapter exists is superseded.
 
+## Wikisource explicit checks and authorization — 3 November 2026
+
+A candidate EPUB resource is independent of positive rights evidence. Source
+loads/offers still require fresh authorization and the exact resource key.
+**Check EPUB** temporarily prepares an authorized export and discards its scratch
+copy; it does not enqueue or claim a retained download. Only the existing
+explicit offline operation publishes a validated retained file atomically.
+Unknown rights cause no speculative binary download. The download manager,
+Archive policy, quotas, concurrent worker limit, storage layout and partial-file
+recovery are unchanged. New ES/CA DP-100 and EN PD-release declarations are
+recognized within the [reviewed scope policy](WIKISOURCE_RIGHTS.md).
+
+Live host checks for A Venus, Rima LIII, EN Smokey the Bear Sutra and CA L'emigrant
+performed real acquisition, source/store shutdown, retained reopening with the
+network source closed, locator restoration and deletion while keeping progress.
+[Per-artifact hashes, cohort results and physical limitations](WIKISOURCE.md).
+These checks do not establish Android airplane-mode acceptance or universal
+Wikisource availability. Existing retained El Matadero copies keep identity,
+bytes and progress and are not reauthorized on reopen.
+
 ## Audit before implementation
 
 Base: main `1d8235e294079844118e0125c5170e6f10c32df1` (PR #35 merged). Existing Library/History live in SQLDelight schema v2; locators, imports, preferences, translation models and disposable reading preparation have independent owners. Saving metadata never authorizes bytes. `OpenPublicationController` normally resolves fresh source metadata and then feeds the existing format preparer through `ResourceLoader` / streaming `ResourceContent`.
