@@ -18,7 +18,18 @@ internal class HomeDiscovery(private val options: List<SourceOption>, private va
     private var generation = 0L
     private var loadedAt: Long? = null
     private var choice: DiscoveryPreferences? = null
+    private var showCatalogOnly = false
+    fun catalogOnlyVisibility(show: Boolean) {
+        if (showCatalogOnly == show) return
+        showCatalogOnly = show
+        pause(); choice = null; loadedAt = null
+        val visible = options.filter { it.visibleInCatalogs(show) }.map { it.source.id }.toSet()
+        mutable.value = state.value.copy(rows = state.value.rows.mapNotNull { row ->
+            row.copy(entries = row.entries.filter { it.publication.id.sourceId in visible }).takeIf { it.entries.isNotEmpty() }
+        }, failed = false)
+    }
     fun refresh(preferences: DiscoveryPreferences, retry: Boolean = false) {
+        catalogOnlyVisibility(preferences.showCatalogOnlySources)
         if (!preferences.homeEnabled) { pause(); choice = preferences; loadedAt = null; mutable.value = HomeDiscoveryState(); return }
         if (!retry && preferences == choice && (task?.isActive == true || loadedAt?.let { now() - it in 0..300_000 } == true)) return
         pause(); choice = preferences
@@ -31,7 +42,7 @@ internal class HomeDiscovery(private val options: List<SourceOption>, private va
             mutable.update { it.copy(rows = it.rows.filter { row -> row.genre == null || row.genre in genres }) }
             var failed = false
             coroutineScope {
-                options.map { option -> async {
+                options.filter { it.visibleInCatalogs(preferences.showCatalogOnlySources) }.map { option -> async {
                     try {
                         val query = if ((option.source as? DiscoverySource)?.canBrowseGenres == true) "*" else "classics"
                         diagnostics.event(TechnicalEvent.GENERAL_STARTED, stamp)
@@ -50,7 +61,7 @@ internal class HomeDiscovery(private val options: List<SourceOption>, private va
                     catch (_: Exception) { diagnostics.event(TechnicalEvent.REQUEST_FAILED, stamp); failed = true }
                 } }.awaitAll()
             }
-            val browser = options.firstOrNull { (it.source as? DiscoverySource)?.canBrowseGenres == true }
+            val browser = options.firstOrNull { it.visibleInCatalogs(preferences.showCatalogOnlySources) && (it.source as? DiscoverySource)?.canBrowseGenres == true }
             if (browser != null) coroutineScope {
                 genres.map { genre -> async {
                     try {

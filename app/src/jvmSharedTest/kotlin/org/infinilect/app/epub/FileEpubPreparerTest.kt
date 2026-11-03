@@ -47,7 +47,7 @@ class FileEpubPreparerTest {
             assertEquals("Résumé 📚", doc.metadata.title)
             assertEquals(listOf("fr", "en"), doc.metadata.languages)
             assertEquals(listOf("作者"), doc.metadata.creators)
-            assertEquals("Original test fixture", doc.metadata.rights)
+            assertEquals(listOf(EpubRightsStatement("Original test fixture")), doc.metadata.rights)
             assertEquals("nav", doc.navigationItemId)
             assertEquals(listOf(EpubSpineItem("chapter")), doc.spine)
             val chapter = doc.manifest.single { it.id == "chapter" }.path

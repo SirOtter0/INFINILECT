@@ -54,4 +54,5 @@ internal fun LocalizedStrings.status(value: String): String {
     return this[UiText.UI_THE_ACTION_COULD_NOT_COMPLETE_PLEASE_TRY_AGAIN]
 }
 internal fun LocalizedStrings.sourceName(name: String): String =
-    if (name == "Imported files") this[UiText.UI_IMPORTED_FILES] else name
+    when(name) {"Imported files" -> this[UiText.UI_IMPORTED_FILES]; "Wikisource (es)" -> this[UiText.WIKISOURCE_SOURCE_LABEL];
+        "Wikisource (en)" -> this[UiText.WIKISOURCE_EN_SOURCE_LABEL]; "Wikisource (ca)" -> this[UiText.WIKISOURCE_CA_SOURCE_LABEL]; else -> name}

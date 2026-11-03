@@ -12,7 +12,8 @@ internal data class CatalogResults(val id: SourceId, val entries: List<Discovery
     val interrupted: Boolean = false, val failure: CatalogErrorKind? = null)
 internal data class DiscoveryState(val query: String = "", val request: DiscoveryRequest? = null,
     val enabled: Set<SourceId> = emptySet(), val genre: Genre? = null, val language: String? = null,
-    val catalogs: List<CatalogResults> = emptyList(), val generation: Long = 0, val invalidQuery: Boolean = false) {
+    val catalogs: List<CatalogResults> = emptyList(), val generation: Long = 0, val invalidQuery: Boolean = false,
+    val showCatalogOnlySources: Boolean = false) {
     // Immutable snapshot: scrolling/readers of the same state borrow one list.
     val entries = distinctEntries(catalogs.flatMap { it.entries })
     val loading get() = catalogs.any { it.loading }
@@ -22,12 +23,31 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
     parent: CoroutineScope) {
     private val job = SupervisorJob(parent.coroutineContext[Job])
     private val scope = CoroutineScope(parent.coroutineContext + job)
-    private val mutable = MutableStateFlow(DiscoveryState(enabled = options.filter { it.source is DiscoverySource || it.source.id.value == "local-imports" }.map { it.source.id }.toSet()))
+    private fun defaults() = options.filter { it.source is DiscoverySource || it.source.id.value == "local-imports" }.map { it.source.id }.toSet()
+    // Retain user intent when a source is hidden. Only the visible intersection may request data.
+    private var selectedSources = defaults()
+    private val mutable = MutableStateFlow(DiscoveryState(enabled = options.filter { it.supportsIntegratedReading && it.source.id in selectedSources }.map { it.source.id }.toSet()))
     val state = mutable.asStateFlow()
+    val visibleOptions get() = options.filter { it.visibleInCatalogs(state.value.showCatalogOnlySources) }
+    private var paused = false
     private var debounce: Job? = null
     private val requests = mutableMapOf<SourceId, Job>()
     private var sequence = 0L
     private var interruptedEdit = false
+    fun catalogOnlyVisibility(show: Boolean) {
+        if (!job.isActive || state.value.showCatalogOnlySources == show) return
+        val enabled = options.filter { it.visibleInCatalogs(show) && it.source.id in selectedSources }.map { it.source.id }.toSet()
+        val previous = state.value
+        val hidden = previous.enabled - enabled
+        hidden.forEach { requests.remove(it)?.cancel() }
+        val added = options.filter { it.source.id in enabled - previous.enabled &&
+            (previous.genre == null || (it.source as? DiscoverySource)?.canBrowseGenres == true) }
+        val catalogs = previous.catalogs.filter { it.id in enabled } +
+            if (previous.request == null) emptyList() else added.map { CatalogResults(it.source.id, interrupted = paused) }
+        mutable.value = previous.copy(enabled = enabled, catalogs = catalogs, showCatalogOnlySources = show)
+        // Existing visible requests/results remain intact; hiding never refetches Internet Archive.
+        if (!paused && previous.request != null) added.forEach { fetch(it.source.id) }
+    }
     fun edit(raw: String) {
         if (!job.isActive) return
         retire()
@@ -35,15 +55,17 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
         debounce = scope.launch { delay(350); submit() }
     }
     fun filter(id: SourceId) {
-        if (options.none { it.source.id == id }) return
-        val enabled = state.value.enabled.toMutableSet().apply { if (!add(id)) remove(id) }
-        mutable.value = state.value.copy(enabled = enabled); submit()
+        if (visibleOptions.none { it.source.id == id }) return
+        selectedSources = selectedSources.toMutableSet().apply { if (!add(id)) remove(id) }
+        val visible = visibleOptions.map { it.source.id }.toSet()
+        mutable.value = state.value.copy(enabled = selectedSources intersect visible); submit()
     }
     fun genre(value: Genre?) { mutable.value = state.value.copy(genre = value); submit() }
     fun language(value: String?) { mutable.value = state.value.copy(language = value); submit() }
     fun browse(value: Genre) { mutable.value = state.value.copy(query = "", genre = value); submit() }
     fun resetFilters() {
-        mutable.value = state.value.copy(enabled = options.filter { it.source is DiscoverySource || it.source.id.value == "local-imports" }.map { it.source.id }.toSet(), genre = null, language = null)
+        selectedSources = defaults()
+        mutable.value = state.value.copy(enabled = selectedSources intersect visibleOptions.map { it.source.id }.toSet(), genre = null, language = null)
         submit()
     }
     private fun retire() { sequence++; debounce?.cancel(); debounce = null; requests.values.forEach { it.cancel() }; requests.clear() }
@@ -56,7 +78,7 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
             mutable.value = current.copy(invalidQuery = true, request = null, catalogs = emptyList(), generation = sequence); return
         }
         val request = DiscoveryRequest(query, current.genre, current.language)
-        val eligible = options.filter { it.source.id in current.enabled &&
+        val eligible = visibleOptions.filter { it.source.id in current.enabled &&
             (current.genre == null || (it.source as? DiscoverySource)?.canBrowseGenres == true) }
         if (current.loading && current.request == request && current.catalogs.map { it.id } == eligible.map { it.source.id }) return
         retire()
@@ -82,10 +104,11 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
                 val entries = distinctEntries((if (token == null) emptyList() else previous.entries) + page.entries).take(100)
                 mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) CatalogResults(id, entries, page.nextToken, pages = if (token == null) 1 else previous.pages + 1) else it }) }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = false, failed = true, failure = when (error) { is CatalogSourceException -> error.kind; is DiscoveryTimeout -> CatalogErrorKind.TIMEOUT; is DiscoveryInterrupted -> CatalogErrorKind.CANCELLED; else -> null }) else it }) } }
+            catch (error: Exception) { ensureActive(); mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = false, failed = true, failure = when (error) { is CatalogSourceException -> error.kind; is DiscoveryTimeout -> CatalogErrorKind.TIMEOUT; is DiscoveryInterrupted -> CatalogErrorKind.CANCELLED; else -> null }) else it }) } }
         }
     }
     fun pause() {
+        paused = true
         interruptedEdit = interruptedEdit || debounce?.isActive == true
         retire()
         mutable.value = state.value.copy(generation = sequence, catalogs = state.value.catalogs.map { it.copy(loading = false, interrupted = it.interrupted || it.loading) })
@@ -93,6 +116,7 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
     /** Screen return resumes only interrupted work, never refreshes a completed search. */
     fun resume() {
         if (!job.isActive) return
+        paused = false
         if (interruptedEdit) { submit(); return }
         state.value.catalogs.filter { it.interrupted && !it.loading }.forEach { fetch(it.id, it.pendingToken) }
     }

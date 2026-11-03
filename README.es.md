@@ -32,14 +32,16 @@ con tamaño conocido≤**16MiB**. Back conserva fuente/consulta/resultados. El t
 usa preparación temporal privada y ventanas acotadas;
 [política del lector](docs/TEXT_READER.md).
 
-Es una primera ruta de lectura conservadora, con progreso TEXT aproximado y local
-entre reinicios, sin adquisición remota EPUB/PDF ni descargas explícitas. La caché de disco automática
-y acotada solo reutiliza recursos con revisiones fiables; los recursos actuales
-de Archive no tienen revisión y volver a abrir aún adquiere de nuevo.
-Consulta la [política de caché](docs/CACHE.md).
+Las rutas remotas autorizadas incluyen TXT/PDF de Internet Archive y, en la PR #39,
+**la selección española verificada de Wikisource: solo El matadero**. No se habilitan
+el catálogo general, otras ediciones lingüísticas ni las exportaciones PDF de Wikisource.
+[Alcance verificado](docs/WIKISOURCE.md). Las descargas conservadas son independientes
+de Biblioteca y pueden abrirse sin conexión con la fuente. La caché temporal requiere
+revisiones fiables; sin copia conservada, los recursos dinámicos se adquieren de nuevo.
+Consulta [descargas](docs/OFFLINE_DOWNLOADS.md) y [caché](docs/CACHE.md).
 Library guarda metadatos de publicaciones localmente; History registra aperturas
 correctas. Ambas sobreviven a reinicios y al borrado de caché. Abrir una entrada
-guardada vuelve a consultar su fuente, adquiere normalmente y restaura el progreso.
+guardada utiliza primero una copia conservada válida y después su fuente, restaurando el progreso.
 Clear History requiere confirmación y conserva Library/progreso.
 [Política local](docs/LIBRARY_HISTORY.md).
 
@@ -55,7 +57,7 @@ La interfaz alternativa oficial de metadatos OAPEN es accesible y proporciona
 enlaces de descarga. REST rechaza este entorno con HTTP 403 y la transferencia PDF
 sigue bloqueada/no verificada. Consulta [OAPEN](docs/OAPEN.md) y la
 [comparación](docs/ACQUISITION_COMPARISON.md). Gutenberg sigue como catálogo experimental; no hay crawling masivo.
-No se anuncia fuente/UI OAPEN ni adquisición remota PDF. El lector PDF local usa
+No se anuncia fuente/UI OAPEN ni adquisición PDF de OAPEN. El lector PDF local usa
 contratos propios, PdfRenderer de Android en API 26+ y PDFBox 3.0.8 en Desktop.
 [Límites PDF y aceptación pendiente](docs/PDF_READER.md).
 
@@ -102,8 +104,8 @@ puede reiniciarse la geometría temporal, conservando la posición lógica del l
 La pérdida del proceso crea un runtime nuevo: el progreso durable se restaura al
 reabrir mediante la fuente válida (se conserva también la ruta validada de
 recreación de PDF local). Los desplazamientos en píxeles no son progreso durable.
-No hay tracking ni acceso extra a datos del dispositivo. INTERNET sigue siendo la
-única capacidad de plataforma solicitada; AndroidX declara un permiso interno de
+No hay tracking ni acceso extra a datos del dispositivo. Los permisos de plataforma
+solicitados son INTERNET y ACCESS_NETWORK_STATE; AndroidX declara un permiso interno de
 firma exclusivo de la app para proteger receivers no exportados. El icono del
 launcher sigue siendo geometría provisional, no el logo final; la barra de la
 aplicación conserva el nombre INFINILECT.
@@ -203,7 +205,8 @@ El APK debug ofrece **EPUB development demo**: selecciónalo, busca `original` y
 pulsa Open EPUB. En Desktop: `INFINILECT_EPUB_DEMO=1 ./gradlew :desktopApp:run`.
 La publicación original de tres capítulos usa lectura Compose pasiva compartida,
 índice/enlaces internos, progreso semántico persistente y reapertura desde Library/
-History. **La adquisición EPUB de producción está deshabilitada.** No se afirma
+History. La PR #39 habilita EPUB 3 para la única obra española de Wikisource verificada;
+[alcance y validación física pendiente](docs/WIKISOURCE.md). No se afirma
 compatibilidad EPUB general, CSS del editor ni scripts. PR #16 añade ajustes de
 presentación EPUB globales persistentes, listas numeradas e imágenes PNG/JPEG locales acotadas; SVG
 sigue como texto alternativo y la adquisición de producción sigue deshabilitada. TEXT conserva su

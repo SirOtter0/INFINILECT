@@ -13,13 +13,13 @@ class DiscoveryLifecycleRegressionTest {
         val source = CatalogFixture()
         source.respond = { _, _ -> throw CancellationException("Transport cancelled independently") }
         val catalog = DiscoveryCatalog(listOf(source), backgroundScope) { 0 }
-        val search = DiscoveryController(listOf(SourceOption("Catalog", source)), catalog, backgroundScope)
+        val search = DiscoveryController(listOf(SourceOption("Catalog", source)), catalog, backgroundScope).also { it.catalogOnlyVisibility(true) }
         val home = HomeDiscovery(listOf(SourceOption("Catalog", source)), catalog, backgroundScope) { 0 }
         try {
             search.edit("Cervantes"); advanceTimeBy(350); runCurrent()
             assertFalse(search.state.value.loading)
             assertTrue(search.state.value.catalogs.single().failed)
-            home.refresh(DiscoveryPreferences(homeEnabled = true)); runCurrent()
+            home.refresh(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled = true)); runCurrent()
             assertFalse(home.state.value.loading)
             assertTrue(home.state.value.failed)
         } finally { search.close(); home.close(); catalog.close() }
@@ -36,7 +36,7 @@ class DiscoveryLifecycleRegressionTest {
         val source = CatalogFixture()
         val gate = CompletableDeferred<DiscoveryPage>()
         source.respond = { _, token -> if (token == null) DiscoveryPage(listOf(source.entry("first")), "second") else gate.await() }
-        val owner = ApplicationSources(listOf(SourceOption("Catalog", source))) {}
+        val owner = ApplicationSources(listOf(SourceOption("Catalog", source)), appearance=catalogFixtureAppearance()) {}
         val app = ApplicationSession(owner, backgroundScope, StandardTestDispatcher(testScheduler)) { 0 }
         try {
             app.navigate(Destination.SEARCH); app.discovery.edit("Cervantes"); advanceTimeBy(350); runCurrent()
@@ -52,7 +52,7 @@ class DiscoveryLifecycleRegressionTest {
 
     @Test fun repeatedHomeSearchNavigationKeepsCompletedResultsWithoutNewProviderRequests() = runTest {
         val source = CatalogFixture()
-        val owner = ApplicationSources(listOf(SourceOption("Catalog", source))) {}
+        val owner = ApplicationSources(listOf(SourceOption("Catalog", source)), appearance=catalogFixtureAppearance()) {}
         val app = ApplicationSession(owner, backgroundScope, StandardTestDispatcher(testScheduler)) { 0 }
         try {
             app.navigate(Destination.SEARCH); app.discovery.edit("Cervantes"); advanceTimeBy(350); runCurrent()
@@ -70,7 +70,7 @@ class DiscoveryLifecycleRegressionTest {
         val source = CatalogFixture()
         val gates = mutableListOf<CompletableDeferred<DiscoveryPage>>()
         source.respond = { _, _ -> CompletableDeferred<DiscoveryPage>().also { gates += it }.await() }
-        val owner = ApplicationSources(listOf(SourceOption("Catalog", source)), sessionDispatcher = StandardTestDispatcher(testScheduler)) {}
+        val owner = ApplicationSources(listOf(SourceOption("Catalog", source)), appearance=catalogFixtureAppearance(), sessionDispatcher = StandardTestDispatcher(testScheduler)) {}
         val app = owner.applicationSession()
         try {
             app.navigate(Destination.SEARCH); app.discovery.edit("Cervantes"); advanceTimeBy(350); runCurrent()
@@ -91,7 +91,7 @@ class DiscoveryLifecycleRegressionTest {
 
     @Test fun clearAndResetRetainOtherFiltersUntilExplicitReset()=runTest {
         val source=CatalogFixture();val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0}
-        val controller=DiscoveryController(listOf(SourceOption("Catalog",source)),catalog,backgroundScope)
+        val controller=DiscoveryController(listOf(SourceOption("Catalog",source)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         try {
             controller.edit("Cervantes");controller.genre(Genre.ADVENTURE);controller.language("es");runCurrent()
             controller.edit("");runCurrent()
@@ -105,7 +105,7 @@ class DiscoveryLifecycleRegressionTest {
 
     @Test fun emptyFilteredFirstPageKeepsPaginationInsteadOfClaimingGenreIsUnavailable()=runTest {
         val source=CatalogFixture();source.respond={_,token->if(token==null) DiscoveryPage(listOf(source.entry("en",languages=listOf("en"))),"next") else DiscoveryPage(listOf(source.entry("es",languages=listOf("es"))))}
-        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val controller=DiscoveryController(listOf(SourceOption("Catalog",source)),catalog,backgroundScope)
+        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val controller=DiscoveryController(listOf(SourceOption("Catalog",source)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         try {
             controller.genre(Genre.ADVENTURE);controller.language("es");runCurrent()
             assertTrue(controller.state.value.entries.isEmpty());assertNotNull(controller.state.value.catalogs.single().nextToken)
@@ -115,10 +115,10 @@ class DiscoveryLifecycleRegressionTest {
 
     @Test fun developmentSourcesRemainOwnedButNeverAppearInNormalDiscoveryOptions()=runTest {
         val real=CatalogFixture();val demo=CatalogFixture(org.infinilect.core.SourceId("demo"))
-        val owner=ApplicationSources(listOf(SourceOption("Catalog",real),SourceOption("EPUB development demo",demo,developmentOnly=true))) {}
+        val owner=ApplicationSources(listOf(SourceOption("Catalog",real),SourceOption("EPUB development demo",demo,developmentOnly=true)),appearance=catalogFixtureAppearance()) {}
         val app=ApplicationSession(owner,backgroundScope,StandardTestDispatcher(testScheduler)){0}
         try {
-            assertEquals(listOf(real.id),app.catalogOptions.map {it.source.id})
+            runCurrent(); assertEquals(listOf(real.id),app.catalogOptions.map {it.source.id})
             assertEquals(2,owner.options.size)
             app.discovery.edit("q");advanceTimeBy(350);runCurrent();assertEquals(0,demo.calls)
         } finally {app.close();owner.close()}
@@ -143,7 +143,7 @@ class DiscoveryLifecycleRegressionTest {
         val gates=mutableListOf<CompletableDeferred<DiscoveryPage>>()
         source.respond={_,_->CompletableDeferred<DiscoveryPage>().also {gates+=it}.await()}
         try {
-            repeat(30) {home.refresh(DiscoveryPreferences(homeEnabled=true,interests=setOf(Genre.ADVENTURE)));runCurrent();home.refresh(DiscoveryPreferences());runCurrent()}
+            repeat(30) {home.refresh(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true,interests=setOf(Genre.ADVENTURE)));runCurrent();home.refresh(DiscoveryPreferences());runCurrent()}
             gates.forEach {it.complete(DiscoveryPage(listOf(source.entry("obsolete"))))};runCurrent()
             assertFalse(home.state.value.loading);assertTrue(home.state.value.rows.isEmpty());assertEquals(0,catalog.retainedPages())
         } finally {home.close();catalog.close()}
@@ -153,7 +153,7 @@ class DiscoveryLifecycleRegressionTest {
         source.respond={request,_->if(request.query=="Cervantes") {
             entered.complete(Unit);withContext(NonCancellable){release.await()};throw CatalogSourceException(CatalogErrorKind.TLS)
         }else DiscoveryPage(listOf(source.entry("current")))}
-        val owner=ApplicationSources(listOf(SourceOption("Gutenberg",source))){}
+        val owner=ApplicationSources(listOf(SourceOption("Gutenberg",source)),appearance=catalogFixtureAppearance()){}
         val app=ApplicationSession(owner,backgroundScope,StandardTestDispatcher(testScheduler)){0}
         try {
             app.navigate(Destination.SEARCH);app.discovery.edit("Cervantes");app.discovery.submit();runCurrent();entered.await()
@@ -168,7 +168,7 @@ class DiscoveryLifecycleRegressionTest {
     @Test fun outerCatalogTimeoutKeepsItsCategoryAndNoPendingResults()=runTest {
         val source=CatalogFixture();source.respond={_,_->awaitCancellation()}
         val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0}
-        val controller=DiscoveryController(listOf(SourceOption("Gutenberg",source)),catalog,backgroundScope)
+        val controller=DiscoveryController(listOf(SourceOption("Gutenberg",source)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         try {
             controller.edit("Cervantes");controller.submit();runCurrent()
             advanceTimeBy(20_000);runCurrent()

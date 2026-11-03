@@ -318,11 +318,17 @@ Only manifest-owned XHTML spine/nav and supported raster resources are opened th
 EpubDocument. XHTML is parsed, never executed; raster bytes enter only the bounded media
 adapter. No generic URL resolver exists.
 No browser, JS evaluator, URI handler, HTTP client or filesystem path enters the
-renderer. External/file/content/javascript/network-relative schemes, encoded aliases,
-queries, escaping traversal, undeclared targets and non-spine hyperlinks reject.
+renderer. Resource and internal-navigation references reject external/file/content/
+javascript/network-relative schemes, encoded aliases, queries, escaping traversal,
+undeclared targets and non-spine destinations. PR #39 separately retains ordinary
+HTTPS attribution hyperlinks as passive `EpubExternalReference` data: no click action,
+resource request or browser launch. Original text/URIs remain intact, including in
+semantic caches; they never become internal `EpubTarget`s. [Validation policy](EPUB.md).
 Fragments use bounded ASCII content tokens, including recoverable numeric IDs;
 missing anchors produce a fixed reader error. Exact standard XHTML/NCX declarations
-are removed before SAX, and XHTML `nbsp` is a fixed character alias. Custom/internal
+and the inert short HTML5 doctype are recognized in the parser view; original files
+are unchanged. `nbsp` is a fixed alias only for the supported legacy PUBLIC XHTML
+forms. The short doctype declares no entities. Custom/internal
 DTDs, other named entities, PI/XInclude/xml:base remain forbidden. Required SAX
 hardening fails closed. Scripts/forms/objects/iframes/events/active media and foreign
 namespaces cannot reach Compose except the validated one-raster cover projection.

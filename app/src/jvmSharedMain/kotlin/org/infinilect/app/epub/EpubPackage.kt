@@ -77,8 +77,22 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
     )
     val creators = values("creator")
     requireEpub(creators.size<=64)
-    val rights = values("rights")
-    requireEpub(rights.size<=1)
+    // EPUB2 OPF §2.2 and EPUB3 §5.5.3.2: optional DC elements are repeatable.
+    // Keep distinct statements and duplicates as authored, never combine licenses.
+    val rightsNodes = metadataNode.children(DC, "rights")
+    if (rightsNodes.size > limits.rightsDeclarations) limit()
+    var rightsUnits = 0
+    val xmlLanguage = XmlName("http://www.w3.org/XML/1998/namespace", "lang")
+    val rights = rightsNodes.map { node ->
+        val text = node.text.toString()
+        requireEpub(text.isNotBlank() && node.children.isEmpty()) // DC content model: text
+        rightsUnits += text.length
+        if (rightsUnits > limits.rightsTextUnits) limit()
+        val language = node.attributes[xmlLanguage] ?: metadataNode.attributes[xmlLanguage] ?: opf.attributes[xmlLanguage]
+        val direction = node.attr("dir") ?: metadataNode.attr("dir") ?: opf.attr("dir")
+        if ((language?.length ?: 0) > 128 || (direction?.length ?: 0) > 128) limit()
+        EpubRightsStatement(text, language, node.attr("id"), direction)
+    }
     val modified = metadataNode.children(OPF, "meta").singleOrNull {
         it.attr("property")=="dcterms:modified"
     }
@@ -149,6 +163,6 @@ internal fun readEpubPackage(zip: ZipFile, entries: List<EpubZipEntry>, limits: 
         }
         )
     }
-    return EpubPackage(packagePath, EpubMetadata(identifier, titles.first(), languages, modified, creators, rights.singleOrNull()), manifest, spine, nav.id)
+    return EpubPackage(packagePath, EpubMetadata(identifier, titles.first(), languages, modified, creators, rights), manifest, spine, nav.id)
 }
 private fun validId(value: String) = value.length in 1..128 && Regex("[A-Za-z_][A-Za-z0-9_.-]*").matches(value)
