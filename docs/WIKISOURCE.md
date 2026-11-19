@@ -62,6 +62,34 @@ solicitaron exportaciones durante este control preliminar.
 | Catalán | 1 | 1 | 488 | 347 ms |
 
 
+El probe del adaptador recuperó primero la ficha objetivo para obtener su título.
+Registró la primera búsqueda de ese título con metadatos de la ficha ya en caché
+y sin confirmaciones EPUB. El tiempo y los bytes corresponden a metadatos
+de esa búsqueda, excluyendo la descarga explícita y las cabeceras de transporte.
+
+| Edición | ID | Estado tras la comprobación | En Legibles | En Todos | Peticiones / bytes / ms | Presupuesto alcanzado |
+| --- | ---: | --- | --- | --- | ---: | --- |
+| es | 51981 | UNVERIFIED | No | Sí | 1 / 638 / 243 | No |
+| es | 1425 | UNVERIFIED | No | Sí | 1 / 551 / 176 | No |
+| es | 2331 | READABLE_CONFIRMED | Sí | Sí | 1 / 624 / 144 | No |
+| es | 1630 | READABLE_CONFIRMED | Sí | Sí | 1 / 674 / 243 | No |
+| es | 3830 | WEB_ONLY | No | Sí | 10 / 46306 / 2148 | No |
+| es | 18672 | WEB_ONLY | No | Sí | 8 / 85825 / 1454 | Sí |
+| es | 256323 | WEB_ONLY | No | Sí | 1 / 783 / 191 | No |
+| es | 1563 | UNVERIFIED | No | Sí | 22 / 44411 / 3665 | Sí |
+| es | 15758 | UNVERIFIED | No | Sí | 1 / 563 / 172 | No |
+| es | 1927 | READABLE_CONFIRMED | Sí | Sí | 1 / 534 / 137 | No |
+| en | 3879 | READABLE_CONFIRMED | Sí | Sí | 1 / 593 / 234 | No |
+| en | 3879 | READABLE_CONFIRMED | Sí | Sí | 1 / 593 / 234 | No |
+| ca | 1683 | READABLE_CONFIRMED | Sí | Sí | 1 / 544 / 245 | No |
+
+Con la caché caliente, la repetición de Legibles y el paso a Todos hicieron cero
+peticiones adicionales para las doce fichas y tardaron 0–11 ms en el adaptador.
+La primera búsqueda española tardó 137–3665 ms, con 1–22 peticiones y
+534–85825 bytes de metadatos. Ninguna búsqueda descargó un EPUB. Las cinco
+validaciones explícitas autorizadas usaron el preparador real y confirmaron los
+tres textos españoles, Smokey the Bear Sutra y L’emigrant.
+
 En Android, buscar A Venus con caché fría, abrir su ficha y comprobar el EPUB.
 Cerrar la ficha y verificar su promoción a la cuadrícula. Cambiar a Todos y
 volver a Legibles sin perder la consulta, probar el resultado web de un autor
