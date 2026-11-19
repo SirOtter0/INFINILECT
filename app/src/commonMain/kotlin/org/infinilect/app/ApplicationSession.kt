@@ -37,6 +37,10 @@ internal class ApplicationSession(
     val technicalDiagnostics get() = sources.technicalDiagnostics
     val covers get() = sources.covers
     val descriptions get() = sources.descriptions
+    fun wikisourceMode(mode: ReadabilityMode) {
+        discovery.readabilityMode(mode)
+        sources.appearance?.changeWikisourceMode(mode == ReadabilityMode.ALL)
+    }
     fun catalogSource(id: PublicationId) = sources.options.firstOrNull { it.source.id == id.sourceId }?.source as? CatalogPublicationSource
     /** Details may query one existing progress summary after a restart; never save/normalize it. */
     suspend fun savedPublicationProgress(id: PublicationId) = sources.progress?.publicationSummaries(listOf(id))
@@ -86,6 +90,7 @@ internal class ApplicationSession(
         this.scope.launch { collections.history.collect { if (destination.value == Destination.HOME && !it.loading) refreshHomeProgress() } }
         sources.appearance?.let { preferences -> this.scope.launch { preferences.state.collect { current ->
             if (current.loaded) {
+                discovery.readabilityMode(if (current.discovery.wikisourceAllResults) ReadabilityMode.ALL else ReadabilityMode.READABLE)
                 discovery.catalogOnlyVisibility(current.discovery.showCatalogOnlySources)
                 homeDiscovery.catalogOnlyVisibility(current.discovery.showCatalogOnlySources)
                 reconcileSourceVisibility()

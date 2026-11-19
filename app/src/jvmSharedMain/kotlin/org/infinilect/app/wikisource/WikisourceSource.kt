@@ -27,7 +27,7 @@ private class WikiFailure(kind:CatalogErrorKind,cause:Throwable?=null):CatalogSo
 /** Shared under-demand Wikisource adapter (one internally configured project). One metadata operation and one streamed export at most.
  * No remote publication data can configure hosts, paths, approval or redirects. */
 internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.ES,private val engine:HttpClientEngine=platformHttpEngine(),private val now:()->Long=System::currentTimeMillis):
-    PublicationSource,DiscoverySource,OfflineDownloadProvider,CatalogPublicationSource,AutoCloseable {
+    PublicationSource,DiscoverySource,OfflineDownloadProvider,CatalogPublicationSource,ReadabilityCatalogSource,AutoCloseable {
     override val id=edition.id
     override val downloadSourceId get()=id
     private val lifetime=SupervisorJob()
@@ -37,12 +37,53 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     private val client=HttpClient(engine) {followRedirects=false;expectSuccess=false;install(HttpTimeout) {connectTimeoutMillis=5000;requestTimeoutMillis=20000;socketTimeoutMillis=15000}}
     private val rights=WikisourceRights(::bytes)
     private val catalog=WikisourceCatalog(edition,::bytes,now,rights::assess)
-    private val observations=linkedMapOf<Pair<PublicationId,String>,CatalogEpubState>()
+    private data class Observation(val state: CatalogEpubState, val at: Long, val policy: Int = 1)
+    private val observations=linkedMapOf<Pair<PublicationId,String>,Observation>()
+    private fun observation(resource: PublicationResource): CatalogEpubState? = synchronized(observations) {
+        val key = resource.publicationId to resource.key
+        observations.remove(key)?.takeIf {
+            it.policy == 1 && now() - it.at in 0..(if (it.state == CatalogEpubState.TEMPORARY_ERROR) 30_000 else 600_000)
+        }?.also { observations[key] = it }?.state
+    }
+    private val metadataRequests = AtomicLong()
+    private val metadataPayloadBytes = AtomicLong()
+    internal fun metadataTraffic() = metadataRequests.get() to metadataPayloadBytes.get()
+    private var budget: WikiAssessmentBudget? = null // metadata gate only
+    private val minuteBudget = WikiAssessmentBudget()
+    private var windowStart: Long? = null
+    private val filter = WikisourceReadableCatalog(edition, now, catalog::discover, ::resolvedInfo, ::knownReadability)
+    private fun knownReadability(publication: Publication): CatalogReadability {
+        val resource = publication.resources.singleOrNull() ?: return CatalogReadability.WEB_ONLY
+        val record = catalog.cached(publication.id) ?: return CatalogReadability.UNVERIFIED
+        if (resource.key != wikiResourceKey(record.page.revision)) return CatalogReadability.UNVERIFIED
+        val state = if (record.publication.resources.isEmpty()) {
+            if (record.page.kind in setOf(CatalogPageKind.AUTHOR, CatalogPageKind.INDEX, CatalogPageKind.VERSIONS, CatalogPageKind.DISAMBIGUATION))
+                CatalogEpubState.WEB_ONLY else CatalogEpubState.UNAVAILABLE
+        } else observation(resource) ?: CatalogEpubState.POTENTIAL
+        return CatalogPublicationInfo(record.page.kind, state, authorized = record.grant.authorized, rightsState = record.grant.state).readability()
+    }
+    override suspend fun cachedReadability(publication: Publication): CatalogReadability =
+        metadataGate.withLock { knownReadability(publication) }
+
+    override suspend fun discoverReadable(request: DiscoveryRequest, token: String?): DiscoveryPage {
+        if (request.genre != null || request.language != null && request.language != edition.language) return DiscoveryPage(emptyList())
+        return operation {
+            if (request.readabilityMode == ReadabilityMode.READABLE && request.assessCandidates) {
+                if (windowStart?.let { now() - it in 0..59_999 } != true) {
+                    windowStart = now()
+                    minuteBudget.reset()
+                }
+                budget = minuteBudget
+            }
+            try { filter.load(request, token) } finally { budget = null }
+        }
+    }
     private var inspectExport:(suspend (Publication,PublicationResource)->Unit)?=null
     fun epubInspector(block:suspend(Publication,PublicationResource)->Unit) {check(inspectExport==null);inspectExport=block}
     override val canCheckEpub get()=inspectExport!=null
     private fun observed(resource:PublicationResource,state:CatalogEpubState) = synchronized(observations) {
-        observations[resource.publicationId to resource.key]=state
+        observations.remove(resource.publicationId to resource.key)
+        observations[resource.publicationId to resource.key]=Observation(state, now())
         while(observations.size>32)observations.remove(observations.keys.first())
     }
     private fun throttle(seconds:Long=30) {cooldown.set(now()+seconds.coerceIn(30,300)*1000)}
@@ -72,12 +113,14 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     }
     private suspend fun bytes(url:String):ByteArray {
         check(url.startsWith("${edition.api}?") || url.startsWith("$WIKISOURCE_COMMONS_API?"))
+        budget?.request()
+        metadataRequests.incrementAndGet()
         return client.prepareGet(url) {header(HttpHeaders.UserAgent,PROJECT_USER_AGENT);header(HttpHeaders.Accept,"application/json");header(HttpHeaders.AcceptEncoding,"identity")}.execute {response ->
             response.success()
             if(response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase()!="application/json")throw WikisourceInvalid()
             val expected=response.size(1048576);val channel=response.bodyAsChannel();val out=ByteArrayOutputStream();val buffer=ByteArray(8192)
             try {
-                while(true) {currentCoroutineContext().ensureActive();val n=channel.readAvailable(buffer,0,minOf(buffer.size,1048577-out.size()));if(n<0)break;if(n>1048576-out.size())throw WikisourceInvalid();out.write(buffer,0,n)}
+                while(true) {currentCoroutineContext().ensureActive();val n=channel.readAvailable(buffer,0,minOf(buffer.size,1048577-out.size()));if(n<0)break;metadataPayloadBytes.addAndGet(n.toLong());if(n>1048576-out.size())throw WikisourceInvalid();budget?.consume(n);out.write(buffer,0,n)}
                 if(expected!=null && expected!=out.size().toLong())throw WikisourceInvalid()
                 out.toByteArray()
             } finally {channel.cancel(null)}
@@ -89,11 +132,12 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
         return operation {catalog.discover(request.query,token)}
     }
     override suspend fun getPublication(publicationId:PublicationId):Publication?=operation {catalog.record(publicationId).publication}
-    override suspend fun catalogInfo(id:PublicationId):CatalogPublicationInfo=operation {
+    override suspend fun catalogInfo(id:PublicationId):CatalogPublicationInfo=operation { resolvedInfo(id) }
+    private suspend fun resolvedInfo(id:PublicationId):CatalogPublicationInfo {
         val info=catalog.info(id)
         val resource=catalog.record(id).publication.resources.singleOrNull()
-        val state=resource?.let {synchronized(observations){observations[id to it.key]}}
-        if(state!=null)info.copy(epubState=state) else info
+        val state=resource?.let(::observation)
+        return if(state!=null)info.copy(epubState=state) else info
     }
     override suspend fun refreshCatalogInfo(id:PublicationId):CatalogPublicationInfo {
         operation {catalog.record(id,fresh=true)}

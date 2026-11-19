@@ -577,4 +577,15 @@
     <string name="wiki_recheck_rights">Revisar las declaraciones de la fuente</string>
     <string name="wiki_checking_epub">Comprobando autorización y compatibilidad del EPUB…</string>
     <string name="wiki_check_consent">Esta acción descarga temporalmente una exportación autorizada para validarla y la descarta. No guarda una copia offline.</string>
+    <string name="wiki_filter_label">Disponibilidad en Wikisource</string>
+    <string name="wiki_filter_readable">Legibles</string>
+    <string name="wiki_filter_all">Todos</string>
+    <string name="wiki_filter_confirmed">Lectura confirmada</string>
+    <string name="wiki_filter_pending">Candidatos autorizados · Comprueba el EPUB en la ficha</string>
+    <string name="wiki_filter_unverified">Derechos sin verificar</string>
+    <string name="wiki_filter_unavailable">Sin EPUB compatible disponible</string>
+    <string name="wiki_filter_web">Solo página web</string>
+    <string name="wiki_filter_empty">No se han encontrado publicaciones con lectura confirmada entre los resultados comprobados.</string>
+    <string name="wiki_filter_show_all">Mostrar todos los resultados de Wikisource</string>
+    <string name="wiki_filter_limit">Se ha comprobado una parte limitada. Carga más cuando esté disponible o cambia a Todos.</string>
 </resources>

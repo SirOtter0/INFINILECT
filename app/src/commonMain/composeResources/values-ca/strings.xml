@@ -577,4 +577,15 @@
     <string name="wiki_recheck_rights">Revisa les declaracions de la font</string>
     <string name="wiki_checking_epub">S’estan comprovant l’autorització i la compatibilitat de l’EPUB…</string>
     <string name="wiki_check_consent">Aquesta acció baixa temporalment una exportació autoritzada per validar-la i la descarta. No desa una còpia sense connexió.</string>
+    <string name="wiki_filter_label">Disponibilitat a Viquitexts</string>
+    <string name="wiki_filter_readable">Llegibles</string>
+    <string name="wiki_filter_all">Tots</string>
+    <string name="wiki_filter_confirmed">Lectura confirmada</string>
+    <string name="wiki_filter_pending">Candidats autoritzats · Comprova l’EPUB a la fitxa</string>
+    <string name="wiki_filter_unverified">Drets sense verificar</string>
+    <string name="wiki_filter_unavailable">Sense EPUB compatible disponible</string>
+    <string name="wiki_filter_web">Només pàgina web</string>
+    <string name="wiki_filter_empty">No s’han trobat publicacions amb lectura confirmada entre els resultats comprovats.</string>
+    <string name="wiki_filter_show_all">Mostra tots els resultats de Viquitexts</string>
+    <string name="wiki_filter_limit">S’ha comprovat una part limitada. Carrega’n més quan estigui disponible o canvia a Tots.</string>
 </resources>

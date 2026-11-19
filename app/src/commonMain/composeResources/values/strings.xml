@@ -577,4 +577,15 @@
     <string name="wiki_recheck_rights">Review source declarations</string>
     <string name="wiki_checking_epub">Checking authorization and EPUB compatibility…</string>
     <string name="wiki_check_consent">This action temporarily downloads an authorized export for validation, then discards it. It does not save an offline copy.</string>
+    <string name="wiki_filter_label">Wikisource availability</string>
+    <string name="wiki_filter_readable">Readable</string>
+    <string name="wiki_filter_all">All</string>
+    <string name="wiki_filter_confirmed">Reading confirmed</string>
+    <string name="wiki_filter_pending">Authorized candidates · Check EPUB in details</string>
+    <string name="wiki_filter_unverified">Rights unverified</string>
+    <string name="wiki_filter_unavailable">No compatible EPUB available</string>
+    <string name="wiki_filter_web">Web page only</string>
+    <string name="wiki_filter_empty">No publications with confirmed reading were found among the checked results.</string>
+    <string name="wiki_filter_show_all">Show all Wikisource results</string>
+    <string name="wiki_filter_limit">Only a limited portion was checked. Load more when available or switch to All.</string>
 </resources>

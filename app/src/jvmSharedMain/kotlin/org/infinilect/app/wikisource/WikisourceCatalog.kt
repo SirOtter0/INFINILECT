@@ -24,12 +24,12 @@ private fun queryHash(query:String)=MessageDigest.getInstance("SHA-256").digest(
 /** Opaque continuation values are query AND edition bound; never interpreted as URLs. */
 internal fun wikiCursor(edition:WikisourceEdition,query:String,value:String)=
     "ws2:${queryHash(edition.language+":"+query)}:"+Base64.getUrlEncoder().withoutPadding().encodeToString(value.encodeToByteArray())
-internal fun wikiContinuation(edition:WikisourceEdition,query:String,token:String?):String? {
+internal fun wikiContinuation(edition:WikisourceEdition,query:String,token:String?,maximum:Int=900,payloadMaximum:Int=512):String? {
     if(token==null)return null
-    if(token.length>900)throw WikisourceInvalid()
+    if(token.length>maximum)throw WikisourceInvalid()
     val parts=token.split(':');if(parts.size!=3 || parts[0]!="ws2" || parts[1]!=queryHash(edition.language+":"+query))throw WikisourceInvalid()
     return try {Base64.getUrlDecoder().decode(parts[2]).decodeToString(throwOnInvalidSequence=true)}catch(_:Exception){throw WikisourceInvalid()}
-        .takeIf {it.length in 1..512 && it.none(Char::isISOControl) && wikiCursor(edition,query,it)==token} ?: throw WikisourceInvalid()
+        .takeIf {it.length in 1..payloadMaximum && it.none(Char::isISOControl) && wikiCursor(edition,query,it)==token} ?: throw WikisourceInvalid()
 }
 
 /** Under-demand catalog. Search pages contain inexpensive metadata only; detailed
@@ -85,6 +85,7 @@ internal class WikisourceCatalog(private val edition:WikisourceEdition,private v
         records.remove(number);records[number]=Cached(record,now());while(records.size>32)records.remove(records.keys.first())
         return record
     }
+    fun cached(id:PublicationId):WikiRecord? = records[id.localId.toIntOrNull()]?.takeIf { now()-it.at in 0..120000 }?.value
     suspend fun info(id:PublicationId):CatalogPublicationInfo {
         val row=record(id);val candidate=row.publication.resources.isNotEmpty()
         return CatalogPublicationInfo(row.page.kind,when {

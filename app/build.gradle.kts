@@ -183,6 +183,16 @@ tasks.register<JavaExec>("wikisourceOfflineCheck") {
     mainClass.set("org.infinilect.app.wikisource.WikisourceOfflineCheck")
 }
 
+// Explicit live checks never run as part of build or test.
+tasks.register<JavaExec>("wikisourceReadabilityCheck") {
+    group = "verification"
+    description = "Measure Wikisource search modes and validate an explicitly selected authorized EPUB."
+    dependsOn("desktopTestClasses")
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    mainClass.set("org.infinilect.app.wikisource.WikisourceReadabilityCheck")
+}
+
 // Explicit rights/technical sample. Never exports an unauthorized page.
 tasks.register<JavaExec>("wikisourceAvailabilityCheck") {
     group = "verification"

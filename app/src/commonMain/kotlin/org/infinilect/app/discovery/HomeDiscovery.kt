@@ -46,7 +46,7 @@ internal class HomeDiscovery(private val options: List<SourceOption>, private va
                     try {
                         val query = if ((option.source as? DiscoverySource)?.canBrowseGenres == true) "*" else "classics"
                         diagnostics.event(TechnicalEvent.GENERAL_STARTED, stamp)
-                        val page = catalog.load(option.source.id, DiscoveryRequest(query))
+                        val page = catalog.load(option.source.id, DiscoveryRequest(query, readabilityMode = if (preferences.wikisourceAllResults) ReadabilityMode.ALL else ReadabilityMode.READABLE, assessCandidates = false))
                         if (stamp != generation) diagnostics.event(TechnicalEvent.STALE_RESPONSE, stamp)
                         ensureActive()
                         diagnostics.event(TechnicalEvent.REQUEST_COMPLETE, stamp)

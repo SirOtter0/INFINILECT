@@ -8,6 +8,17 @@ import org.jetbrains.compose.resources.StringResource
 
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
+    WIKI_FILTER_LABEL(Res.string.wiki_filter_label, "Wikisource availability"),
+    WIKI_FILTER_READABLE(Res.string.wiki_filter_readable, "Readable"),
+    WIKI_FILTER_ALL(Res.string.wiki_filter_all, "All"),
+    WIKI_FILTER_CONFIRMED(Res.string.wiki_filter_confirmed, "Reading confirmed"),
+    WIKI_FILTER_PENDING(Res.string.wiki_filter_pending, "Authorized candidates · Check EPUB in details"),
+    WIKI_FILTER_UNVERIFIED(Res.string.wiki_filter_unverified, "Rights unverified"),
+    WIKI_FILTER_UNAVAILABLE(Res.string.wiki_filter_unavailable, "No compatible EPUB available"),
+    WIKI_FILTER_WEB(Res.string.wiki_filter_web, "Web page only"),
+    WIKI_FILTER_EMPTY(Res.string.wiki_filter_empty, "No publications with confirmed reading were found among the checked results."),
+    WIKI_FILTER_SHOW_ALL(Res.string.wiki_filter_show_all, "Show all Wikisource results"),
+    WIKI_FILTER_LIMIT(Res.string.wiki_filter_limit, "Only a limited portion was checked. Load more when available or switch to All."),
     WIKISOURCE_SOURCE_LABEL(Res.string.wikisource_source_label, "Wikisource (Spanish)"),
     WIKISOURCE_EN_SOURCE_LABEL(Res.string.wikisource_en_source_label, "Wikisource (English)"),
     WIKISOURCE_CA_SOURCE_LABEL(Res.string.wikisource_ca_source_label, "Wikisource (Catalan)"),

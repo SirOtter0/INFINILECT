@@ -1,5 +1,72 @@
 # Wikisource: availability and rights follow-up — PR #39
 
+## Filtro de disponibilidad de la PR #39
+
+**Legibles** es el modo inicial. La cuadrícula muestra únicamente resultados con
+derechos autorizados y una exportación preparada y validada con el lector real.
+Las obras con autorización y un EPUB pendiente aparecen en un listado separado
+de candidatos. Desde su ficha, **Comprobar EPUB** inicia una descarga temporal
+explícita con los límites y el aviso existentes. Al cerrar la ficha, el resultado
+se actualiza con la evidencia disponible sin repetir la búsqueda. **Todos**
+conserva el catálogo paginado y muestra el estado conocido de cada resultado.
+Una clasificación aún desconocida se actualiza al consultar su ficha.
+
+La capacidad opcional `ReadabilityCatalogSource` conecta Wikisource con el motor
+de búsqueda existente. El filtro y su preferencia son independientes del ajuste
+de visibilidad de fuentes. Los estados distinguen confirmados, candidatos,
+derechos sin verificar, incompatibilidad o ausencia, página web y error temporal.
+Los EPUB que ya están en Biblioteca o Descargas conservan su identidad y lectura
+offline. Con la caché fría puede no haber resultados confirmados. El texto del
+estado vacío se refiere únicamente a la muestra evaluada y permite cambiar a
+**Todos** conservando la consulta.
+
+Cada operación estricta examina hasta dos páginas y ocho fichas en ocho segundos.
+Cada edición tiene un presupuesto de 24 solicitudes y 8 MiB de metadatos por
+ventana de un minuto. El cuerpo se lee en bloques de hasta 8 KiB y se cancela
+al sobrepasar el límite. La búsqueda descarga cero EPUB. Los cursores conservan
+el desplazamiento de la parte todavía no evaluada, están vinculados a consulta
+y edición, y rechazan continuaciones repetidas. Se mantiene el límite de cuatro
+operaciones por fuente en la interfaz. Los errores HTTP y la espera de Wikimedia
+siguen el tratamiento existente. Inicio proyecta evidencia conocida sin evaluar
+candidatos automáticamente.
+
+Cada edición conserva hasta ocho páginas brutas (120 segundos) y 32 observaciones
+técnicas, vinculadas al identificador y la clave de recurso con la revisión y
+la política de validación. La evidencia técnica dura diez minutos y los errores
+transitorios, 30 segundos. La proyección con caché requiere también metadatos
+vigentes. Las confirmaciones son de sesión y una revisión nueva exige evidencia
+nueva. Cambiar de modo cancela las cargas de Wikisource y conserva las demás fuentes.
+Salir de la ficha cancela la comprobación pendiente mediante su ciclo de composición.
+
+El probe manual acepta una edición y hasta diez IDs. Mide solicitudes y bytes del cuerpo
+de metadatos y tiempo de cada llamada de búsqueda. Excluye la consulta inicial
+para recuperar el título y la descarga explícita. Para recorrer la muestra
+española anterior, usa sus diez IDs. En inglés se
+puede usar 3879 y en catalán 1683.
+
+```sh
+./gradlew :app:wikisourceReadabilityCheck --args='es 1927'
+```
+
+El 19 de noviembre de 2026, una petición agrupada a la API oficial por edición
+devolvió los diez IDs de la muestra española y ambos casos adicionales. Estas
+peticiones confirman identidad y revisión, no la legibilidad del filtro. Don
+Quijote de la Mancha pasó a la revisión 1693406. Las otras nueve revisiones
+españolas y las dos adicionales coincidieron con las de referencia. No se
+solicitaron exportaciones durante este control preliminar.
+
+| Edición | Fichas | Peticiones | Bytes de cuerpo | Tiempo |
+| --- | ---: | ---: | ---: | ---: |
+| Español | 10 | 1 | 5472 | 549 ms |
+| Inglés | 1 | 1 | 531 | 392 ms |
+| Catalán | 1 | 1 | 488 | 347 ms |
+
+
+En Android, buscar A Venus con caché fría, abrir su ficha y comprobar el EPUB.
+Cerrar la ficha y verificar su promoción a la cuadrícula. Cambiar a Todos y
+volver a Legibles sin perder la consulta, probar el resultado web de un autor
+y reabrir una copia descargada en modo avión. Repetir en inglés y catalán.
+
 ## Current result — 3 November 2026
 
 Continues `8a41360aeaa22b49c36994042270d3b0614709c0`. The realme C55

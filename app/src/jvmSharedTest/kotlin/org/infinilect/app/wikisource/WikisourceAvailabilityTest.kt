@@ -75,4 +75,24 @@ class WikisourceAvailabilityTest {
             assertEquals(0,f.exports.get())
         }finally{release.complete(Unit);f.close()}
     }
+    @Test fun strictSearchReusesOnlyCurrentValidationAndNeverExportsByItself()=runBlocking<Unit> {
+        withSource { f,_ ->
+            f.rows=listOf(101)
+            val query=DiscoveryRequest("Original")
+            val first=f.source.discoverReadable(query,null)
+            assertTrue(first.entries.isEmpty())
+            val candidate=first.candidates.single()
+            assertEquals(0,f.exports.get())
+            assertEquals(CatalogEpubState.VALIDATED,f.source.checkEpub(f.id).epubState)
+            assertEquals(CatalogReadability.READABLE_CONFIRMED,f.source.cachedReadability(candidate.publication))
+            assertEquals(1,f.source.discoverReadable(query,null).entries.size)
+            assertEquals(1,f.exports.get())
+            f.revision++
+            f.clock+=121000
+            assertTrue(f.source.discoverReadable(query,null).entries.isEmpty())
+            assertEquals(CatalogReadability.UNVERIFIED,f.source.cachedReadability(candidate.publication))
+            assertEquals(1,f.exports.get())
+        }
+    }
+
 }

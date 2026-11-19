@@ -73,4 +73,21 @@ class FileApplicationAppearanceStoreTest {
         }finally{root.toFile().deleteRecursively()}
     }
 
+    @Test fun wikisourceModePersistsIndependentlyOfSourceVisibility() = runTest {
+        val root = Files.createTempDirectory("readability-preferences")
+        try {
+            val store = FileApplicationAppearanceStore(root)
+            for (visible in listOf(false, true)) {
+                val previous = ApplicationPreferences(profile = LocalProfile("Original", "ES", "ca", true),
+                    discovery = org.infinilect.app.discovery.DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = visible),
+                    readingLanguage = "en")
+                assertTrue(store.savePreferences(previous))
+                assertEquals(previous, FileApplicationAppearanceStore(root).loadPreferences())
+                val all = previous.copy(discovery = previous.discovery.copy(wikisourceAllResults = true))
+                assertTrue(store.savePreferences(all))
+                assertEquals(all, FileApplicationAppearanceStore(root).loadPreferences())
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
 }
