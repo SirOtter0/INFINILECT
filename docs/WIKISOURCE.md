@@ -64,6 +64,28 @@ El probe admite, por ejemplo:
 ./gradlew :app:wikisourceReadabilityCheck --args='es --query "A Venus" 1927'
 ```
 
+### Verificación de esta revisión
+
+Compilaron Desktop, Android debug y Android release sin firmar. Pasaron la
+verificación de ambos manifiestos, la de recursos empaquetados y el control
+de 596 cadenas y tres plurales en español, inglés y catalán. Lint terminó sin
+errores y emitió un aviso GradleDependency por variante en Compose Foundation.
+
+Las suites del núcleo aprobaron 60 pruebas cada una. Android-host aprobó
+1524. La pasada completa Desktop aprobó 1808 de 1811. Dos pruebas de
+Biblioteca registraron excepciones de Compose RectList. Ambas pasaron aisladas
+en esta rama y en el checkout histórico 82d4b3f. El tercer fallo correspondió
+a la nueva prueba del selector. Su aserción comparaba los bordes de botones
+con distinta altura al ampliar el texto. La versión corregida comprueba
+alineación por el centro y separación horizontal, y pasó en el reintento
+junto con las dos pruebas de Biblioteca.
+
+Pasaron las 24 pruebas de PageSpreadLayoutTest en la ejecución completa.
+El toque lateral posterior al deslizamiento ahora usa 16 ms de tiempo
+sintético, igual que el resto de la secuencia. El reloj real podía convertir
+el toque breve en uno mantenido bajo carga. Se conserva la aserción de
+cambio de página y el código de producción del lector.
+
 Desde un inicio en frío en Android, abre Buscar, escribe «A» y pulsa la lupa.
 Comprueba que aparece una sola explicación vacía y una única acción de
 paginación para Wikisource. Busca «A Venus», abre la ficha desde **Pendientes
