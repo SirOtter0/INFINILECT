@@ -88,7 +88,10 @@ class DiscoveryInterfaceTest {
             val labels = nodes.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
             val modes = nodes.filter { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
             assertEquals(2, modes.size)
-            assertEquals(modes[0].boundsInRoot.top, modes[1].boundsInRoot.top)
+            val first = modes[0].boundsInRoot
+            val second = modes[1].boundsInRoot
+            assertEquals(first.center.y, second.center.y, absoluteTolerance = 1f)
+            assertTrue(first.right <= second.left)
             assertEquals(1, labels.count { it == UiText.WIKI_PENDING_HEADING.fallback })
             assertTrue(labels.any { it.startsWith("Open record:") })
             assertTrue(labels.none { it in setOf(UiText.DISCOVERY_NO_RESULTS.fallback, UiText.WIKI_FILTER_EMPTY.fallback,
