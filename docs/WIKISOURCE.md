@@ -90,6 +90,20 @@ La primera búsqueda española tardó 137–3665 ms, con 1–22 peticiones y
 validaciones explícitas autorizadas usaron el preparador real y confirmaron los
 tres textos españoles, Smokey the Bear Sutra y L’emigrant.
 
+Las cuatro suites ejecutaron 3450 pruebas en total. Android-host aprobó 1522,
+y las dos suites del núcleo aprobaron 60 cada una. Desktop aprobó 1807 de 1808.
+El único fallo de la ejecución completa fue el gesto lateral del lector en
+`PageSpreadLayoutTest`, que esperaba la presentación de la página 5. El mismo
+caso pasó al ejecutarlo de forma aislada tanto en el filtro como en el commit
+base 82d4b3f. La causa de la diferencia entre ejecuciones queda sin confirmar.
+
+Compilaron Desktop, Android debug y Android release sin firmar. Los dos
+manifiestos conservaron el identificador, SDK y permisos. Pasaron los ocho casos
+de la política del manifiesto y la verificación de 588 cadenas y tres plurales
+en los tres idiomas. Lint debug y release terminaron sin errores y con el mismo
+aviso GradleDependency sobre Compose Foundation para teclado y ratón en ambas
+variantes. El aviso apunta a una dependencia ajena al diff.
+
 En Android, buscar A Venus con caché fría, abrir su ficha y comprobar el EPUB.
 Cerrar la ficha y verificar su promoción a la cuadrícula. Cambiar a Todos y
 volver a Legibles sin perder la consulta, probar el resultado web de un autor
