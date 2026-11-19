@@ -63,6 +63,39 @@ class DiscoveryInterfaceTest {
         }
         override fun close(){scene.close();owner.close();test.runCurrent()}
     }
+    @Test fun readableSelectorSharesOneRowAndColdCandidatesSuppressEmptyMessages() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val fixture = CatalogFixture(SourceId("wiki-ui"))
+        val wiki = object : PublicationSource by fixture, ReadabilityCatalogSource {
+            override suspend fun discover(request: DiscoveryRequest, token: String?) = fixture.discover(request, token)
+            override suspend fun cachedReadability(publication: Publication) = CatalogReadability.UNVERIFIED
+            override suspend fun discoverReadable(request: DiscoveryRequest, token: String?) =
+                DiscoveryPage(emptyList(), "next",
+                    listOf(fixture.entry("venus").copy(readability = CatalogReadability.READABLE_CANDIDATE)),
+                    assessmentLimited = true)
+        }
+        val owner = ApplicationSources(listOf(SourceOption("Wikisource", wiki, epubReadingEnabled = true)), sessionDispatcher = dispatcher) {}
+        val app = owner.applicationSession()
+        val scene = ImageComposeScene(320, 840, Density(1f, 1.8f), coroutineContext = dispatcher)
+        try {
+            app.navigate(Destination.SEARCH)
+            scene.setContent { App(owner) }
+            app.discovery.edit("A")
+            app.discovery.submit()
+            repeat(12) { runCurrent(); scene.render(it * 16_666_667L).close() }
+            fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::walk)
+            val nodes = scene.semanticsOwners.flatMap { walk(it.unmergedRootSemanticsNode) }
+            val labels = nodes.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            val modes = nodes.filter { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
+            assertEquals(2, modes.size)
+            assertEquals(modes[0].boundsInRoot.top, modes[1].boundsInRoot.top)
+            assertEquals(1, labels.count { it == UiText.WIKI_PENDING_HEADING.fallback })
+            assertTrue(labels.any { it.startsWith("Open record:") })
+            assertTrue(labels.none { it in setOf(UiText.DISCOVERY_NO_RESULTS.fallback, UiText.WIKI_FILTER_EMPTY.fallback,
+                UiText.UI_NO_MATCHES_ON_LOADED_PAGES_LOAD_MORE_OR_TRY_ANOTHER_QUERY_SOURCE_OR_LANGUAGE.fallback) })
+        } finally { scene.close(); owner.close(); runCurrent() }
+    }
+
     @Test fun compactAndWideSearchShowsAttributionCoversFiltersAndAccessibleDetails()=runTest {
         for(width in listOf(390,1280)) Fixture(this,width,900).use { f ->
             f.search();assertTrue(f.visible("Original reading 0"));assertTrue(f.visible("Internet Archive · catalog only"))

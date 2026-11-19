@@ -9,7 +9,7 @@ import org.infinilect.core.*
 
 internal data class CatalogResults(val id: SourceId, val entries: List<DiscoveryEntry> = emptyList(),
     val nextToken: String? = null, val loading: Boolean = false, val failed: Boolean = false, val pages: Int = 0, val pendingToken: String? = null,
-    val interrupted: Boolean = false, val failure: CatalogErrorKind? = null, val candidates: List<DiscoveryEntry> = emptyList(), val assessmentLimited: Boolean = false)
+    val interrupted: Boolean = false, val failure: CatalogErrorKind? = null, val candidates: List<DiscoveryEntry> = emptyList(), val assessmentLimited: Boolean = false, val hadCatalogMatches: Boolean = false, val assessmentFailed: Boolean = false)
 internal data class DiscoveryState(val query: String = "", val request: DiscoveryRequest? = null,
     val enabled: Set<SourceId> = emptySet(), val genre: Genre? = null, val language: String? = null,
     val catalogs: List<CatalogResults> = emptyList(), val generation: Long = 0, val invalidQuery: Boolean = false,
@@ -139,7 +139,9 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
                 val entries = distinctEntries((if (token == null) emptyList() else previous.entries) + page.entries).take(100)
                 mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) CatalogResults(id, entries, page.nextToken, pages = if (token == null) 1 else previous.pages + 1,
                     candidates = distinctEntries((if (token == null) emptyList() else previous.candidates) + page.candidates).filter { candidate -> entries.none { it.publication.id == candidate.publication.id } }.take(32),
-                    assessmentLimited = page.assessmentLimited) else it }) }
+                    assessmentLimited = page.assessmentLimited,
+                    hadCatalogMatches = id in readableIds && (page.hadCatalogMatches || token != null && previous.hadCatalogMatches),
+                    assessmentFailed = page.assessmentFailed || token != null && previous.assessmentFailed) else it }) }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { ensureActive(); mutable.update { s -> if (s.generation != generation) s else s.copy(catalogs = s.catalogs.map { if (it.id == id) it.copy(loading = false, failed = true, failure = when (error) { is CatalogSourceException -> error.kind; is DiscoveryTimeout -> CatalogErrorKind.TIMEOUT; is DiscoveryInterrupted -> CatalogErrorKind.CANCELLED; else -> null }) else it }) } }
         }
@@ -158,4 +160,21 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
         state.value.catalogs.filter { it.interrupted && !it.loading }.forEach { fetch(it.id, it.pendingToken) }
     }
     fun close() { retire(); job.cancel(); mutable.value = DiscoveryState() }
+}
+
+/** One primary explanation for an empty result area. Provider errors remain actionable. */
+internal enum class DiscoveryStatus { IDLE, SEARCHING, SELECT_SOURCES, PENDING, LIMITED, UNCONFIRMED, NO_MATCHES, PARTIAL_ERROR }
+
+internal fun DiscoveryState.resultStatus(): DiscoveryStatus? {
+    if (invalidQuery) return null
+    if (request == null) return DiscoveryStatus.IDLE
+    if (loading) return DiscoveryStatus.SEARCHING
+    if (catalogs.isEmpty()) return DiscoveryStatus.SELECT_SOURCES
+    if (catalogs.any { it.candidates.isNotEmpty() }) return DiscoveryStatus.PENDING
+    if (entries.isNotEmpty()) return null
+    if (catalogs.any { it.failed || it.assessmentFailed || it.interrupted }) return DiscoveryStatus.PARTIAL_ERROR
+    if (catalogs.any { it.assessmentLimited || it.nextToken != null }) return DiscoveryStatus.LIMITED
+    if (readabilityMode == ReadabilityMode.READABLE && catalogs.any { it.hadCatalogMatches })
+        return DiscoveryStatus.UNCONFIRMED
+    return DiscoveryStatus.NO_MATCHES
 }

@@ -1,5 +1,14 @@
 # Search, discovery and local recommendations — PR #29
 
+## Estados de búsqueda y selector de Wikisource
+
+La cuadrícula estricta distingue entre coincidencias del catálogo,
+confirmaciones, candidatos autorizados y evaluación incompleta. La
+interfaz elige una explicación primaria y agrupa la paginación de
+Wikisource en un menú por edición. La disponibilidad y las fichas
+pendientes afectan al descubrimiento. El modo elegido mantiene el
+mismo campo de preferencias y valor inicial. [Comportamiento y prueba física](WIKISOURCE.md).
+
 ## Disponibilidad de resultados y preferencias de Wikisource
 
 **Legibles** filtra la cuadrícula por preparación real del EPUB y autorización

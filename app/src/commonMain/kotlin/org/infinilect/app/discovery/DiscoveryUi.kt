@@ -9,6 +9,9 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.text.*
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
@@ -68,11 +71,7 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                     Text(strings.number(state.enabled.size), style = MaterialTheme.typography.caption, modifier = Modifier.weight(1f))
                     IconButton({ help = true }, Modifier.size(48.dp).semantics { contentDescription = strings[UiText.UI_ABOUT_CATALOG_SEARCH] }) { Text("?", style = MaterialTheme.typography.h6) }
                 }
-                if (controller.hasReadableSources) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(strings[UiText.WIKI_FILTER_LABEL], modifier = Modifier.align(Alignment.CenterVertically))
-                    FilterChoice(strings[UiText.WIKI_FILTER_READABLE], state.readabilityMode == ReadabilityMode.READABLE) { application.wikisourceMode(ReadabilityMode.READABLE) }
-                    FilterChoice(strings[UiText.WIKI_FILTER_ALL], state.readabilityMode == ReadabilityMode.ALL) { application.wikisourceMode(ReadabilityMode.ALL) }
-                }
+                if (controller.hasReadableSources) ReadabilitySelector(state.readabilityMode, application::wikisourceMode)
                 if (state.genre != null || state.language != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.genre?.let { genre -> FilterChoice(strings.status(genre.label), true) { controller.genre(null) } }
                     state.language?.let { language -> FilterChoice(strings.status(DISCOVERY_LANGUAGES.getValue(language)), true) { controller.language(null) } }
@@ -85,16 +84,24 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite })
                         if (state.invalidQuery) Text(strings[UiText.UI_USE_AT_MOST_256_CHARACTERS_AND_NO_CONTROL_CHARACTERS], color = MaterialTheme.colors.error)
-                        if (state.request == null) Text(strings[UiText.UI_SEARCH_ACROSS_CATALOGS_OR_EXPLORE_A_SUBJECT_ABOVE_NOTHING_IS_DOWNLOADED_BY_BROWS])
-                        else if (state.catalogs.isEmpty()) Text(strings[UiText.UI_SELECT_AT_LEAST_ONE_SOURCE_SUBJECT_BROWSING_CURRENTLY_REQUIRES_INTERNET_ARCHIVE])
-                        else if (!state.loading && state.entries.isEmpty() && state.catalogs.none { it.failed }) Text(if (state.genre == null) strings[UiText.UI_NO_MATCHES_ON_LOADED_PAGES_LOAD_MORE_OR_TRY_ANOTHER_QUERY_SOURCE_OR_LANGUAGE] else strings[UiText.UI_NO_MATCHES_IN_THE_LOADED_CC0_CATALOG_PAGES_LOAD_MORE_CHANGE_THE_LANGUAGE_OR_TRY])
-                        val wiki = state.catalogs.filter { controller.isReadableSource(it.id) }
-                        if (state.readabilityMode == ReadabilityMode.READABLE && wiki.isNotEmpty() && wiki.none { it.loading || it.failed || it.entries.isNotEmpty() }) {
-                            Text(strings[UiText.WIKI_FILTER_EMPTY])
-                            TextButton({ application.wikisourceMode(ReadabilityMode.ALL) }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.WIKI_FILTER_SHOW_ALL]) }
+                        val status = state.resultStatus()
+                        val label = when (status) {
+                            DiscoveryStatus.IDLE -> UiText.DISCOVERY_SEARCH_PROMPT
+                            DiscoveryStatus.SEARCHING -> UiText.DISCOVERY_SEARCHING
+                            DiscoveryStatus.SELECT_SOURCES -> UiText.UI_SELECT_AT_LEAST_ONE_SOURCE_SUBJECT_BROWSING_CURRENTLY_REQUIRES_INTERNET_ARCHIVE
+                            DiscoveryStatus.LIMITED -> UiText.WIKI_FILTER_LIMIT
+                            DiscoveryStatus.UNCONFIRMED -> UiText.WIKI_FILTER_EMPTY
+                            DiscoveryStatus.NO_MATCHES -> UiText.DISCOVERY_NO_RESULTS
+                            DiscoveryStatus.PARTIAL_ERROR -> UiText.DISCOVERY_PARTIAL_ERROR.takeIf { state.catalogs.any { row -> row.assessmentFailed } }
+                            DiscoveryStatus.PENDING, null -> null
                         }
-                        if (wiki.any { it.assessmentLimited } && !state.loading)
-                            Text(strings[UiText.WIKI_FILTER_LIMIT], style = MaterialTheme.typography.caption)
+                        label?.let { Text(strings[it], modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+                        val canExploreWiki = state.readabilityMode == ReadabilityMode.READABLE &&
+                            state.catalogs.any { controller.isReadableSource(it.id) } &&
+                            status in setOf(DiscoveryStatus.LIMITED, DiscoveryStatus.UNCONFIRMED, DiscoveryStatus.PARTIAL_ERROR)
+                        if (canExploreWiki) TextButton({ application.wikisourceMode(ReadabilityMode.ALL) }, Modifier.heightIn(min = 48.dp)) {
+                            Text(strings[UiText.WIKI_FILTER_SHOW_ALL])
+                        }
                         state.catalogs.forEach { source ->
                             if (source.failed) Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(strings.status(catalogFailureMessage(application.sourceName(source.id), source.failure)), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
@@ -103,23 +110,48 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                         }
                     }
                 }
-                items(state.entries, key = { it.publication.id.resultKey() }, contentType = { "publication" }) { entry ->
-                    DiscoveryTile(entry, application, Modifier.fillMaxWidth()) { detail = entry }
-                }
                 val pending = state.catalogs.flatMap { it.candidates }
                 if (state.readabilityMode == ReadabilityMode.READABLE && pending.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "wiki-pending") {
-                        Text(strings[UiText.WIKI_FILTER_PENDING], style = MaterialTheme.typography.subtitle2)
+                        Column {
+                            Text(strings[UiText.WIKI_PENDING_HEADING], style = MaterialTheme.typography.subtitle2)
+                            Text(strings[UiText.WIKI_PENDING_HINT], style = MaterialTheme.typography.body2)
+                        }
                     }
                     items(pending, key = { "pending:" + it.publication.id.resultKey() }, span = { GridItemSpan(maxLineSpan) }) { entry ->
-                        TextButton({ detail = entry }, Modifier.heightIn(min = 48.dp)) { Text(entry.publication.title) }
+                        TextButton({ detail = entry }, Modifier.heightIn(min = 48.dp)) {
+                            Text(strings.format(UiText.WIKI_PENDING_OPEN, entry.publication.title))
+                        }
                     }
+                }
+                items(state.entries, key = { it.publication.id.resultKey() }, contentType = { "publication" }) { entry ->
+                    DiscoveryTile(entry, application, Modifier.fillMaxWidth()) { detail = entry }
                 }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "more", contentType = "status") {
                     Column {
-                        state.catalogs.filter { it.nextToken != null }.forEach { result ->
-                            if (result.pages < 4) TextButton({ controller.more(result.id) }, Modifier.heightIn(min = 48.dp), enabled = !result.loading && !result.failed) { Text(strings.format(UiText.UI_MORE_FROM_1_S, strings.sourceName(application.sourceName(result.id)))) }
-                            else Text(strings[UiText.UI_SHOWING_UP_TO_100_RESULTS_PER_SOURCE_REFINE_YOUR_SEARCH_FOR_MORE], style = MaterialTheme.typography.caption)
+                        val more = state.catalogs.filter { it.nextToken != null && it.pages < 4 && !it.loading && !it.failed }
+                        val wikiMore = more.filter { controller.isReadableSource(it.id) }
+                        if (state.catalogs.any { it.assessmentFailed } && state.resultStatus() != DiscoveryStatus.PARTIAL_ERROR)
+                            Text(strings[UiText.DISCOVERY_PARTIAL_ERROR], style = MaterialTheme.typography.caption)
+                        if (state.catalogs.any { it.nextToken != null && it.pages >= 4 })
+                            Text(strings[UiText.UI_SHOWING_UP_TO_100_RESULTS_PER_SOURCE_REFINE_YOUR_SEARCH_FOR_MORE], style = MaterialTheme.typography.caption)
+                        if (wikiMore.isNotEmpty()) {
+                            var expanded by remember(state.generation, state.readabilityMode) { mutableStateOf(false) }
+                            Box {
+                                TextButton({ expanded = true }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.WIKI_MORE_EDITIONS]) }
+                                DropdownMenu(expanded, { expanded = false }) {
+                                    wikiMore.forEach { result ->
+                                        DropdownMenuItem({ expanded = false; controller.more(result.id) }) {
+                                            Text(strings.sourceName(application.sourceName(result.id)))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        more.filterNot { controller.isReadableSource(it.id) }.forEach { result ->
+                            TextButton({ controller.more(result.id) }, Modifier.heightIn(min = 48.dp)) {
+                                Text(strings.format(UiText.UI_MORE_FROM_1_S, strings.sourceName(application.sourceName(result.id))))
+                            }
                         }
                         Text(strings[UiText.UI_CATALOG_PRESENCE_IS_NOT_PERMISSION_TO_DOWNLOAD_OR_PROOF_OF_RIGHTS_IN_YOUR_COUNTR], style = MaterialTheme.typography.caption)
                     }
@@ -166,6 +198,23 @@ private fun CloseSearchIcon() {
     Canvas(Modifier.size(20.dp).clearAndSetSemantics {}) {
         drawLine(color, androidx.compose.ui.geometry.Offset(size.width * .25f, size.height * .25f), androidx.compose.ui.geometry.Offset(size.width * .75f, size.height * .75f), 2.dp.toPx())
         drawLine(color, androidx.compose.ui.geometry.Offset(size.width * .75f, size.height * .25f), androidx.compose.ui.geometry.Offset(size.width * .25f, size.height * .75f), 2.dp.toPx())
+    }
+}
+
+@Composable
+internal fun ReadabilitySelector(mode: ReadabilityMode, select: (ReadabilityMode) -> Unit) {
+    val strings = LocalAppStrings.current
+    Row(Modifier.fillMaxWidth().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+        Text(strings[UiText.WIKI_FILTER_LABEL], Modifier.weight(0.9f), style = MaterialTheme.typography.caption)
+        for ((choice, label) in listOf(ReadabilityMode.READABLE to UiText.WIKI_FILTER_READABLE, ReadabilityMode.ALL to UiText.WIKI_FILTER_ALL)) {
+            Box(Modifier.weight(1f).heightIn(min = 48.dp).clip(MaterialTheme.shapes.small)
+                .background(if (mode == choice) MaterialTheme.colors.primary.copy(alpha = 0.14f) else MaterialTheme.colors.surface)
+                .selectable(mode == choice, role = Role.RadioButton, onClick = { select(choice) }),
+                contentAlignment = Alignment.Center) {
+                Text(strings[label], textAlign = TextAlign.Center, style = MaterialTheme.typography.body2,
+                    color = if (mode == choice) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface)
+            }
+        }
     }
 }
 

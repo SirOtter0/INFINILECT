@@ -431,7 +431,12 @@ class PageSpreadLayoutTest {
                 f.await(target)
                 assertTrue(f.reader.retainedPages <= if (layout == PageLayout.DOUBLE) 4 else 3)
                 // Successful turn uses the canonical 1x state; a semantic side tap can turn again.
-                f.tap(if (mode == PageReadingMode.PAGED_LTR) .9f else .1f)
+                val x = f.width * if (mode == PageReadingMode.PAGED_LTR) .9f else .1f
+                val tap = Offset(x, f.height / 2f)
+                // Keep the brief follow-up in the same synthetic event timeline as the swipe.
+                // Real scheduling delays between sendPointerEvent calls can arm held-tap zoom.
+                f.touch(PointerEventType.Press, tap, 2400)
+                f.touch(PointerEventType.Release, tap, 2416)
                 f.await(target + if (layout == PageLayout.DOUBLE) 2 else 1)
             }
     }

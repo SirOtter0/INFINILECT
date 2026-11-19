@@ -1,5 +1,77 @@
 # Wikisource: availability and rights follow-up — PR #39
 
+## Descubrimiento con caché fría en la PR #39
+
+La búsqueda de una letra en el realme C55 dejó vacía la cuadrícula de EPUB
+confirmados. La interfaz anterior mostraba a la vez «sin coincidencias»,
+«sin lectura confirmada» y «revisión limitada». Cada mensaje se evaluaba
+por separado. El 19 de noviembre la API española devolvió 20 fichas y un
+cursor adicional para «A», así que el estado vacío no demostraba que el
+catálogo careciera de coincidencias.
+
+La búsqueda registra si encontró fichas y si terminó su evaluación. Omitir
+una ficha con metadatos inválidos conserva los candidatos ya evaluados y
+muestra el aviso correspondiente. Los fallos de transporte conservan su
+tratamiento como errores de proveedor con opción de reintento.
+
+Los candidatos con autorización positiva aparecen en **Pendientes de comprobar**
+con un acceso para abrir su ficha. La acción **Comprobar EPUB** utiliza el
+mismo preparador y actualiza el resultado al cerrar la ficha. «Legibles»
+incluye solamente EPUB confirmados en su cuadrícula. «Todos» muestra las
+fichas del catálogo con sus indicadores, incluso cuando los derechos siguen
+sin verificar. El modo se sigue guardando en las preferencias existentes.
+El selector ocupa una fila. La acción **Cargar más de Wikisource** permite
+elegir una edición con su cursor y presupuesto propios.
+
+Se conservan los límites de dos páginas, ocho fichas y ocho segundos por
+operación, y 24 peticiones y 8 MiB de metadatos por minuto y edición.
+La búsqueda no inicia exportaciones. En consultas amplias, los candidatos
+pueden quedar fuera del tramo evaluado. El mensaje indica el alcance y
+permite continuar o pasar a «Todos». Se conservan las copias offline
+y sus posiciones de lectura.
+
+### Medición del adaptador el 19 de noviembre de 2026
+
+Se ejercitaron consultas literales por título en un proveedor nuevo por caso.
+Las cifras son peticiones y bytes del cuerpo de metadatos y milisegundos
+del adaptador en Desktop. La columna «Todos» mide su primera página con
+la caché de esa consulta ya poblada. Los candidatos de la primera
+evaluación estaban autorizados y pendientes. Solo se comprobó el EPUB
+de cada una de las cinco fichas objetivo autorizadas.
+
+| Edición | Consulta | Todos | Pendientes en frío | Confirmadas tras comprobación | Fría peticiones / bytes / ms | Caliente peticiones / bytes / ms | Evaluación limitada |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| es | A | 20 | 0 | 0 | 11 / 44229 / 4507 | 0 / 0 / 6 | Sí |
+| es | A Venus | 20 | 1 | 1 | 12 / 27780 / 3109 | 2 / 2475 / 244 | Sí |
+| es | Rima LIII | 11 | 4 | 1 | 17 / 102164 / 3544 | 0 / 0 / 3 | Sí |
+| es | Canción del pirata | 20 | 1 | 1 | 11 / 99414 / 3007 | 0 / 0 / 1 | Sí |
+| en | Smokey the Bear Sutra | 2 | 1 | 1 | 2 / 6589 / 1321 | 0 / 0 / 1 | No |
+| ca | L’emigrant | 20 | 1 | 1 | 13 / 30159 / 3049 | 0 / 0 / 16 | Sí |
+
+Para «A», la página general contenía una ficha web y 19 resultados sin
+verificación positiva registrada en la proyección de esa página. La evaluación
+limitada no devolvió candidatos ni confirmaciones. Para «A Venus», dos
+peticiones en la repetición correspondieron a una evaluación no completada
+de otra ficha. El probe registró metadatos inválidos en esa consulta y
+conservó la candidata A Venus. Todas las demás repeticiones medidas
+reutilizaron la caché sin tráfico adicional. Cambiar a Todos reutilizó los
+metadatos en los seis casos. La búsqueda no inició exportaciones.
+
+El probe admite, por ejemplo:
+
+```sh
+./gradlew :app:wikisourceReadabilityCheck --args='es --query "A"'
+./gradlew :app:wikisourceReadabilityCheck --args='es --query "A Venus" 1927'
+```
+
+Desde un inicio en frío en Android, abre Buscar, escribe «A» y pulsa la lupa.
+Comprueba que aparece una sola explicación vacía y una única acción de
+paginación para Wikisource. Busca «A Venus», abre la ficha desde **Pendientes
+de comprobar**, pulsa **Comprobar EPUB** y cierra la ficha para ver la obra
+en la cuadrícula. Repite la consulta y alterna entre los modos. Después
+cambia de idioma o edición y carga otra página. Prueba a 180 % de tamaño de
+texto y verifica que los modos permanecen juntos.
+
 ## Filtro de disponibilidad de la PR #39
 
 **Legibles** es el modo inicial. La cuadrícula muestra únicamente resultados con

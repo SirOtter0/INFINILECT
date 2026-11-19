@@ -66,6 +66,8 @@ internal class WikisourceReadableCatalog(
         var finished = false
         var visited = 0
         var assessed = 0
+        var matched = false
+        var failed = false
         val seenTokens = mutableSetOf<String?>()
         val confirmed = mutableListOf<DiscoveryEntry>()
         val candidates = mutableListOf<DiscoveryEntry>()
@@ -75,12 +77,20 @@ internal class WikisourceReadableCatalog(
                     if (!seenTokens.add(rawToken)) throw WikisourceInvalid()
                     val batch = page(request.query, rawToken)
                     visited++
+                    matched = matched || batch.entries.isNotEmpty()
                     if (offset > batch.entries.size) throw WikisourceInvalid()
                     while (offset < batch.entries.size && assessed < 8) {
                         val entry = batch.entries[offset]
                         if (entry.publication.resources.isNotEmpty()) {
                             assessed++
-                            val details = info(entry.publication.id)
+                            val details = try {
+                                info(entry.publication.id)
+                            } catch (_: WikisourceInvalid) {
+                                // A malformed detail cannot authorize this item or discard earlier results.
+                                failed = true
+                                offset++
+                                continue
+                            }
                             currentCoroutineContext().ensureActive()
                             val result = entry.copy(publication = details.metadata ?: entry.publication, readability = details.readability())
                             when (result.readability) {
@@ -109,6 +119,6 @@ internal class WikisourceReadableCatalog(
         currentCoroutineContext().ensureActive()
         return DiscoveryPage(confirmed.distinctBy { it.publication.id },
             if (finished) null else wikiCursor(edition, binding, "$offset|${rawToken.orEmpty()}"),
-            candidates.distinctBy { it.publication.id }, assessmentLimited = !finished)
+            candidates.distinctBy { it.publication.id }, assessmentLimited = !finished, hadCatalogMatches = matched, assessmentFailed = failed)
     }
 }

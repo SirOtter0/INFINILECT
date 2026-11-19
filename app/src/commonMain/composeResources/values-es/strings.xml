@@ -577,7 +577,7 @@
     <string name="wiki_recheck_rights">Revisar las declaraciones de la fuente</string>
     <string name="wiki_checking_epub">Comprobando autorización y compatibilidad del EPUB…</string>
     <string name="wiki_check_consent">Esta acción descarga temporalmente una exportación autorizada para validarla y la descarta. No guarda una copia offline.</string>
-    <string name="wiki_filter_label">Disponibilidad en Wikisource</string>
+    <string name="wiki_filter_label">Disponibilidad</string>
     <string name="wiki_filter_readable">Legibles</string>
     <string name="wiki_filter_all">Todos</string>
     <string name="wiki_filter_confirmed">Lectura confirmada</string>
@@ -586,6 +586,14 @@
     <string name="wiki_filter_unavailable">Sin EPUB compatible disponible</string>
     <string name="wiki_filter_web">Solo página web</string>
     <string name="wiki_filter_empty">No se han encontrado publicaciones con lectura confirmada entre los resultados comprobados.</string>
-    <string name="wiki_filter_show_all">Mostrar todos los resultados de Wikisource</string>
-    <string name="wiki_filter_limit">Se ha comprobado una parte limitada. Carga más cuando esté disponible o cambia a Todos.</string>
+    <string name="wiki_filter_show_all">Ver todos</string>
+    <string name="wiki_filter_limit">Se ha revisado una parte de los resultados.</string>
+    <string name="discovery_search_prompt">Busca un título, autor o palabra clave.</string>
+    <string name="discovery_searching">Buscando publicaciones…</string>
+    <string name="discovery_no_results">No se encontraron resultados para esta búsqueda.</string>
+    <string name="discovery_partial_error">No se pudieron comprobar algunas fichas.</string>
+    <string name="wiki_pending_heading">Pendientes de comprobar</string>
+    <string name="wiki_pending_hint">Hay publicaciones autorizadas que todavía no se han comprobado. Abre una ficha para comprobar si se puede leer.</string>
+    <string name="wiki_pending_open">Abrir ficha: %1$s</string>
+    <string name="wiki_more_editions">Cargar más de Wikisource</string>
 </resources>

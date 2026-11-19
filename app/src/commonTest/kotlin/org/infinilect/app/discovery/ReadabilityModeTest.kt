@@ -49,4 +49,18 @@ class ReadabilityModeTest {
             cache.close()
         }
     }
+    @Test fun emptyStatusDistinguishesCandidatesBudgetAndExhaustedCatalog() {
+        val source = CatalogFixture()
+        val initial = DiscoveryState(request = DiscoveryRequest("A"))
+        fun status(row: CatalogResults) = initial.copy(catalogs = listOf(row)).resultStatus()
+        val row = CatalogResults(source.id)
+        assertEquals(DiscoveryStatus.NO_MATCHES, status(row))
+        assertEquals(DiscoveryStatus.UNCONFIRMED, status(row.copy(hadCatalogMatches = true)))
+        assertEquals(DiscoveryStatus.LIMITED, status(row.copy(nextToken = "next", assessmentLimited = true)))
+        assertEquals(DiscoveryStatus.PARTIAL_ERROR, status(row.copy(assessmentFailed = true)))
+        assertEquals(DiscoveryStatus.SEARCHING, status(row.copy(loading = true)))
+        assertEquals(DiscoveryStatus.PENDING, status(row.copy(nextToken = "next", assessmentLimited = true,
+            candidates = listOf(source.entry("authorized")))))
+    }
+
 }

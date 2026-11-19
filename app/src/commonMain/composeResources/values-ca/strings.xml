@@ -577,7 +577,7 @@
     <string name="wiki_recheck_rights">Revisa les declaracions de la font</string>
     <string name="wiki_checking_epub">S’estan comprovant l’autorització i la compatibilitat de l’EPUB…</string>
     <string name="wiki_check_consent">Aquesta acció baixa temporalment una exportació autoritzada per validar-la i la descarta. No desa una còpia sense connexió.</string>
-    <string name="wiki_filter_label">Disponibilitat a Viquitexts</string>
+    <string name="wiki_filter_label">Disponibilitat</string>
     <string name="wiki_filter_readable">Llegibles</string>
     <string name="wiki_filter_all">Tots</string>
     <string name="wiki_filter_confirmed">Lectura confirmada</string>
@@ -586,6 +586,14 @@
     <string name="wiki_filter_unavailable">Sense EPUB compatible disponible</string>
     <string name="wiki_filter_web">Només pàgina web</string>
     <string name="wiki_filter_empty">No s’han trobat publicacions amb lectura confirmada entre els resultats comprovats.</string>
-    <string name="wiki_filter_show_all">Mostra tots els resultats de Viquitexts</string>
-    <string name="wiki_filter_limit">S’ha comprovat una part limitada. Carrega’n més quan estigui disponible o canvia a Tots.</string>
+    <string name="wiki_filter_show_all">Mostra’ls tots</string>
+    <string name="wiki_filter_limit">S’ha revisat una part dels resultats.</string>
+    <string name="discovery_search_prompt">Cerca un títol, autor o paraula clau.</string>
+    <string name="discovery_searching">Cercant publicacions…</string>
+    <string name="discovery_no_results">No s’han trobat resultats per a aquesta cerca.</string>
+    <string name="discovery_partial_error">No s’han pogut comprovar algunes fitxes.</string>
+    <string name="wiki_pending_heading">Pendents de comprovar</string>
+    <string name="wiki_pending_hint">Hi ha publicacions autoritzades que encara no s’han comprovat. Obre una fitxa per comprovar si es pot llegir.</string>
+    <string name="wiki_pending_open">Obre la fitxa: %1$s</string>
+    <string name="wiki_more_editions">Carrega’n més de Viquitexts</string>
 </resources>

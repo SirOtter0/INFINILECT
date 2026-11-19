@@ -577,7 +577,7 @@
     <string name="wiki_recheck_rights">Review source declarations</string>
     <string name="wiki_checking_epub">Checking authorization and EPUB compatibility…</string>
     <string name="wiki_check_consent">This action temporarily downloads an authorized export for validation, then discards it. It does not save an offline copy.</string>
-    <string name="wiki_filter_label">Wikisource availability</string>
+    <string name="wiki_filter_label">Availability</string>
     <string name="wiki_filter_readable">Readable</string>
     <string name="wiki_filter_all">All</string>
     <string name="wiki_filter_confirmed">Reading confirmed</string>
@@ -586,6 +586,14 @@
     <string name="wiki_filter_unavailable">No compatible EPUB available</string>
     <string name="wiki_filter_web">Web page only</string>
     <string name="wiki_filter_empty">No publications with confirmed reading were found among the checked results.</string>
-    <string name="wiki_filter_show_all">Show all Wikisource results</string>
-    <string name="wiki_filter_limit">Only a limited portion was checked. Load more when available or switch to All.</string>
+    <string name="wiki_filter_show_all">View all</string>
+    <string name="wiki_filter_limit">Only part of the results was checked.</string>
+    <string name="discovery_search_prompt">Search by title, author or keyword.</string>
+    <string name="discovery_searching">Searching publications…</string>
+    <string name="discovery_no_results">No results were found for this search.</string>
+    <string name="discovery_partial_error">Some pages could not be checked.</string>
+    <string name="wiki_pending_heading">Pending EPUB checks</string>
+    <string name="wiki_pending_hint">These publications are authorized. Open a record to check reading availability.</string>
+    <string name="wiki_pending_open">Open record: %1$s</string>
+    <string name="wiki_more_editions">Load more from Wikisource</string>
 </resources>

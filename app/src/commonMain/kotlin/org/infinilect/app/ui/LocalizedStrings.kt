@@ -8,7 +8,15 @@ import org.jetbrains.compose.resources.StringResource
 
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
-    WIKI_FILTER_LABEL(Res.string.wiki_filter_label, "Wikisource availability"),
+    DISCOVERY_SEARCH_PROMPT(Res.string.discovery_search_prompt, "Search by title, author or keyword."),
+    DISCOVERY_SEARCHING(Res.string.discovery_searching, "Searching publications…"),
+    DISCOVERY_NO_RESULTS(Res.string.discovery_no_results, "No results were found for this search."),
+    DISCOVERY_PARTIAL_ERROR(Res.string.discovery_partial_error, "Some pages could not be checked."),
+    WIKI_PENDING_HEADING(Res.string.wiki_pending_heading, "Pending EPUB checks"),
+    WIKI_PENDING_HINT(Res.string.wiki_pending_hint, "These publications are authorized. Open a record to check reading availability."),
+    WIKI_PENDING_OPEN(Res.string.wiki_pending_open, "Open record: %1\$s"),
+    WIKI_MORE_EDITIONS(Res.string.wiki_more_editions, "Load more from Wikisource"),
+    WIKI_FILTER_LABEL(Res.string.wiki_filter_label, "Availability"),
     WIKI_FILTER_READABLE(Res.string.wiki_filter_readable, "Readable"),
     WIKI_FILTER_ALL(Res.string.wiki_filter_all, "All"),
     WIKI_FILTER_CONFIRMED(Res.string.wiki_filter_confirmed, "Reading confirmed"),
@@ -17,8 +25,8 @@ internal enum class UiText(val resource: StringResource, val fallback: String) {
     WIKI_FILTER_UNAVAILABLE(Res.string.wiki_filter_unavailable, "No compatible EPUB available"),
     WIKI_FILTER_WEB(Res.string.wiki_filter_web, "Web page only"),
     WIKI_FILTER_EMPTY(Res.string.wiki_filter_empty, "No publications with confirmed reading were found among the checked results."),
-    WIKI_FILTER_SHOW_ALL(Res.string.wiki_filter_show_all, "Show all Wikisource results"),
-    WIKI_FILTER_LIMIT(Res.string.wiki_filter_limit, "Only a limited portion was checked. Load more when available or switch to All."),
+    WIKI_FILTER_SHOW_ALL(Res.string.wiki_filter_show_all, "View all"),
+    WIKI_FILTER_LIMIT(Res.string.wiki_filter_limit, "Only part of the results was checked."),
     WIKISOURCE_SOURCE_LABEL(Res.string.wikisource_source_label, "Wikisource (Spanish)"),
     WIKISOURCE_EN_SOURCE_LABEL(Res.string.wikisource_en_source_label, "Wikisource (English)"),
     WIKISOURCE_CA_SOURCE_LABEL(Res.string.wikisource_ca_source_label, "Wikisource (Catalan)"),

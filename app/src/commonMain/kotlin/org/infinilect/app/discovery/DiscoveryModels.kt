@@ -8,7 +8,7 @@ import org.infinilect.core.*
 internal data class DiscoveryEntry(val publication: Publication, val subjects: List<String> = emptyList(), val description: String? = null, val thumbnail: String? = null, val readability: CatalogReadability? = null) {
     val genres = subjects.flatMap(::mappedGenres).toSet()
 }
-internal data class DiscoveryPage(val entries: List<DiscoveryEntry>, val nextToken: String? = null, val candidates: List<DiscoveryEntry> = emptyList(), val assessmentLimited: Boolean = false)
+internal data class DiscoveryPage(val entries: List<DiscoveryEntry>, val nextToken: String? = null, val candidates: List<DiscoveryEntry> = emptyList(), val assessmentLimited: Boolean = false, val hadCatalogMatches: Boolean = entries.isNotEmpty() || candidates.isNotEmpty(), val assessmentFailed: Boolean = false)
 internal enum class Genre(val label: String, val archiveSubject: String) {
     SCIENCE_FICTION("Science fiction", "Science fiction"), FANTASY("Fantasy", "Fantasy"),
     MYSTERY("Mystery", "Detective and mystery stories"), HISTORY("History", "History"),

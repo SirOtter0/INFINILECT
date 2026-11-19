@@ -74,4 +74,19 @@ class WikisourceReadableCatalogTest {
         assertEquals(CatalogReadability.UNAVAILABLE, availability(CatalogEpubState.INCOMPATIBLE))
         assertEquals(CatalogReadability.WEB_ONLY, availability(CatalogEpubState.WEB_ONLY))
     }
+    @Test fun malformedLaterDetailsPreserveColdCandidatesAndDoNotClaimAnEmptyCatalog() = runTest {
+        val catalog = WikisourceReadableCatalog(edition, { 0 },
+            { _, _ -> DiscoveryPage(listOf(entry(1), entry(2), entry(3, auxiliary = true))) },
+            { id ->
+                if (id.localId == "2") throw WikisourceInvalid()
+                CatalogPublicationInfo(CatalogPageKind.TEXT, CatalogEpubState.POTENTIAL, authorized = true)
+            }, { CatalogReadability.UNVERIFIED })
+        val page = catalog.load(DiscoveryRequest("A"), null)
+        assertTrue(page.hadCatalogMatches)
+        assertTrue(page.assessmentFailed)
+        assertFalse(page.assessmentLimited)
+        assertTrue(page.entries.isEmpty())
+        assertEquals(listOf("1"), page.candidates.map { it.publication.id.localId })
+    }
+
 }
