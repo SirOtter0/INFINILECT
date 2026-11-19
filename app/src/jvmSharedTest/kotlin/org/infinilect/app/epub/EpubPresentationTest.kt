@@ -61,7 +61,11 @@ class EpubPresentationTest {
         assertEquals(EpubPosition(listOf(0, 0), 0), value.anchors["start"])
     }
     @Test fun anchorsInsideParagraphHaveLogicalOffsets() = runBlocking { assertEquals(2, parse("<p>A📖<span id=\"anchor\">B</span></p>").anchors["anchor"]?.codePointOffset) }
-    @Test fun externalNetworkLinkIsRejected() = runBlocking { reject("<p><a href=\"https://example.org/book\">link</a></p>") }
+    @Test fun externalNetworkLinkIsRetainedWithoutBecomingANavigationTarget() = runBlocking {
+        val run=parse("<p><a href=\"https://example.org/book\">link</a></p>").blocks.single().runs.single()
+        assertEquals("link",run.text);assertNull(run.target)
+        assertEquals(EpubExternalReference("https://example.org/book"),run.externalReference)
+    }
     @Test fun fileLinkIsRejected() = runBlocking { reject("<p><a href=\"file:///private/book\">link</a></p>") }
     @Test fun contentSchemeIsRejected() = runBlocking { reject("<p><a href=\"content://provider/book\">link</a></p>") }
     @Test fun javascriptLinkCannotExecute() = runBlocking { reject("<p><a href=\"javascript:alert(1)\">link</a></p>") }

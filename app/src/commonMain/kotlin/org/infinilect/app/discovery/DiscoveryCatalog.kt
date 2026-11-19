@@ -26,8 +26,9 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
     private val pages = linkedMapOf<Key, Cached>()
     private val pending = mutableMapOf<Key, Pending>()
     suspend fun load(id: SourceId, request: DiscoveryRequest, token: String? = null): DiscoveryPage {
-        val key = Key(id, request, token)
         val source = sources.first { it.id == id }
+        val effective = if (source is ReadabilityCatalogSource) request else request.copy(readabilityMode = ReadabilityMode.READABLE, assessCandidates = true)
+        val key = Key(id, effective, token)
         var hit: DiscoveryPage? = null
         val lease = lock.withLock {
             job.ensureActive()
@@ -37,7 +38,8 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
             if (hit != null) null else pending[key]?.also { it.borrowers++ } ?: Pending(scope.async(start = CoroutineStart.LAZY) {
                 gate.withPermit {
                     try { withTimeout(20_000) {
-                        val page = if (source is DiscoverySource) source.discover(request, token)
+                        val page = if (source is ReadabilityCatalogSource) source.discoverReadable(request, token)
+                            else if (source is DiscoverySource) source.discover(effective, token)
                             else {
                                 val offset = token?.removePrefix("local1.")?.toIntOrNull() ?: if (token == null) 0 else error("Invalid local page")
                                 require(offset in 0..75 && offset % 25 == 0 && (token == null || token == "local1.$offset"))
@@ -48,7 +50,9 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
                         require(page.nextToken == null || page.nextToken.length <= 2048)
                         val filtered = page.entries.map(::boundedEntry).distinctBy { it.publication.id }
                             .filter { entry -> request.language == null || entry.publication.languages.any { languageMatches(it, request.language) } }
-                        DiscoveryPage(filtered, page.nextToken)
+                        require(page.candidates.size <= 25 && page.candidates.all { it.publication.id.sourceId == id && it.readability == CatalogReadability.READABLE_CANDIDATE })
+                        page.copy(entries = filtered, candidates = page.candidates.distinctBy { it.publication.id }.map(::boundedEntry)
+                            .filter { request.language == null || it.publication.languages.any { tag -> languageMatches(tag, request.language) } })
                     } } catch (_: TimeoutCancellationException) { throw DiscoveryTimeout() }
                 }
             }, 1).also { pending[key] = it }
@@ -60,8 +64,10 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
             currentCoroutineContext().ensureActive()
             lock.withLock {
                 job.ensureActive()
-                if (pages.size >= 8 && key !in pages) pages.remove(pages.keys.first())
-                pages[key] = Cached(page, now())
+                if (source !is ReadabilityCatalogSource) {
+                    if (pages.size >= 8 && key !in pages) pages.remove(pages.keys.first())
+                    pages[key] = Cached(page, now())
+                }
             }
             return page
         } catch (cancelled: CancellationException) {

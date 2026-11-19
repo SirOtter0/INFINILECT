@@ -1,5 +1,28 @@
 # Search, discovery and local recommendations — PR #29
 
+## Estados de búsqueda y selector de Wikisource
+
+La cuadrícula estricta distingue entre coincidencias del catálogo,
+confirmaciones, candidatos autorizados y evaluación incompleta. La
+interfaz elige una explicación primaria y agrupa la paginación de
+Wikisource en un menú por edición. La disponibilidad y las fichas
+pendientes afectan al descubrimiento. El modo elegido mantiene el
+mismo campo de preferencias y valor inicial. [Comportamiento y prueba física](WIKISOURCE.md).
+
+## Disponibilidad de resultados y preferencias de Wikisource
+
+**Legibles** filtra la cuadrícula por preparación real del EPUB y autorización
+positiva. Los candidatos se consultan y comprueban desde su ficha. **Todos**
+recupera el catálogo general con estados conocidos. Los demás proveedores
+conservan la búsqueda y la paginación existentes. [Presupuestos y prueba manual](WIKISOURCE.md).
+
+El campo local `wikisourceAllResults` se guarda en el registro atómico de
+preferencias. Los formatos INF1–INF5 conservan sus campos y cargan Legibles por
+defecto. INF6 guarda Todos junto a la visibilidad de fuentes y el idioma lector.
+Una elección del modo durante la carga inicial se combina con los demás campos
+de descubrimiento guardados. El filtro no modifica Biblioteca, Historial ni las
+posiciones de lectura.
+
 Audited against main `1d11bdc8a8e8f94a26fb2409182bbd02167b2879`, the
 PR #28 squash merge. Sources obtain publications; existing readers still display
 freshly authorized resources. No reader engine, progress/identity schema,

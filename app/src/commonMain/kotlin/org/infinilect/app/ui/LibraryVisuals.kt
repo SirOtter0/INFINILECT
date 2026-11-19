@@ -84,7 +84,7 @@ internal fun LibraryChip(label: String, selected: Boolean, enabled: Boolean = tr
 @Composable
 internal fun PublicationReadAction(progress: org.infinilect.core.ReadingProgress?, enabled: Boolean = true, read: () -> Unit) {
     val strings=LocalAppStrings.current
-    Button(read,Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=enabled,contentPadding=PaddingValues(12.dp)) {
+    Button(read,Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=enabled && LocalCatalogActions.current.mayRead,contentPadding=PaddingValues(12.dp)) {
         LibraryIcon(LibraryGlyph.BOOK);Spacer(Modifier.width(10.dp));Text(strings.status(readingAction(progress)))
     }
 }

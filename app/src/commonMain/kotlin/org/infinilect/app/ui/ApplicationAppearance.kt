@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.*
 internal enum class ApplicationThemeMode { SYSTEM, LIGHT, DARK;
     fun isDark(systemDark: Boolean) = when (this) { SYSTEM -> systemDark; LIGHT -> false; DARK -> true }
 }
-internal data class ApplicationAppearanceState(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val edited: Boolean = false, val profile: LocalProfile = LocalProfile(), val profileEdited: Boolean = false, val loaded: Boolean = false, val discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences(), val discoveryEdited: Boolean = false, val readingLanguage: String? = null, val readingLanguageEdited: Boolean = false)
+internal data class ApplicationAppearanceState(val mode: ApplicationThemeMode = ApplicationThemeMode.SYSTEM, val edited: Boolean = false, val profile: LocalProfile = LocalProfile(), val profileEdited: Boolean = false, val loaded: Boolean = false, val discovery: org.infinilect.app.discovery.DiscoveryPreferences = org.infinilect.app.discovery.DiscoveryPreferences(), val discoveryEdited: Boolean = false, val readingLanguage: String? = null, val readingLanguageEdited: Boolean = false, val wikisourceModeEdited: Boolean = false)
 internal interface ApplicationAppearanceStore {
     suspend fun load(): ApplicationThemeMode
     suspend fun save(mode: ApplicationThemeMode): Boolean
@@ -37,7 +37,9 @@ internal class ApplicationAppearancePreferences(
             catch (e: CancellationException) { if (e !is TimeoutCancellationException) throw e else ApplicationPreferences() }
             catch (_: Exception) { ApplicationPreferences() }
             mutableState.update { it.copy(mode = if (it.edited) it.mode else loaded.mode,
-                profile = if (it.profileEdited) it.profile else loaded.profile, discovery = if (it.discoveryEdited) it.discovery else loaded.discovery,
+                profile = if (it.profileEdited) it.profile else loaded.profile, discovery = (if (it.discoveryEdited) it.discovery else loaded.discovery).let { discovery ->
+                    if (it.wikisourceModeEdited) discovery.copy(wikisourceAllResults = it.discovery.wikisourceAllResults) else discovery
+                },
                 readingLanguage = if (it.readingLanguageEdited) it.readingLanguage else loaded.readingLanguage, loaded = true) }
             if (pending.value != null) pending.value = preferences()
             for (ignored in signal) {
@@ -61,6 +63,11 @@ internal class ApplicationAppearancePreferences(
     fun changeProfile(profile: LocalProfile) {
         if (closed) return
         mutableState.value = state.value.copy(profile = profile, profileEdited = true); enqueue()
+    }
+    fun changeWikisourceMode(all: Boolean) {
+        if (closed) return
+        mutableState.update { it.copy(discovery = it.discovery.copy(wikisourceAllResults = all), wikisourceModeEdited = true) }
+        enqueue()
     }
     fun changeDiscovery(value: org.infinilect.app.discovery.DiscoveryPreferences) {
         if (closed) return

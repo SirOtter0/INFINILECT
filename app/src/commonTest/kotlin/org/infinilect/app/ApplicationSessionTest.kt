@@ -134,8 +134,8 @@ class ApplicationSessionTest {
     @Test fun archiveLibraryOpenKeepsGutenbergSearchAndNeverAcquiresFromGutenberg()=runTest {
         val archive=Source();val gutenberg=Source(SourceId("gutenberg"));val fake=FakeCollections()
         val collections=ApplicationCollections(fake.library,fake.history,StandardTestDispatcher(testScheduler))
-        val owner=ApplicationSources(listOf(SourceOption("Gutenberg",gutenberg,false),SourceOption("Archive",archive,true)),collections=collections) {}
-        val session=session(owner);val search=session.searchSession.value
+        val owner=ApplicationSources(listOf(SourceOption("Gutenberg",gutenberg,false),SourceOption("Archive",archive,true)),collections=collections,appearance=org.infinilect.app.discovery.catalogFixtureAppearance()) {}
+        val session=session(owner);runCurrent();val search=session.searchSession.value
         search.editQuery("keep Gutenberg");search.submitSearch();advanceUntilIdle();val results=search.search.state.value
         session.openSearch(gutenberg.publication);advanceUntilIdle();assertIs<OpenPublicationState.Idle>(session.opening.value)
         session.navigate(Destination.LIBRARY);session.openSaved(PublicationSnapshot.from(archive.publication));advanceUntilIdle()

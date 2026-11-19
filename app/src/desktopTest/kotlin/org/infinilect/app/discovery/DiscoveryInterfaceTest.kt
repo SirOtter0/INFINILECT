@@ -25,7 +25,7 @@ class DiscoveryInterfaceTest {
         val appearance=ApplicationAppearancePreferences(object: ApplicationAppearanceStore {
             override suspend fun load()=if(dark) ApplicationThemeMode.DARK else ApplicationThemeMode.LIGHT
             override suspend fun save(mode: ApplicationThemeMode)=true
-            override suspend fun loadPreferences()=ApplicationPreferences(if(dark) ApplicationThemeMode.DARK else ApplicationThemeMode.LIGHT,LocalProfile("Alex","ES",null,true))
+            override suspend fun loadPreferences()=ApplicationPreferences(if(dark) ApplicationThemeMode.DARK else ApplicationThemeMode.LIGHT,LocalProfile("Alex","ES",null,true),DiscoveryPreferences(showCatalogOnlySources=true))
         },StandardTestDispatcher(test.testScheduler))
         val owner=ApplicationSources(listOf(SourceOption("Internet Archive",source),SourceOption("Project Gutenberg (experimental)",gutenberg)),
             collections=ApplicationCollections(data.library,data.history,StandardTestDispatcher(test.testScheduler)),appearance=appearance,
@@ -63,11 +63,47 @@ class DiscoveryInterfaceTest {
         }
         override fun close(){scene.close();owner.close();test.runCurrent()}
     }
+    @Test fun readableSelectorSharesOneRowAndColdCandidatesSuppressEmptyMessages() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val fixture = CatalogFixture(SourceId("wiki-ui"))
+        val wiki = object : PublicationSource by fixture, ReadabilityCatalogSource {
+            override suspend fun discover(request: DiscoveryRequest, token: String?) = fixture.discover(request, token)
+            override suspend fun cachedReadability(publication: Publication) = CatalogReadability.UNVERIFIED
+            override suspend fun discoverReadable(request: DiscoveryRequest, token: String?) =
+                DiscoveryPage(emptyList(), "next",
+                    listOf(fixture.entry("venus").copy(readability = CatalogReadability.READABLE_CANDIDATE)),
+                    assessmentLimited = true)
+        }
+        val owner = ApplicationSources(listOf(SourceOption("Wikisource", wiki, epubReadingEnabled = true)), sessionDispatcher = dispatcher) {}
+        val app = owner.applicationSession()
+        val scene = ImageComposeScene(320, 840, Density(1f, 1.8f), coroutineContext = dispatcher)
+        try {
+            app.navigate(Destination.SEARCH)
+            scene.setContent { App(owner) }
+            app.discovery.edit("A")
+            app.discovery.submit()
+            repeat(12) { runCurrent(); scene.render(it * 16_666_667L).close() }
+            fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::walk)
+            val nodes = scene.semanticsOwners.flatMap { walk(it.unmergedRootSemanticsNode) }
+            val labels = nodes.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            val modes = nodes.filter { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
+            assertEquals(2, modes.size)
+            val first = modes[0].boundsInRoot
+            val second = modes[1].boundsInRoot
+            assertEquals(first.center.y, second.center.y, absoluteTolerance = 1f)
+            assertTrue(first.right <= second.left)
+            assertEquals(1, labels.count { it == UiText.WIKI_PENDING_HEADING.fallback })
+            assertTrue(labels.any { it.startsWith("Open record:") })
+            assertTrue(labels.none { it in setOf(UiText.DISCOVERY_NO_RESULTS.fallback, UiText.WIKI_FILTER_EMPTY.fallback,
+                UiText.UI_NO_MATCHES_ON_LOADED_PAGES_LOAD_MORE_OR_TRY_ANOTHER_QUERY_SOURCE_OR_LANGUAGE.fallback) })
+        } finally { scene.close(); owner.close(); runCurrent() }
+    }
+
     @Test fun compactAndWideSearchShowsAttributionCoversFiltersAndAccessibleDetails()=runTest {
         for(width in listOf(390,1280)) Fixture(this,width,900).use { f ->
-            f.search();assertTrue(f.visible("Original reading 0"));assertTrue(f.visible("Internet Archive"))
+            f.search();assertTrue(f.visible("Original reading 0"));assertTrue(f.visible("Internet Archive · catalog only"))
             val grid=f.nodes().first { it.config.getOrNull(SemanticsActions.ScrollToIndex)!=null && it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)!=null }
-            assertTrue(grid.config[SemanticsActions.ScrollToIndex].action!!.invoke(11));f.pump();assertTrue(f.visible("Project Gutenberg (experimental)"))
+            assertTrue(grid.config[SemanticsActions.ScrollToIndex].action!!.invoke(11));f.pump();assertTrue(f.visible("Project Gutenberg (experimental) · catalog only"))
             assertTrue(grid.config[SemanticsActions.ScrollToIndex].action!!.invoke(1));f.pump()
             f.click("Sources & filters");assertTrue(f.visible("All languages"));assertTrue(f.visible("English"))
             f.click("Sources & filters");f.click("Details for Original reading 0")
@@ -96,7 +132,7 @@ class DiscoveryInterfaceTest {
     }
     @Test fun genreViewAllUsesActualFilterAndResultsDoNotWriteHistory()=runTest {
         Fixture(this,390,900).use { f ->
-            f.appearance.changeDiscovery(DiscoveryPreferences(homeEnabled=true,interests=setOf(Genre.PHILOSOPHY)));f.pump()
+            f.appearance.changeDiscovery(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true,interests=setOf(Genre.PHILOSOPHY)));f.pump()
             assertTrue(f.app.homeDiscovery.state.value.rows.any{it.genre==Genre.PHILOSOPHY})
             f.app.discovery.browse(Genre.PHILOSOPHY);f.app.navigate(Destination.SEARCH);f.pump()
             assertEquals(Genre.PHILOSOPHY,f.app.discovery.state.value.genre);assertTrue(f.data.opened.isEmpty());assertTrue(f.data.saved.isEmpty())
@@ -125,7 +161,7 @@ class DiscoveryInterfaceTest {
         for ((width,dark) in listOf(390 to false,390 to true,1280 to false)) Fixture(this,width,900,dark).use {f->
             val suffix=if(width==390) "android${if(dark) "-dark" else ""}" else "desktop"
             f.search();f.capture("discovery-search-$suffix.png")
-            f.app.navigate(Destination.HOME);f.appearance.changeDiscovery(DiscoveryPreferences(homeEnabled=true,interests=setOf(Genre.PHILOSOPHY)));f.pump();f.capture("discovery-home-$suffix.png")
+            f.app.navigate(Destination.HOME);f.appearance.changeDiscovery(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true,interests=setOf(Genre.PHILOSOPHY)));f.pump();f.capture("discovery-home-$suffix.png")
         }
     }
 
@@ -161,12 +197,12 @@ class DiscoveryInterfaceTest {
 
     @Test fun repeatedHomeSearchDetailsAndDiscoveryChangesHaveStableLazyIdentities()=runTest {
         Fixture(this,390,900).use { f ->
-            f.appearance.changeDiscovery(DiscoveryPreferences(homeEnabled=true)); f.pump()
+            f.appearance.changeDiscovery(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true)); f.pump()
             repeat(30) { index ->
                 f.app.navigate(Destination.SEARCH); f.app.discovery.edit("Cervantes $index"); advanceTimeBy(350); f.pump()
                 f.click("Details for Original reading 0"); f.click("Close")
                 f.app.navigate(Destination.HOME); f.pump()
-                f.appearance.changeDiscovery(DiscoveryPreferences(homeEnabled=index%2==0)); f.pump()
+                f.appearance.changeDiscovery(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=index%2==0)); f.pump()
             }
             assertTrue(f.data.opened.isEmpty()); assertTrue(f.data.saved.isEmpty())
             assertTrue(f.visible("Hello, Alex!"))

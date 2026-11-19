@@ -18,10 +18,13 @@ internal fun legacyEpubXml(text: String): Pair<String, XmlName?> {
     val end = text.indexOf('>', start)
     requireEpub(end in start + 1..minOf(text.lastIndex, start + 512))
     val declaration = text.substring(start, end + 1)
-    val parsed = Regex("<!DOCTYPE\\s+(html|ncx)\\s+PUBLIC\\s+(['\"])([^'\"]+)\\2\\s+(['\"])([^'\"]+)\\4\\s*>").matchEntire(declaration) ?: invalid()
-    val root = parsed.groupValues[1]
-    val publicId = parsed.groupValues[3]; val systemId = parsed.groupValues[5]
-    val allowed = when (root) {
+    // Exact inert XHTML declaration: no external identifier or internal subset.
+    // Returning the required XHTML root prevents use in OPF/container/NCX XML.
+    val shortHtml = Regex("<!DOCTYPE[ \\t\\r\\n]+html[ \\t\\r\\n]*>").matches(declaration)
+    val parsed = if (shortHtml) null else (Regex("<!DOCTYPE\\s+(html|ncx)\\s+PUBLIC\\s+(['\"])([^'\"]+)\\2\\s+(['\"])([^'\"]+)\\4\\s*>").matchEntire(declaration) ?: invalid())
+    val root = if (shortHtml) "html" else parsed!!.groupValues[1]
+    val publicId = parsed?.groupValues?.get(3); val systemId = parsed?.groupValues?.get(5)
+    val allowed = shortHtml || when (root) {
         "html" -> publicId to systemId in setOf(
             "-//W3C//DTD XHTML 1.1//EN" to "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd",
             "-//W3C//DTD XHTML 1.0 Strict//EN" to "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd",
@@ -33,7 +36,7 @@ internal fun legacyEpubXml(text: String): Pair<String, XmlName?> {
     requireEpub(allowed)
     val stripped = text.removeRange(start, end + 1)
     requireEpub(!stripped.contains("<!DOCTYPE", ignoreCase = true))
-    val normalized = if (root == "html") buildString {
+    val normalized = if (root == "html" && !shortHtml) buildString {
         var offset = 0
         while (offset < stripped.length) {
             val terminator = when {

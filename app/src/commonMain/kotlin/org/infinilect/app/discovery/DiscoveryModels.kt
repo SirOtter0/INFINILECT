@@ -5,10 +5,10 @@ package org.infinilect.app.discovery
 import org.infinilect.core.*
 
 /** Display metadata is separate from resource authority and durable publication identity. */
-internal data class DiscoveryEntry(val publication: Publication, val subjects: List<String> = emptyList(), val description: String? = null, val thumbnail: String? = null) {
+internal data class DiscoveryEntry(val publication: Publication, val subjects: List<String> = emptyList(), val description: String? = null, val thumbnail: String? = null, val readability: CatalogReadability? = null) {
     val genres = subjects.flatMap(::mappedGenres).toSet()
 }
-internal data class DiscoveryPage(val entries: List<DiscoveryEntry>, val nextToken: String? = null)
+internal data class DiscoveryPage(val entries: List<DiscoveryEntry>, val nextToken: String? = null, val candidates: List<DiscoveryEntry> = emptyList(), val assessmentLimited: Boolean = false, val hadCatalogMatches: Boolean = entries.isNotEmpty() || candidates.isNotEmpty(), val assessmentFailed: Boolean = false)
 internal enum class Genre(val label: String, val archiveSubject: String) {
     SCIENCE_FICTION("Science fiction", "Science fiction"), FANTASY("Fantasy", "Fantasy"),
     MYSTERY("Mystery", "Detective and mystery stories"), HISTORY("History", "History"),
@@ -25,16 +25,17 @@ internal fun normalizedQuery(raw: String): String {
     require(raw.length <= 1024 && raw.none { it.code < 32 && !it.isWhitespace() || it.code in 127..159 })
     return raw.trim().split(Regex("\\s+")).joinToString(" ").also { require(it.length <= 256) }
 }
-internal data class DiscoveryRequest(val query: String, val genre: Genre? = null, val language: String? = null) {
+internal data class DiscoveryRequest(val query: String, val genre: Genre? = null, val language: String? = null, val readabilityMode: ReadabilityMode = ReadabilityMode.READABLE, val assessCandidates: Boolean = true) {
     init { require(query == normalizedQuery(query)); require(language == null || language in DISCOVERY_LANGUAGES.keys) }
 }
-internal val DISCOVERY_LANGUAGES = linkedMapOf("en" to "English", "es" to "Spanish", "fr" to "French", "de" to "German", "pt" to "Portuguese")
+internal val DISCOVERY_LANGUAGES = linkedMapOf("en" to "English", "es" to "Spanish", "ca" to "Catalan", "fr" to "French", "de" to "German", "pt" to "Portuguese")
 internal interface DiscoverySource {
     val canBrowseGenres: Boolean get() = false
     suspend fun discover(request: DiscoveryRequest, token: String? = null): DiscoveryPage
 }
 internal data class DiscoveryPreferences(val homeEnabled: Boolean = false, val personalized: Boolean = true,
-    val interests: Set<Genre> = emptySet(), val inferenceAfter: Long = 0) {
+    val interests: Set<Genre> = emptySet(), val inferenceAfter: Long = 0,
+    val showCatalogOnlySources: Boolean = false, val wikisourceAllResults: Boolean = false) {
     init { require(inferenceAfter >= 0) }
 }
 internal object DiscoveryStrings {
@@ -112,9 +113,9 @@ internal fun catalogPlainText(raw: String): String? {
     return text.takeIf { it.isNotBlank() }
 }
 
-/** Five explicit BCP47/ISO639 aliases, not a guessed language. */
+/** Explicit BCP47/ISO639 aliases, not a guessed language. */
 internal fun languageMatches(tag: String, selected: String): Boolean {
     val base = tag.lowercase().substringBefore('-').substringBefore('_')
-    return base in when (selected) { "en" -> setOf("en", "eng"); "es" -> setOf("es", "spa");
+    return base in when (selected) { "en" -> setOf("en", "eng"); "es" -> setOf("es", "spa"); "ca" -> setOf("ca", "cat");
         "fr" -> setOf("fr", "fra", "fre"); "de" -> setOf("de", "deu", "ger"); "pt" -> setOf("pt", "por"); else -> emptySet() }
 }
