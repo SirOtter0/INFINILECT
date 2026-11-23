@@ -2,6 +2,8 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.discovery
 
+import org.infinilect.core.Publication
+
 internal enum class CatalogReadability { READABLE_CONFIRMED, READABLE_CANDIDATE, UNVERIFIED, UNAVAILABLE, WEB_ONLY, TEMPORARY_ERROR }
 internal enum class ReadabilityMode { READABLE, ALL }
 
@@ -16,7 +18,8 @@ internal fun CatalogPublicationInfo.readability() = when {
 
 internal interface ReadabilityCatalogSource : DiscoverySource {
     suspend fun discoverReadable(request: DiscoveryRequest, token: String?): DiscoveryPage
-    suspend fun cachedReadability(publication: org.infinilect.core.Publication): CatalogReadability
+    suspend fun cachedReadability(publication: Publication): CatalogReadability
+    suspend fun verifyReadable(publication: Publication): CatalogReadability = cachedReadability(publication)
 }
 
 internal fun CatalogReadability.resultLabel(): org.infinilect.app.ui.UiText = when (this) {

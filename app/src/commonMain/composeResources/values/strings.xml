@@ -589,6 +589,8 @@
     <string name="wiki_filter_show_all">View all</string>
     <string name="wiki_filter_limit">Only part of the results was checked.</string>
     <string name="discovery_search_prompt">Search by title, author or keyword.</string>
+    <string name="wiki_search_auto_note">Submitting a search in Readable can temporarily fetch up to two authorized EPUBs to check them. To browse without these checks, choose All.</string>
+    <string name="wiki_filter_checking">Checking reading availability…</string>
     <string name="discovery_searching">Searching publications…</string>
     <string name="discovery_no_results">No results were found for this search.</string>
     <string name="discovery_partial_error">Some pages could not be checked.</string>

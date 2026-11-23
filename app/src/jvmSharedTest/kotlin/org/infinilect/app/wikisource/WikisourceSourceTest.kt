@@ -24,6 +24,7 @@ class WikisourceSourceTest {
         @Volatile var exportType="application/epub+zip"
         @Volatile var exportStatus=200
         @Volatile var exportLength:Long?=null
+        @Volatile var omitExportLength = false
         @Volatile var afterExport:(()->Unit)?=null
         var beforeExport:suspend ()->Unit={}
         @Volatile var rows=listOf(pageId,pageId,99999)
@@ -40,8 +41,11 @@ class WikisourceSourceTest {
                 "ws-export.wmcloud.org" -> {
                     exports.incrementAndGet();assertEquals("epub-3",request.url.parameters["format"]);assertEquals(edition.language,request.url.parameters["lang"])
                     beforeExport();afterExport?.invoke()
-                    respond(exportBytes,HttpStatusCode.fromValue(exportStatus),headersOf(HttpHeaders.ContentType to listOf(exportType),
-                        HttpHeaders.ContentLength to listOf((exportLength ?: exportBytes.size.toLong()).toString()),HttpHeaders.Location to listOf("https://127.0.0.1/private")))
+                    respond(exportBytes, HttpStatusCode.fromValue(exportStatus), headers {
+                        append(HttpHeaders.ContentType, exportType)
+                        if (!omitExportLength) append(HttpHeaders.ContentLength, (exportLength ?: exportBytes.size.toLong()).toString())
+                        append(HttpHeaders.Location, "https://127.0.0.1/private")
+                    })
                 }
                 edition.host,"commons.wikimedia.org" -> {
                     assertEquals("/w/api.php",request.url.encodedPath)

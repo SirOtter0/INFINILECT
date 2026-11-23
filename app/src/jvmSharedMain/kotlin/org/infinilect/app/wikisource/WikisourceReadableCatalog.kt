@@ -28,7 +28,7 @@ internal class WikiAssessmentBudget {
     }
 }
 
-/** Metadata-only discovery. Explicit checks stay in the existing details dialog. */
+/** Metadata-only candidate selection. The search controller owns any subsequent EPUB checks. */
 internal class WikisourceReadableCatalog(
     private val edition: WikisourceEdition,
     private val now: () -> Long,
@@ -96,6 +96,8 @@ internal class WikisourceReadableCatalog(
                             when (result.readability) {
                                 CatalogReadability.READABLE_CONFIRMED -> confirmed += result
                                 CatalogReadability.READABLE_CANDIDATE -> candidates += result
+                                CatalogReadability.TEMPORARY_ERROR ->
+                                    if (details.authorized && details.rightsState == CatalogRightsState.VERIFIED) candidates += result
                                 else -> Unit
                             }
                         }

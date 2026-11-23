@@ -50,7 +50,8 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
                         require(page.nextToken == null || page.nextToken.length <= 2048)
                         val filtered = page.entries.map(::boundedEntry).distinctBy { it.publication.id }
                             .filter { entry -> request.language == null || entry.publication.languages.any { languageMatches(it, request.language) } }
-                        require(page.candidates.size <= 25 && page.candidates.all { it.publication.id.sourceId == id && it.readability == CatalogReadability.READABLE_CANDIDATE })
+                        require(page.candidates.size <= 25 && page.candidates.all { it.publication.id.sourceId == id &&
+                            it.readability in setOf(CatalogReadability.READABLE_CANDIDATE, CatalogReadability.TEMPORARY_ERROR) })
                         page.copy(entries = filtered, candidates = page.candidates.distinctBy { it.publication.id }.map(::boundedEntry)
                             .filter { request.language == null || it.publication.languages.any { tag -> languageMatches(tag, request.language) } })
                     } } catch (_: TimeoutCancellationException) { throw DiscoveryTimeout() }
@@ -91,6 +92,23 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
             }
         }
     }
+    // Shared across all editions and any search UI using this session.
+    private val verificationGate = Mutex()
+    private val verificationStarts = ArrayDeque<Long>()
+
+    suspend fun verifyReadable(publication: Publication): CatalogReadability = verificationGate.withLock {
+        job.ensureActive()
+        val source = sources.first { it.id == publication.id.sourceId } as ReadabilityCatalogSource
+        val known = source.cachedReadability(publication)
+        if (known != CatalogReadability.READABLE_CANDIDATE) return@withLock known
+        val startedAt = now()
+        while (verificationStarts.isNotEmpty() && startedAt - verificationStarts.first() !in 0..59_999)
+            verificationStarts.removeFirst()
+        if (verificationStarts.size >= 4) return@withLock known
+        verificationStarts.addLast(startedAt)
+        withTimeoutOrNull(8_000) { source.verifyReadable(publication) } ?: CatalogReadability.READABLE_CANDIDATE
+    }
+
     private fun report(id: SourceId, failure: DiscoveryFailure) {
         // Diagnostic code receives no query, metadata, profile, path or exception message.
         runCatching { diagnostics(DiscoveryDiagnostic(id, failure)) }

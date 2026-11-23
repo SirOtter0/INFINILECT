@@ -66,9 +66,11 @@ class DiscoveryInterfaceTest {
     @Test fun readableSelectorSharesOneRowAndColdCandidatesSuppressEmptyMessages() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val fixture = CatalogFixture(SourceId("wiki-ui"))
+        val verification = CompletableDeferred<CatalogReadability>()
         val wiki = object : PublicationSource by fixture, ReadabilityCatalogSource {
             override suspend fun discover(request: DiscoveryRequest, token: String?) = fixture.discover(request, token)
-            override suspend fun cachedReadability(publication: Publication) = CatalogReadability.UNVERIFIED
+            override suspend fun cachedReadability(publication: Publication) = CatalogReadability.READABLE_CANDIDATE
+            override suspend fun verifyReadable(publication: Publication) = verification.await()
             override suspend fun discoverReadable(request: DiscoveryRequest, token: String?) =
                 DiscoveryPage(emptyList(), "next",
                     listOf(fixture.entry("venus").copy(readability = CatalogReadability.READABLE_CANDIDATE)),
@@ -84,8 +86,14 @@ class DiscoveryInterfaceTest {
             app.discovery.submit()
             repeat(12) { runCurrent(); scene.render(it * 16_666_667L).close() }
             fun walk(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::walk)
-            val nodes = scene.semanticsOwners.flatMap { walk(it.unmergedRootSemanticsNode) }
-            val labels = nodes.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            fun nodes() = scene.semanticsOwners.flatMap { walk(it.unmergedRootSemanticsNode) }
+            fun labels() = nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            assertEquals(1, labels().count { it == UiText.WIKI_FILTER_CHECKING.fallback })
+            assertTrue(labels().none { it == UiText.DISCOVERY_NO_RESULTS.fallback })
+            verification.complete(CatalogReadability.READABLE_CANDIDATE)
+            repeat(12) { runCurrent(); scene.render((it + 12L) * 16_666_667L).close() }
+            val nodes = nodes()
+            val labels = labels()
             val modes = nodes.filter { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
             assertEquals(2, modes.size)
             val first = modes[0].boundsInRoot

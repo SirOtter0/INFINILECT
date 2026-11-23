@@ -107,7 +107,7 @@ class WikisourceOfflineTest {
     @Test fun searchDetailsCheckReadDownloadAndRestartKeepTheSameDurableProgress()=runBlocking<Unit> {
         val root=Files.createTempDirectory("wiki-complete-flow");val f=fixture(root);val owner=Owner(root,f.source);var store=owner.store()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
-        f.source.epubInspector{pub,res->owner.epub.prepare(pub,res,DirectResourceLoader(f.source)).close()}
+        f.source.epubInspector{pub,res,loader->owner.epub.prepare(pub,res,loader).close()}
         try {
             val found=f.source.search("Original work").publications.single{it.id==f.id}
             val details=f.source.catalogInfo(found.id);assertTrue(details.authorized);assertEquals(0,f.exports.get())

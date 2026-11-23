@@ -10,7 +10,6 @@ import org.infinilect.app.epub.*
 import org.infinilect.app.progress.*
 import org.infinilect.app.reader.epub.*
 import org.infinilect.core.*
-import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.app.discovery.CatalogEpubState
 
 /** One deliberate dynamically authorized real export, not a universal availability claim or a normal test.
@@ -35,8 +34,8 @@ object WikisourceOfflineCheck {
         var store=newStore()
         val progressDirectory=root.resolve("progress")
         val readerScope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
-        source.epubInspector{pub,res->
-            val doc=epub.prepare(pub,res,DirectResourceLoader(source))
+        source.epubInspector{pub,res,loader->
+            val doc=epub.prepare(pub,res,loader)
             val reader=EpubReaderController(doc,ReadingProgressId(pub.id,res.key,PublicationFormat.EPUB),readerScope)
             try {
                 reader.initialize(null)

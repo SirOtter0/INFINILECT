@@ -589,6 +589,8 @@
     <string name="wiki_filter_show_all">Ver todos</string>
     <string name="wiki_filter_limit">Se ha revisado una parte de los resultados.</string>
     <string name="discovery_search_prompt">Busca un título, autor o palabra clave.</string>
+    <string name="wiki_search_auto_note">Al lanzar una búsqueda en Legibles, se pueden obtener temporalmente hasta dos EPUB autorizados para comprobarlos. Para explorar el catálogo sin estas comprobaciones, elige Todos.</string>
+    <string name="wiki_filter_checking">Comprobando disponibilidad de lectura…</string>
     <string name="discovery_searching">Buscando publicaciones…</string>
     <string name="discovery_no_results">No se encontraron resultados para esta búsqueda.</string>
     <string name="discovery_partial_error">No se pudieron comprobar algunas fichas.</string>

@@ -1,5 +1,94 @@
 # Wikisource: availability and rights follow-up — PR #39
 
+## Verificación EPUB automática en Buscar
+
+En el realme C55, «A Venus» quedaba como candidato autorizado y requería
+abrir la ficha y pulsar **Comprobar EPUB**. La búsqueda solo cargaba metadatos
+y consultaba confirmaciones ya guardadas en memoria. Con caché vacía, el
+controlador carecía de una ruta para incorporar nuevos EPUB confirmados.
+
+Al enviar la consulta en **Legibles**, el controlador usa los candidatos que
+ya superaron las reglas de derechos. Prioriza coincidencia exacta de título,
+coincidencia tras normalizar mayúsculas, espacios y guiones bajos, coincidencia
+parcial y el orden del proveedor para los empates. Una coincidencia exacta
+puede comenzar mientras responde otra edición. La cuadrícula incorpora cada
+EPUB al terminar su preparación. **Pendientes de comprobar** conserva las
+fichas autorizadas que necesitan comprobación manual y distingue un fallo
+temporal de un EPUB incompatible. **Todos** cancela las comprobaciones y
+muestra el catálogo. Escribir sin enviar la consulta e Inicio consultan
+metadatos. Volver a Legibles o solicitar otra página permite otra comprobación
+acotada. El ajuste de modo se conserva en la preferencia existente.
+
+| Recurso | Límite |
+| --- | --- |
+| Metadatos | Dos páginas y ocho fichas en ocho segundos por operación y edición. Hasta 24 solicitudes y 8 MiB del cuerpo por minuto y edición, incluidas las revalidaciones automáticas. |
+| Verificaciones EPUB | Dos por operación explícita y cuatro comienzos por minuto en toda la sesión, una verificación automática activa entre todas las ediciones. |
+| Tiempo | Ocho segundos por EPUB y 18 segundos para el tramo de búsqueda y comprobación, incluida la espera de metadatos. |
+| Bytes EPUB | 512 KiB de cuerpo por intento, hasta 1 MiB por operación y 2 MiB por minuto de inicios. El exceso queda pendiente y sigue disponible la vía manual. |
+| Memoria y espacio | El mismo preparador en IO, con sus límites existentes de entradas, ratio, análisis y descompresión. Una comprobación automática usa un archivo temporal de hasta 512 KiB y se libera al terminar o al cancelar. |
+| Red móvil y Wi-Fi | Android ya declara el permiso que permite consultar si la conexión es medida. El mismo límite conservador se aplica en toda red para evitar depender de esa señal y mantener el comportamiento en Desktop. |
+
+La comprobación usa la ruta HTTPS y las restricciones de red existentes.
+Vuelve a comprobar derechos e identidad del recurso antes de solicitar el
+EPUB y al finalizar su lectura. La validación ZIP/XML y de capítulos es la
+misma que en la ficha. Las comprobaciones manual y automática se serializan
+por edición y la ficha puede reutilizar una confirmación recién terminada.
+El lector y la descarga consentida siguen siendo consumidores independientes
+del transporte serializado. Una apertura posterior puede necesitar recuperar
+el EPUB de nuevo. La comprobación temporal no crea una descarga offline.
+
+La caché guarda 32 observaciones por edición. La identidad incluye la fuente,
+página, revisión y clave de recurso con la política EPUB. Las confirmaciones
+caducan en diez minutos, y los errores transitorios en 30 segundos. Una nueva
+consulta, el cambio de fuente, **Todos** o salir de Buscar cancelan la
+verificación activa. Al volver se conservan los resultados ya confirmados.
+Sin conexión, los errores de proveedor son recuperables y las copias
+descargadas siguen disponibles en su flujo independiente.
+
+Para probar en el realme C55 con caché fría, usa «Forzar detención» en
+Información de la aplicación, vuelve a abrir INFINILECT, entra en Buscar y envía «A Venus» con **Legibles** activo. Espera el estado de
+comprobación y abre la ficha únicamente después de que la obra aparezca en
+la cuadrícula. Repite la consulta con la caché caliente. Prueba también «A» y
+comprueba que una revisión limitada permite elegir **Todos** o cargar otra
+página. Cambia de modo o pestaña durante una comprobación y reabre en modo avión
+un libro descargado previamente.
+
+### Medición de la búsqueda automática del 23 de noviembre de 2026
+
+El comprobador opt-in ejecutó el controlador de Buscar, el adaptador real de
+cada edición y FileEpubPreparer en Desktop. Cada consulta partió de una
+sesión de Wikisource nueva. «Caliente» repitió la consulta en la misma sesión
+y ventana de presupuesto. Las peticiones y bytes de metadatos incluyen la
+revalidación de derechos. Los bytes EPUB miden el cuerpo leído por la
+aplicación. Los tiempos corresponden a una ejecución, incluido el transporte.
+
+| Edición · consulta | Fichas evaluadas | Autorizadas | EPUB confirmados / pendientes | Metadatos fría peticiones / bytes | EPUB fría peticiones / bytes | Primer libro / total fría (ms) | Caliente peticiones/bytes de metadatos · total (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| es · A Venus (1927) | 8 | 1 | 1 / 0 | 14 / 33.226 | 1 / 21.372 | 7.412 / 7.412 | 2 / 2.475 · 314 |
+| es · A | 8 | 0 | 0 / 0 | 11 / 44.229 | 0 / 0 | — / 5.043 | 0 / 0 · 6 |
+| es · Rima LIII (1630) | 8 | 4 | 1 / 3 | 24 / 111.243 | 1 / 19.594 | 7.884 / 8.014 | 0 / 0 · 10 |
+| es · Canción del pirata (2331) | 8 | 1 | 1 / 0 | 17 / 107.850 | 1 / 19.800 | 7.442 / 7.442 | 0 / 0 · 49 |
+| en · Smokey the Bear Sutra (3879) | 1 | 1 | 1 / 0 | 4 / 17.447 | 1 / 23.773 | 5.006 / 5.006 | 0 / 0 · 10 |
+| ca · L’emigrant (1683) | 8 | 1 | 1 / 0 | 15 / 34.073 | 1 / 20.570 | 7.902 / 7.902 | 0 / 0 · 4 |
+
+Los cinco EPUB transferidos en frío pasaron la preparación. No se transfirió
+ningún EPUB al repetir las consultas o pasar a «Todos». En «A», el catálogo
+devolvió 20 fichas y un cursor. Ocho fichas entraron en la evaluación de
+derechos y ninguna obtuvo autorización positiva. La cuadrícula estricta
+quedó vacía y siguió disponible la continuación. «Rima LIII» agotó las
+24 solicitudes de metadatos con tres candidatos pendientes. «A Venus»
+se confirmó aunque hubo metadatos inválidos en otra ficha.
+
+Los picos muestreados de ZIP temporal fueron de 19.594 a 23.773 bytes en los
+cinco casos, y los archivos de preparación se liberaron al cerrar el
+comprobador. La variación de heap JVM muestreada entre inicio y pico fue de
+7.515.664 a 135.847.680 bytes en los casos con EPUB. Incluye inicialización,
+metadatos, red y recolección del proceso Desktop. El realme C55 queda
+pendiente para medir memoria, datos y tiempos en Android.
+
+Los apartados siguientes conservan las mediciones históricas de las revisiones
+previas, antes de la comprobación automática.
+
 ## Descubrimiento con caché fría en la PR #39
 
 La búsqueda de una letra en el realme C55 dejó vacía la cuadrícula de EPUB

@@ -12,8 +12,11 @@ mismo campo de preferencias y valor inicial. [Comportamiento y prueba física](W
 ## Disponibilidad de resultados y preferencias de Wikisource
 
 **Legibles** filtra la cuadrícula por preparación real del EPUB y autorización
-positiva. Los candidatos se consultan y comprueban desde su ficha. **Todos**
-recupera el catálogo general con estados conocidos. Los demás proveedores
+positiva. Enviar la consulta con la lupa, Intro o el teclado, volver a **Legibles**
+o pedir más resultados permite comprobar hasta dos candidatos autorizados. Escribir
+sin enviar consulta solo metadatos. La ficha conserva la comprobación manual para
+los casos pendientes. **Todos** recupera el catálogo general con estados conocidos
+y cancela la comprobación automática. Los demás proveedores
 conservan la búsqueda y la paginación existentes. [Presupuestos y prueba manual](WIKISOURCE.md).
 
 El campo local `wikisourceAllResults` se guarda en el registro atómico de
@@ -108,8 +111,9 @@ are never uploaded. Selected interests can influence ordinary subject queries.
 Requests use the existing project user-agent/contact and normal network transport;
 providers see connection/network information. Country is user-declared, not verified
 legal eligibility, and is not sent or used as a universal copyright classifier.
-Discovery is separate from acquisition; no restriction, licensing or geographic
-acquisition check is bypassed. No cloud profile, AI API, new provider or scraper.
+Las comprobaciones EPUB de Wikisource vuelven a validar derechos y revisión antes
+de adquirir bytes y al final de la transferencia. Usan el preparador y el
+almacenamiento temporal existentes. [Límites y cancelación](WIKISOURCE.md). No cloud profile, AI API, new provider or scraper.
 
 Explicit budgets:
 
@@ -138,8 +142,9 @@ Explicit budgets:
   typographic cover; negative thumbnail results may persist in that session cache.
 - Closing cancels catalog/controller/Home work and clears metadata and advertised
   thumbnail maps. Screen/reader exit cancels obsolete requests. Cover leases reuse
-  existing release/cancellation. Preferences alone persist privately; no book payload,
-  thumbnail or catalog content is added to disk by discovery.
+  existing release/cancellation. Wikisource uses private preparation files for its
+  bounded checks, then closes them. The setting persists and confirmations are
+  retained only in session memory.
 
 ## Verification and manual acceptance
 

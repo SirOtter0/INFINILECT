@@ -8,6 +8,16 @@ success, a historical author, a namespace, search snippet, metadata license or
 site footer is never sufficient. Source assertions can be wrong; the application
 cannot independently establish authorship/authority merely from an API response.
 
+## Comprobación automática en Buscar
+
+**Legibles** solo programa EPUB de candidatos con una autorización positiva
+según las reglas de esta página. El transporte repite la comprobación de
+derechos, identidad y revisión antes de solicitar bytes y al completar la
+transferencia. Un límite de tamaño de la comprobación automática deja el EPUB
+pendiente para la vía manual. Un éxito técnico se conserva temporalmente
+en memoria y no sustituye una autorización ni genera una copia offline.
+[Presupuestos y comportamiento del filtro](WIKISOURCE.md).
+
 ## Independent decisions
 
 `CatalogPublicationInfo` carries page kind, EPUB technical state and rights state.

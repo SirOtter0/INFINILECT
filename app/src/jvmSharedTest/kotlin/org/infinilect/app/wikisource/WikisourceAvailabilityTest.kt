@@ -4,7 +4,6 @@ package org.infinilect.app.wikisource
 
 import java.nio.file.Files
 import kotlinx.coroutines.*
-import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.app.discovery.*
 import org.infinilect.app.epub.*
 import org.infinilect.app.downloads.*
@@ -16,7 +15,7 @@ class WikisourceAvailabilityTest {
     private suspend fun withSource(body:suspend(WikisourceSourceTest.Fixture,FileEpubPreparer)->Unit) {
         val root=Files.createTempDirectory("wiki-availability");val f=WikisourceSourceTest.Fixture(zip=book())
         val preparer=FileEpubPreparer(root,validateDocument=f.source::validateDocument)
-        f.source.epubInspector{pub,res->preparer.prepare(pub,res,DirectResourceLoader(f.source)).close()}
+        f.source.epubInspector{pub,res,loader->preparer.prepare(pub,res,loader).close()}
         try{body(f,preparer)}finally{f.close();preparer.close();preparer.awaitClosed();assertTrue(payloads(root).isEmpty());root.toFile().deleteRecursively()}
     }
     @Test fun resourceCandidatesAndUncheckedFormatExistWithoutGrantingRightsOrFetchingBytes()=runBlocking<Unit> {
@@ -67,7 +66,7 @@ class WikisourceAvailabilityTest {
     @Test fun aLateInspectorResultCannotPublishValidationAfterNavigationCancelsIt()=runBlocking<Unit> {
         val f=WikisourceSourceTest.Fixture()
         val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
-        f.source.epubInspector{_,_->withContext(NonCancellable){entered.complete(Unit);release.await()}}
+        f.source.epubInspector{_,_,_->withContext(NonCancellable){entered.complete(Unit);release.await()}}
         try {
             val job=launch{f.source.checkEpub(f.id)}
             withTimeout(5000){entered.await()};job.cancel();release.complete(Unit);job.join()
@@ -95,4 +94,74 @@ class WikisourceAvailabilityTest {
         }
     }
 
+    @Test fun authorizedColdCandidateUsesRealPreparerAndWarmResultUsesNoMoreBytes() = runBlocking<Unit> {
+        withSource { f, _ ->
+            f.rows = listOf(101)
+            val query = DiscoveryRequest("Original work")
+            val candidate = f.source.discoverReadable(query, null).candidates.single()
+            assertEquals(0, f.exports.get())
+            assertEquals(CatalogReadability.READABLE_CONFIRMED, f.source.verifyReadable(candidate.publication))
+            assertEquals(1L to f.zip.size.toLong(), f.source.automaticTraffic())
+            assertEquals(CatalogReadability.READABLE_CONFIRMED, f.source.verifyReadable(candidate.publication))
+            assertEquals(1, f.exports.get())
+            assertEquals(candidate.publication.id, f.source.discoverReadable(query, null).entries.single().publication.id)
+        }
+    }
+
+    @Test fun oversizedAdvertisedAndUnannouncedBodiesStayPendingWithoutPoisoningManualCheck() = runBlocking<Unit> {
+        withSource { f, _ ->
+            val publication = assertNotNull(f.source.catalogInfo(f.id).metadata)
+            val cap = 512 * 1024
+            f.exportLength = (cap + 1).toLong()
+            assertEquals(CatalogReadability.READABLE_CANDIDATE, f.source.verifyReadable(publication))
+            assertEquals(1L to 0L, f.source.automaticTraffic())
+            f.omitExportLength = true
+            f.exportBytes = ByteArray(cap + 4096)
+            assertEquals(CatalogReadability.READABLE_CANDIDATE, f.source.verifyReadable(publication))
+            assertEquals(2L to cap.toLong(), f.source.automaticTraffic())
+            f.exportBytes = book()
+            assertEquals(CatalogEpubState.VALIDATED, f.source.checkEpub(f.id).epubState)
+        }
+    }
+
+    @Test fun revokedAuthorizationAndRevisionAreCheckedBeforeAnyExport() = runBlocking<Unit> {
+        withSource { f, _ ->
+            val publication = assertNotNull(f.source.catalogInfo(f.id).metadata)
+            f.text = "{{header|author=Original creator}}"
+            f.revision++
+            assertEquals(CatalogReadability.UNVERIFIED, f.source.verifyReadable(publication))
+            assertEquals(0, f.exports.get())
+        }
+    }
+
+    @Test fun manualInspectionJoinsAnAutomaticSuccessForTheSameRevision() = runBlocking<Unit> {
+        withSource { f, _ ->
+            val publication = assertNotNull(f.source.catalogInfo(f.id).metadata)
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            f.beforeExport = { started.complete(Unit); release.await() }
+            val automatic = async { f.source.verifyReadable(publication) }
+            withTimeout(5000) { started.await() }
+            val manual = async(start = CoroutineStart.UNDISPATCHED) { f.source.checkEpub(f.id) }
+            release.complete(Unit)
+            assertEquals(CatalogReadability.READABLE_CONFIRMED, automatic.await())
+            assertEquals(CatalogEpubState.VALIDATED, manual.await().epubState)
+            assertEquals(1, f.exports.get())
+        }
+    }
+
+    @Test fun automaticFailuresDistinguishTemporaryOutageFromAnInvalidEpub() = runBlocking<Unit> {
+        withSource { f, _ ->
+            val publication = assertNotNull(f.source.catalogInfo(f.id).metadata)
+            f.exportStatus = 503
+            assertEquals(CatalogReadability.TEMPORARY_ERROR, f.source.verifyReadable(publication))
+            assertEquals(CatalogReadability.TEMPORARY_ERROR, f.source.verifyReadable(publication))
+            assertEquals(1, f.exports.get())
+            f.clock += 30_001
+            f.exportStatus = 200
+            f.exportBytes = "not an EPUB".encodeToByteArray()
+            assertEquals(CatalogReadability.UNAVAILABLE, f.source.verifyReadable(publication))
+            assertEquals(2, f.exports.get())
+        }
+    }
 }

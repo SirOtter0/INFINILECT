@@ -82,12 +82,13 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                 contentPadding = PaddingValues(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status", contentType = "status") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite })
+                        if (state.loading || state.checkingReadability) LinearProgressIndicator(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite })
                         if (state.invalidQuery) Text(strings[UiText.UI_USE_AT_MOST_256_CHARACTERS_AND_NO_CONTROL_CHARACTERS], color = MaterialTheme.colors.error)
                         val status = state.resultStatus()
                         val label = when (status) {
                             DiscoveryStatus.IDLE -> UiText.DISCOVERY_SEARCH_PROMPT
                             DiscoveryStatus.SEARCHING -> UiText.DISCOVERY_SEARCHING
+                            DiscoveryStatus.CHECKING -> UiText.WIKI_FILTER_CHECKING
                             DiscoveryStatus.SELECT_SOURCES -> UiText.UI_SELECT_AT_LEAST_ONE_SOURCE_SUBJECT_BROWSING_CURRENTLY_REQUIRES_INTERNET_ARCHIVE
                             DiscoveryStatus.LIMITED -> UiText.WIKI_FILTER_LIMIT
                             DiscoveryStatus.UNCONFIRMED -> UiText.WIKI_FILTER_EMPTY
@@ -110,8 +111,11 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                         }
                     }
                 }
+                items(state.entries, key = { it.publication.id.resultKey() }, contentType = { "publication" }) { entry ->
+                    DiscoveryTile(entry, application, Modifier.fillMaxWidth()) { detail = entry }
+                }
                 val pending = state.catalogs.flatMap { it.candidates }
-                if (state.readabilityMode == ReadabilityMode.READABLE && pending.isNotEmpty()) {
+                if (state.readabilityMode == ReadabilityMode.READABLE && pending.isNotEmpty() && !state.checkingReadability) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "wiki-pending") {
                         Column {
                             Text(strings[UiText.WIKI_PENDING_HEADING], style = MaterialTheme.typography.subtitle2)
@@ -120,12 +124,13 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                     }
                     items(pending, key = { "pending:" + it.publication.id.resultKey() }, span = { GridItemSpan(maxLineSpan) }) { entry ->
                         TextButton({ detail = entry }, Modifier.heightIn(min = 48.dp)) {
-                            Text(strings.format(UiText.WIKI_PENDING_OPEN, entry.publication.title))
+                            Column {
+                                Text(strings.format(UiText.WIKI_PENDING_OPEN, entry.publication.title))
+                                if (entry.readability == CatalogReadability.TEMPORARY_ERROR)
+                                    Text(strings[UiText.WIKI_EPUB_TEMPORARY], style = MaterialTheme.typography.caption)
+                            }
                         }
                     }
-                }
-                items(state.entries, key = { it.publication.id.resultKey() }, contentType = { "publication" }) { entry ->
-                    DiscoveryTile(entry, application, Modifier.fillMaxWidth()) { detail = entry }
                 }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "more", contentType = "status") {
                     Column {
@@ -135,7 +140,7 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                             Text(strings[UiText.DISCOVERY_PARTIAL_ERROR], style = MaterialTheme.typography.caption)
                         if (state.catalogs.any { it.nextToken != null && it.pages >= 4 })
                             Text(strings[UiText.UI_SHOWING_UP_TO_100_RESULTS_PER_SOURCE_REFINE_YOUR_SEARCH_FOR_MORE], style = MaterialTheme.typography.caption)
-                        if (wikiMore.isNotEmpty()) {
+                        if (wikiMore.isNotEmpty() && !state.checkingReadability) {
                             var expanded by remember(state.generation, state.readabilityMode) { mutableStateOf(false) }
                             Box {
                                 TextButton({ expanded = true }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.WIKI_MORE_EDITIONS]) }
@@ -181,6 +186,7 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
             dismissButton = { TextButton(controller::resetFilters, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.UI_RESET_FILTERS]) } })
         if (help) AlertDialog(onDismissRequest = { help = false }, title = { Text(strings[UiText.UI_ABOUT_CATALOG_SEARCH]) },
             text = { Column(Modifier.heightIn(max = maxHeight * .6f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (controller.hasReadableSources) Text(strings[UiText.WIKI_SEARCH_AUTO_NOTE])
                 Text(strings[UiText.UI_SUBJECTS_SEARCH_INTERNET_ARCHIVE_S_LIMITED_CC0_TEXT_CATALOG_NOT_THE_WHOLE_ARCHIV]); Text(strings[UiText.UI_LANGUAGES_FILTER_RETURNED_METADATA_MISSING_LANGUAGE_IS_EXCLUDED]); Text(strings[UiText.UI_CATALOG_PRESENCE_IS_NOT_PERMISSION_TO_DOWNLOAD_OR_PROOF_OF_RIGHTS_IN_YOUR_COUNTR]); Text(strings[UiText.DISCOVERY_PRIVACY]); Text(strings[UiText.UI_ADVERTISED_GUTENBERG_THUMBNAILS_ARE_OPTIONAL_OTHER_OR_UNAVAILABLE_ARTWORK_USES_A])
             } }, confirmButton = { TextButton({ help = false }) { Text(strings[UiText.DONE]) } })
     }

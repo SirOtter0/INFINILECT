@@ -589,6 +589,8 @@
     <string name="wiki_filter_show_all">Mostra’ls tots</string>
     <string name="wiki_filter_limit">S’ha revisat una part dels resultats.</string>
     <string name="discovery_search_prompt">Cerca un títol, autor o paraula clau.</string>
+    <string name="wiki_search_auto_note">En iniciar una cerca a Llegibles, es poden obtenir temporalment fins a dos EPUB autoritzats per comprovar-los. Per explorar el catàleg sense aquestes comprovacions, tria Tots.</string>
+    <string name="wiki_filter_checking">S’està comprovant la disponibilitat de lectura…</string>
     <string name="discovery_searching">Cercant publicacions…</string>
     <string name="discovery_no_results">No s’han trobat resultats per a aquesta cerca.</string>
     <string name="discovery_partial_error">No s’han pogut comprovar algunes fitxes.</string>

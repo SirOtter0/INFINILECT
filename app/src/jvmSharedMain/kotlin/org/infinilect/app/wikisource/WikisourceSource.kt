@@ -20,6 +20,8 @@ import org.infinilect.app.downloads.*
 import org.infinilect.app.network.*
 import org.infinilect.core.*
 
+private const val AUTOMATIC_EPUB_BYTES = 512L * 1024
+private class WikiAutomaticLimit : Exception()
 private class WikiHttp(val status:Int):Exception()
 private class WikiFailure(kind:CatalogErrorKind,cause:Throwable?=null):CatalogSourceException(kind,cause) {
     override val message get()=catalogFailureMessage("Wikisource",kind)
@@ -34,6 +36,10 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     private val scope=CoroutineScope(lifetime+Dispatchers.IO)
     private val closed=AtomicBoolean();private val shutdown=CompletableDeferred<Unit>()
     private val metadataGate=Mutex();private val exportGate=Mutex();private val cooldown=AtomicLong()
+    private val inspectionGate = Mutex()
+    private val automaticRequests = AtomicLong()
+    private val automaticPayloadBytes = AtomicLong()
+    internal fun automaticTraffic() = automaticRequests.get() to automaticPayloadBytes.get()
     private val client=HttpClient(engine) {followRedirects=false;expectSuccess=false;install(HttpTimeout) {connectTimeoutMillis=5000;requestTimeoutMillis=20000;socketTimeoutMillis=15000}}
     private val rights=WikisourceRights(::bytes)
     private val catalog=WikisourceCatalog(edition,::bytes,now,rights::assess)
@@ -51,7 +57,12 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     private var budget: WikiAssessmentBudget? = null // metadata gate only
     private val minuteBudget = WikiAssessmentBudget()
     private var windowStart: Long? = null
-    private val filter = WikisourceReadableCatalog(edition, now, catalog::discover, ::resolvedInfo, ::knownReadability)
+    private val assessedDetails = AtomicLong()
+    internal fun assessedDetailCount() = assessedDetails.get()
+    private val filter = WikisourceReadableCatalog(edition, now, catalog::discover, { id ->
+        assessedDetails.incrementAndGet()
+        resolvedInfo(id)
+    }, ::knownReadability)
     private fun knownReadability(publication: Publication): CatalogReadability {
         val resource = publication.resources.singleOrNull() ?: return CatalogReadability.WEB_ONLY
         val record = catalog.cached(publication.id) ?: return CatalogReadability.UNVERIFIED
@@ -68,18 +79,30 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     override suspend fun discoverReadable(request: DiscoveryRequest, token: String?): DiscoveryPage {
         if (request.genre != null || request.language != null && request.language != edition.language) return DiscoveryPage(emptyList())
         return operation {
-            if (request.readabilityMode == ReadabilityMode.READABLE && request.assessCandidates) {
-                if (windowStart?.let { now() - it in 0..59_999 } != true) {
-                    windowStart = now()
-                    minuteBudget.reset()
-                }
-                budget = minuteBudget
+            withAssessmentBudget(request.readabilityMode == ReadabilityMode.READABLE && request.assessCandidates) {
+                filter.load(request, token)
             }
-            try { filter.load(request, token) } finally { budget = null }
         }
     }
-    private var inspectExport:(suspend (Publication,PublicationResource)->Unit)?=null
-    fun epubInspector(block:suspend(Publication,PublicationResource)->Unit) {check(inspectExport==null);inspectExport=block}
+    private suspend fun <T> withAssessmentBudget(enabled: Boolean, block: suspend () -> T): T {
+        if (!enabled) return block()
+        if (windowStart?.let { now() - it in 0..59_999 } != true) {
+            windowStart = now()
+            minuteBudget.reset()
+        }
+        budget = minuteBudget
+        try {
+            return block()
+        } finally {
+            budget = null
+        }
+    }
+
+    private var inspectExport: (suspend (Publication, PublicationResource, ResourceLoader) -> Unit)? = null
+    fun epubInspector(block: suspend (Publication, PublicationResource, ResourceLoader) -> Unit) {
+        check(inspectExport == null)
+        inspectExport = block
+    }
     override val canCheckEpub get()=inspectExport!=null
     private fun observed(resource:PublicationResource,state:CatalogEpubState) = synchronized(observations) {
         observations.remove(resource.publicationId to resource.key)
@@ -96,6 +119,7 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
             catch(e:WikisourceInvalid){throw WikiFailure(CatalogErrorKind.INVALID_JSON,e)}
             catch(e:WikiHttp){throw WikiFailure(when(e.status){429->CatalogErrorKind.HTTP_RATE_LIMITED;403->CatalogErrorKind.HTTP_FORBIDDEN;in 300..399->CatalogErrorKind.REDIRECT;else->CatalogErrorKind.HTTP_ERROR},e)}
             catch(e:WikisourceReviewRequired){throw e}
+            catch(e:WikiBudgetReached){throw e}
             catch(e:CatalogSourceException){throw e}
             catch(e:Exception){throw WikiFailure(CatalogErrorKind.CONNECTION,e)}
         }}
@@ -146,6 +170,8 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     private suspend fun <T> downloading(block:suspend()->T):T=try {block()}
     catch(e:CancellationException){throw e}
     catch(e:DownloadException){throw e}
+    catch(e:WikiAutomaticLimit){throw e}
+    catch(e:WikiBudgetReached){throw e}
     catch(e:WikisourceReviewRequired){throw DownloadException(DownloadFailure.RIGHTS_UNVERIFIED)}
     catch(e:WikiHttp){throw DownloadException(DownloadFailure.HTTP,e.status)}
     catch(e:WikisourceInvalid){throw DownloadException(DownloadFailure.INVALID)}
@@ -164,73 +190,127 @@ internal class WikisourceSource(val edition:WikisourceEdition=WikisourceEdition.
     /** Pure technical validation also works with a closed source and no network. */
     suspend fun validateDocument(document:EpubDocument,resource:PublicationResource,publication:Publication) {
         validateWikisourceExport(document,resource,publication,edition)
+        currentCoroutineContext().ensureActive()
         observed(resource,CatalogEpubState.VALIDATED)
     }
-    override suspend fun checkEpub(id:PublicationId):CatalogPublicationInfo {
-        val row=operation {catalog.record(id,fresh=true)}
-        val resource=row.publication.resources.singleOrNull() ?: return catalogInfo(id)
-        // An unknown legal state is never an assertion that no EPUB exists.
-        // Do not acquire protected bytes just to inspect their format.
-        if(!row.grant.authorized || inspectExport==null)return catalogInfo(id)
-        try {
-            inspectExport!!.invoke(row.publication,resource)
-            currentCoroutineContext().ensureActive()
-            observed(resource,CatalogEpubState.VALIDATED)
-        }catch(e:CancellationException){throw e}
-        catch(e:Exception) {
-            currentCoroutineContext().ensureActive()
-            // Preparers wrap transport failures; retain numeric HTTP semantics
-            // instead of mislabelling a server outage as an incompatible book.
-            var cause:Throwable?=e;var status:Int?=null;var epub:org.infinilect.app.reader.EpubException?=null
-            repeat(8) {
-                val value=cause
-                if(value is WikiHttp)status=value.status
-                if(value is DownloadException && value.httpStatus!=null)status=value.httpStatus
-                if(value is org.infinilect.app.reader.EpubException)epub=value
-                cause=value?.cause
+    override suspend fun checkEpub(id: PublicationId): CatalogPublicationInfo {
+        val joinedInspection = inspectionGate.isLocked
+        return inspectionGate.withLock {
+            val row = operation { catalog.record(id, fresh = true) }
+            val resource = row.publication.resources.singleOrNull()
+            if (resource != null && row.grant.authorized &&
+                !(joinedInspection && observation(resource) == CatalogEpubState.VALIDATED)) {
+                inspect(row.publication, resource, automatic = false)
             }
-            observed(resource,when {
-                status==404->CatalogEpubState.UNAVAILABLE
-                status!=null->CatalogEpubState.TEMPORARY_ERROR
-                epub?.failure in setOf(org.infinilect.app.reader.EpubFailure.INVALID,org.infinilect.app.reader.EpubFailure.LIMIT,org.infinilect.app.reader.EpubFailure.ENCRYPTED)->CatalogEpubState.INCOMPATIBLE
-                else->CatalogEpubState.TEMPORARY_ERROR
-            })
+            catalogInfo(id)
         }
-        return catalogInfo(id)
     }
 
-    private suspend fun current(resource:PublicationResource):WikiRecord=operation {
-        val record=catalog.record(resource.publicationId,fresh=true)
-        if(!record.grant.authorized || record.publication.resources.singleOrNull()!=resource)throw WikisourceReviewRequired()
-        record
+    override suspend fun verifyReadable(publication: Publication): CatalogReadability = inspectionGate.withLock {
+        val known = cachedReadability(publication)
+        if (known != CatalogReadability.READABLE_CANDIDATE) return@withLock known
+        val resource = publication.resources.single()
+        inspect(publication, resource, automatic = true)
     }
-    override suspend fun loadResource(resource:PublicationResource):ResourceContent {
+
+    private suspend fun inspect(
+        publication: Publication, resource: PublicationResource, automatic: Boolean,
+    ): CatalogReadability {
+        val inspector = inspectExport ?: return CatalogReadability.READABLE_CANDIDATE
+        val loader = object : ResourceLoader {
+            override suspend fun load(resource: PublicationResource): ResourceContent {
+                require(resource == publication.resources.single())
+                return loadExport(resource, automatic)
+            }
+        }
+        val state = try {
+            inspector(publication, resource, loader)
+            CatalogEpubState.VALIDATED
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // Preparers wrap transport failures. A search-specific cap says
+            // nothing about compatibility with the ordinary reader.
+            val causes = generateSequence<Throwable>(error) { it.cause }.take(8).toList()
+            if (causes.any { it is WikisourceReviewRequired || it is DownloadException && it.failure == DownloadFailure.RIGHTS_UNVERIFIED }) return CatalogReadability.UNVERIFIED
+            if (causes.any { it is WikiAutomaticLimit || it is WikiBudgetReached })
+                return CatalogReadability.READABLE_CANDIDATE
+            val status = causes.firstNotNullOfOrNull {
+                when (it) {
+                    is WikiHttp -> it.status
+                    is DownloadException -> it.httpStatus
+                    else -> null
+                }
+            }
+            val epub = causes.filterIsInstance<org.infinilect.app.reader.EpubException>().firstOrNull()
+            when {
+                status == 404 -> CatalogEpubState.UNAVAILABLE
+                status != null -> CatalogEpubState.TEMPORARY_ERROR
+                epub?.failure in setOf(org.infinilect.app.reader.EpubFailure.INVALID,
+                    org.infinilect.app.reader.EpubFailure.LIMIT,
+                    org.infinilect.app.reader.EpubFailure.ENCRYPTED) -> CatalogEpubState.INCOMPATIBLE
+                else -> CatalogEpubState.TEMPORARY_ERROR
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        observed(resource, state)
+        return when (state) {
+            CatalogEpubState.VALIDATED -> CatalogReadability.READABLE_CONFIRMED
+            CatalogEpubState.TEMPORARY_ERROR -> CatalogReadability.TEMPORARY_ERROR
+            else -> CatalogReadability.UNAVAILABLE
+        }
+    }
+
+    private suspend fun current(resource: PublicationResource, automatic: Boolean): WikiRecord = operation {
+        withAssessmentBudget(automatic) {
+            val record = catalog.record(resource.publicationId, fresh = true)
+            if (!record.grant.authorized || record.publication.resources.singleOrNull() != resource)
+                throw WikisourceReviewRequired()
+            record
+        }
+    }
+
+    override suspend fun loadResource(resource: PublicationResource): ResourceContent = loadExport(resource, automatic = false)
+
+    private suspend fun loadExport(resource: PublicationResource, automatic: Boolean): ResourceContent {
         if(resource.publicationId.sourceId!=id || wikiRevision(resource.key)==null || resource.revision!=null || resource.format!=PublicationFormat.EPUB || resource.mediaType!="application/epub+zip")throw WikisourceReviewRequired()
+        val ceiling = if (automatic) AUTOMATIC_EPUB_BYTES else WIKISOURCE_BYTES
         check(!closed.get());currentCoroutineContext().ensureActive()
         val ready=CompletableDeferred<ResourceContent>()
         val producer=scope.launch {
             try {exportGate.withLock {
-                val selected=current(resource)
+                val selected=current(resource, automatic)
                 val url="$WIKISOURCE_EXPORT?lang=${edition.language}&page=${wikiParameter(selected.page.title.replace(' ','_'))}&format=epub-3"
+                if (automatic) automaticRequests.incrementAndGet()
                 client.prepareGet(url) {
                     header(HttpHeaders.UserAgent,PROJECT_USER_AGENT);header(HttpHeaders.Accept,resource.mediaType);header(HttpHeaders.AcceptEncoding,"identity")
                     timeout {requestTimeoutMillis=60000}
                 }.execute {response ->
                     response.success()
                     if(response.headers[HttpHeaders.ContentType]?.substringBefore(';')?.trim()?.lowercase()!=resource.mediaType)throw WikisourceInvalid()
-                    observed(resource,CatalogEpubState.EXPORTABLE)
-                    val expected=response.size(WIKISOURCE_BYTES);val channel=response.bodyAsChannel();val released=CompletableDeferred<Unit>();val handleClosed=AtomicBoolean()
+                    val expected = response.size(WIKISOURCE_BYTES)
+                    // Reserve one byte to detect an oversized/chunked response.
+                    if (automatic && expected != null && expected >= ceiling) throw WikiAutomaticLimit()
+                    val channel=response.bodyAsChannel();val released=CompletableDeferred<Unit>();val handleClosed=AtomicBoolean()
                     val content=object:ResourceContent {
                         override val sizeBytes=expected
                         var consumed=0L;var verified=false
                         override suspend fun read(buffer:ByteArray,offset:Int,length:Int):Int=downloading {withContext(Dispatchers.IO) {
                             require(offset in 0..buffer.size && length in 0..buffer.size-offset);check(!handleClosed.get());if(length==0)return@withContext 0
                             currentCoroutineContext().ensureActive()
-                            val n=channel.readAvailable(buffer,offset,minOf(length.toLong(),WIKISOURCE_BYTES-consumed+1).toInt())
+                            val remaining = ceiling - consumed
+                            if (automatic && remaining == 0L) throw WikiAutomaticLimit()
+                            val n = channel.readAvailable(buffer, offset, minOf(length.toLong(),
+                                if (automatic) remaining else remaining + 1).toInt())
+                            if (automatic && n > 0) automaticPayloadBytes.addAndGet(n.toLong())
                             if(n<0) {
                                 if(expected!=null && consumed!=expected)throw DownloadException(DownloadFailure.INCOMPLETE)
-                                if(!verified) {current(resource);verified=true}
-                            } else {consumed+=n;if(consumed>WIKISOURCE_BYTES || expected!=null && consumed>expected)throw DownloadException(DownloadFailure.LIMIT)}
+                                if(!verified) {current(resource, automatic);verified=true}
+                            } else {
+                                consumed += n
+                                if (automatic && consumed >= ceiling) throw WikiAutomaticLimit()
+                                if(consumed>ceiling || expected!=null && consumed>expected)throw DownloadException(DownloadFailure.LIMIT)
+                            }
                             n
                         }}
                         override fun close() {if(handleClosed.compareAndSet(false,true))released.complete(Unit)}

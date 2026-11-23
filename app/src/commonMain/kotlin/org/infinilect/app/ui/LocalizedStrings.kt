@@ -9,6 +9,8 @@ import org.jetbrains.compose.resources.StringResource
 /** Static reviewed resources; content/model inference never produces interface strings. */
 internal enum class UiText(val resource: StringResource, val fallback: String) {
     DISCOVERY_SEARCH_PROMPT(Res.string.discovery_search_prompt, "Search by title, author or keyword."),
+    WIKI_SEARCH_AUTO_NOTE(Res.string.wiki_search_auto_note, "Submitting a search in Readable can temporarily fetch up to two authorized EPUBs to check them. To browse without these checks, choose All."),
+    WIKI_FILTER_CHECKING(Res.string.wiki_filter_checking, "Checking reading availability…"),
     DISCOVERY_SEARCHING(Res.string.discovery_searching, "Searching publications…"),
     DISCOVERY_NO_RESULTS(Res.string.discovery_no_results, "No results were found for this search."),
     DISCOVERY_PARTIAL_ERROR(Res.string.discovery_partial_error, "Some pages could not be checked."),

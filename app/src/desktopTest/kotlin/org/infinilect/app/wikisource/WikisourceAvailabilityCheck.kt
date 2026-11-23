@@ -5,7 +5,6 @@ package org.infinilect.app.wikisource
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
-import org.infinilect.app.acquisition.DirectResourceLoader
 import org.infinilect.app.discovery.*
 import org.infinilect.app.epub.FileEpubPreparer
 import org.infinilect.core.PublicationId
@@ -19,7 +18,7 @@ object WikisourceAvailabilityCheck {
         val root=Files.createTempDirectory("wiki-sample")
         val source=WikisourceSource(edition)
         val preparer=FileEpubPreparer(root,validateDocument=source::validateDocument)
-        source.epubInspector{p,r->preparer.prepare(p,r,DirectResourceLoader(source)).close()}
+        source.epubInspector{p,r,loader->preparer.prepare(p,r,loader).close()}
         try {
             for(number in args.drop(1)) {
                 val id=PublicationId(edition.id,number.toInt().also{require(it>0)}.toString())
