@@ -73,8 +73,8 @@ class DiscoveryInterfaceTest {
             override suspend fun verifyReadable(publication: Publication) = verification.await()
             override suspend fun discoverReadable(request: DiscoveryRequest, token: String?) =
                 DiscoveryPage(emptyList(), "next",
-                    listOf(fixture.entry("venus").copy(readability = CatalogReadability.READABLE_CANDIDATE)),
-                    assessmentLimited = true)
+                    if (request.query == "A") listOf(fixture.entry("venus").copy(readability = CatalogReadability.READABLE_CANDIDATE))
+                    else emptyList(), assessmentLimited = true, hadCatalogMatches = true)
         }
         val owner = ApplicationSources(listOf(SourceOption("Wikisource", wiki, epubReadingEnabled = true)), sessionDispatcher = dispatcher) {}
         val app = owner.applicationSession()
@@ -104,6 +104,11 @@ class DiscoveryInterfaceTest {
             assertTrue(labels.any { it.startsWith("Open record:") })
             assertTrue(labels.none { it in setOf(UiText.DISCOVERY_NO_RESULTS.fallback, UiText.WIKI_FILTER_EMPTY.fallback,
                 UiText.UI_NO_MATCHES_ON_LOADED_PAGES_LOAD_MORE_OR_TRY_ANOTHER_QUERY_SOURCE_OR_LANGUAGE.fallback) })
+            app.discovery.edit("other")
+            app.discovery.submit()
+            repeat(12) { runCurrent(); scene.render((it + 24L) * 16_666_667L).close() }
+            assertEquals(1, labels().count { it == UiText.WIKI_FILTER_EMPTY.fallback })
+            assertTrue(labels().none { it == UiText.DISCOVERY_NO_RESULTS.fallback || it == UiText.WIKI_FILTER_LIMIT.fallback })
         } finally { scene.close(); owner.close(); runCurrent() }
     }
 

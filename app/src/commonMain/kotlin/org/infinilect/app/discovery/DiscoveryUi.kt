@@ -90,7 +90,8 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                             DiscoveryStatus.SEARCHING -> UiText.DISCOVERY_SEARCHING
                             DiscoveryStatus.CHECKING -> UiText.WIKI_FILTER_CHECKING
                             DiscoveryStatus.SELECT_SOURCES -> UiText.UI_SELECT_AT_LEAST_ONE_SOURCE_SUBJECT_BROWSING_CURRENTLY_REQUIRES_INTERNET_ARCHIVE
-                            DiscoveryStatus.LIMITED -> UiText.WIKI_FILTER_LIMIT
+                            DiscoveryStatus.LIMITED -> if (state.readabilityMode == ReadabilityMode.READABLE &&
+                                state.catalogs.any { controller.isReadableSource(it.id) }) UiText.WIKI_FILTER_EMPTY else UiText.WIKI_FILTER_LIMIT
                             DiscoveryStatus.UNCONFIRMED -> UiText.WIKI_FILTER_EMPTY
                             DiscoveryStatus.NO_MATCHES -> UiText.DISCOVERY_NO_RESULTS
                             DiscoveryStatus.PARTIAL_ERROR -> UiText.DISCOVERY_PARTIAL_ERROR.takeIf { state.catalogs.any { row -> row.assessmentFailed } }

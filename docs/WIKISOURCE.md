@@ -21,7 +21,7 @@ acotada. El ajuste de modo se conserva en la preferencia existente.
 
 | Recurso | Límite |
 | --- | --- |
-| Metadatos | Dos páginas y ocho fichas en ocho segundos por operación y edición. Hasta 24 solicitudes y 8 MiB del cuerpo por minuto y edición, incluidas las revalidaciones automáticas. |
+| Metadatos | Dos páginas y ocho fichas en ocho segundos por operación y edición. 24 solicitudes y un presupuesto de 8 MiB del cuerpo por minuto y edición, en bloques de hasta 8 KiB e incluidas las revalidaciones automáticas. |
 | Verificaciones EPUB | Dos por operación explícita y cuatro comienzos por minuto en toda la sesión, una verificación automática activa entre todas las ediciones. |
 | Tiempo | Ocho segundos por EPUB y 18 segundos para el tramo de búsqueda y comprobación, incluida la espera de metadatos. |
 | Bytes EPUB | 512 KiB de cuerpo por intento, hasta 1 MiB por operación y 2 MiB por minuto de inicios. El exceso queda pendiente y sigue disponible la vía manual. |
@@ -78,6 +78,9 @@ derechos y ninguna obtuvo autorización positiva. La cuadrícula estricta
 quedó vacía y siguió disponible la continuación. «Rima LIII» agotó las
 24 solicitudes de metadatos con tres candidatos pendientes. «A Venus»
 se confirmó aunque hubo metadatos inválidos en otra ficha.
+La repetición mediante la tarea Gradle oficial confirmó «A Venus» a los
+5.009 ms en frío con 21.373 bytes EPUB y 33.226 bytes de metadatos. En
+caliente apareció a los 268 ms y el comprobador leyó cero bytes EPUB.
 
 Los picos muestreados de ZIP temporal fueron de 19.594 a 23.773 bytes en los
 cinco casos, y los archivos de preparación se liberaron al cerrar el
@@ -85,6 +88,31 @@ comprobador. La variación de heap JVM muestreada entre inicio y pico fue de
 7.515.664 a 135.847.680 bytes en los casos con EPUB. Incluye inicialización,
 metadatos, red y recolección del proceso Desktop. El realme C55 queda
 pendiente para medir memoria, datos y tiempos en Android.
+
+### Compilación y regresiones
+
+La ejecución completa aprobó 3.471 pruebas. Desktop aprobó 1.819,
+Android-host 1.532 y las suites Core JVM y Core Android-host 60 cada una.
+Compilaron Desktop, Android debug y Android release sin firmar. Pasaron los
+ocho casos de la política de manifiestos, las comprobaciones de ambas
+variantes y los recursos empaquetados. La revisión de localización validó
+598 cadenas y tres plurales en español, inglés y catalán. Lint terminó con
+cero errores y el aviso preexistente GradleDependency por variante sobre
+Compose Foundation. Al ajustar el mensaje de presupuesto agotado se repitieron
+las 1.532 pruebas de Android-host, las 120 del núcleo y 29 pruebas enfocadas
+de Desktop que cubren descubrimiento, verificación y la vista a 320 dp con
+fuente al 180 %.
+
+Se repitieron juntas 53 pruebas de ApplicationInterfaceTest y 24 de
+PageSpreadLayoutTest en 82d4b3f. Pasaron las 77. En la pasada completa actual
+también pasaron ambas clases. Las excepciones anteriores de RectList
+ocurrieron en el cálculo de posiciones interno de Compose durante la
+selección en Biblioteca y la navegación hacia Historial. La evidencia
+confirma su carácter intermitente, pero no permite atribuirlas a una carrera
+concreta ni a una configuración del entorno. El tercer fallo anterior
+correspondía a la alineación que comprobaba la aserción del selector y se
+corrigió antes de esta revisión. Se conserva también el toque de duración
+controlada de PageSpreadLayoutTest.
 
 Los apartados siguientes conservan las mediciones históricas de las revisiones
 previas, antes de la comprobación automática.
