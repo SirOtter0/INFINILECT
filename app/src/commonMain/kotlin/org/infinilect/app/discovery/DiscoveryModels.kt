@@ -5,7 +5,7 @@ package org.infinilect.app.discovery
 import org.infinilect.core.*
 
 /** Display metadata is separate from resource authority and durable publication identity. */
-internal data class DiscoveryEntry(val publication: Publication, val subjects: List<String> = emptyList(), val description: String? = null, val thumbnail: String? = null, val readability: CatalogReadability? = null) {
+internal data class DiscoveryEntry(val publication: Publication, val subjects: List<String> = emptyList(), val description: String? = null, val thumbnail: String? = null, val readability: CatalogReadability? = null, val readabilityFailure: CatalogErrorKind? = null) {
     val genres = subjects.flatMap(::mappedGenres).toSet()
 }
 internal data class DiscoveryPage(val entries: List<DiscoveryEntry>, val nextToken: String? = null, val candidates: List<DiscoveryEntry> = emptyList(), val assessmentLimited: Boolean = false, val hadCatalogMatches: Boolean = entries.isNotEmpty() || candidates.isNotEmpty(), val assessmentFailed: Boolean = false)

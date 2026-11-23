@@ -96,17 +96,26 @@ internal class DiscoveryCatalog(private val sources: List<PublicationSource>,
     private val verificationGate = Mutex()
     private val verificationStarts = ArrayDeque<Long>()
 
-    suspend fun verifyReadable(publication: Publication): CatalogReadability = verificationGate.withLock {
-        job.ensureActive()
+    suspend fun verifyReadable(publication: Publication): CatalogReadability {
         val source = sources.first { it.id == publication.id.sourceId } as ReadabilityCatalogSource
-        val known = source.cachedReadability(publication)
-        if (known != CatalogReadability.READABLE_CANDIDATE) return@withLock known
-        val startedAt = now()
-        while (verificationStarts.isNotEmpty() && startedAt - verificationStarts.first() !in 0..59_999)
-            verificationStarts.removeFirst()
-        if (verificationStarts.size >= 4) return@withLock known
-        verificationStarts.addLast(startedAt)
-        withTimeoutOrNull(8_000) { source.verifyReadable(publication) } ?: CatalogReadability.READABLE_CANDIDATE
+        return withTimeoutOrNull(8_000) {
+            verificationGate.withLock {
+                job.ensureActive()
+                val known = source.cachedReadability(publication)
+                if (known != CatalogReadability.READABLE_CANDIDATE) return@withLock known
+                val startedAt = now()
+                while (verificationStarts.isNotEmpty() && startedAt - verificationStarts.first() !in 0..59_999)
+                    verificationStarts.removeFirst()
+                if (verificationStarts.size >= 4) return@withLock known
+                verificationStarts.addLast(startedAt)
+                source.verifyReadable(publication)
+            }
+        } ?: run {
+            // The preparer can record a confirmation just before the deadline,
+            // even when timeout cancels delivery to this caller. Read memory only.
+            val confirmed = withTimeoutOrNull(1_000) { source.cachedReadability(publication) }
+            if (confirmed == CatalogReadability.READABLE_CONFIRMED) confirmed else throw DiscoveryTimeout()
+        }
     }
 
     private fun report(id: SourceId, failure: DiscoveryFailure) {

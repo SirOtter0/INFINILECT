@@ -568,6 +568,7 @@
     <string name="wiki_official_open_failed">No s’ha pogut obrir la pàgina oficial.</string>
     <string name="wiki_kind_text">Text d’una obra · completesa sense verificar</string>
     <string name="wiki_epub_exportable">El servei ofereix un EPUB; falta validar el fitxer.</string>
+    <string name="wiki_epub_check_timeout">La comprovació de l’EPUB ha trigat massa. Pots tornar-ho a provar aquí.</string>
     <string name="wiki_epub_temporary">No s’ha pogut completar la comprovació de l’EPUB. Torna-ho a provar més tard.</string>
     <string name="wiki_rights_verified">Les declaracions de la font permeten obtenir el fitxer; poden existir restriccions territorials.</string>
     <string name="wiki_rights_unknown">No s’ha pogut verificar l’autorització de baixada. La disponibilitat de l’EPUB es comprova per separat.</string>

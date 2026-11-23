@@ -64,68 +64,40 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
         publishReadability(snapshot, publication, result)
     }
 
-    private fun publishReadability(snapshot: DiscoveryState, publication: Publication, result: CatalogReadability) {
+    private fun publishReadability(
+        snapshot: DiscoveryState, publication: Publication, result: CatalogReadability,
+        failure: CatalogErrorKind? = null,
+    ) {
         mutable.update { current ->
             if (current.generation != snapshot.generation || current.readabilityMode != snapshot.readabilityMode) return@update current
             current.copy(catalogs = current.catalogs.map { row ->
                 if (row.id != publication.id.sourceId) return@map row
                 val entry = (row.entries + row.candidates).firstOrNull { it.publication.id == publication.id && it.publication.resources == publication.resources } ?: return@map row
-                val updated = entry.copy(readability = result)
+                val pending = result == CatalogReadability.READABLE_CANDIDATE || result == CatalogReadability.TEMPORARY_ERROR
+                if (pending && entry.readability == CatalogReadability.READABLE_CONFIRMED) return@map row
+                val updated = entry.copy(readability = result, readabilityFailure = failure)
                 if (current.readabilityMode == ReadabilityMode.ALL)
                     row.copy(entries = row.entries.map { if (it.publication.id == publication.id) updated else it })
                 else row.copy(
                     entries = if (result == CatalogReadability.READABLE_CONFIRMED) distinctEntries(row.entries + updated).take(100)
                         else row.entries.filter { it.publication.id != publication.id },
-                    candidates = if (result in setOf(CatalogReadability.READABLE_CANDIDATE, CatalogReadability.TEMPORARY_ERROR))
+                    candidates = if (pending)
                         row.candidates.map { if (it.publication.id == publication.id) updated else it }
                         else row.candidates.filter { it.publication.id != publication.id })
             })
         }
     }
     private fun stopVerification() {
-        verification?.cancel()
+        val previous = verification
         verification = null
+        previous?.cancel()
     }
 
-    private fun verifyResults() {
-        val snapshot = state.value
-        val query = snapshot.request?.query?.takeIf { it.isNotEmpty() } ?: return
-        if (paused || snapshot.readabilityMode != ReadabilityMode.READABLE || verification?.isActive == true ||
-            snapshot.catalogs.none { it.id in readableIds && !it.failed && (it.loading || it.candidates.isNotEmpty()) }) return
+    private fun startVerification(check: suspend () -> Unit) {
+        if (paused || state.value.readabilityMode != ReadabilityMode.READABLE || verification != null) return
         verification = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                withTimeoutOrNull(18_000) {
-                    val normalized = normalizedTitle(query)
-                    fun rank(entry: DiscoveryEntry): Int {
-                        val title = normalizedTitle(entry.publication.title)
-                        return when {
-                            entry.publication.title == query -> 0
-                            title == normalized -> 1
-                            normalized.isNotEmpty() && normalized in title -> 2
-                            else -> 3
-                        }
-                    }
-                    fun candidates(current: DiscoveryState) = current.catalogs.flatMap { it.candidates }
-                        .filter { it.readability == CatalogReadability.READABLE_CANDIDATE &&
-                            (it.publication.id to it.publication.resources) !in attemptedResources }
-                    repeat(2) {
-                        val ready = state.first { current ->
-                            current.catalogs.none { it.id in readableIds && it.loading } ||
-                                candidates(current).any { rank(it) == 0 }
-                        }
-                        val candidate = candidates(ready).minByOrNull(::rank) ?: return@withTimeoutOrNull
-                        attemptedResources += candidate.publication.id to candidate.publication.resources
-                        val result = try {
-                            catalog.verifyReadable(candidate.publication)
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: CatalogSourceException) {
-                            CatalogReadability.TEMPORARY_ERROR
-                        }
-                        ensureActive()
-                        publishReadability(snapshot, candidate.publication, result)
-                    }
-                }
+                check()
             } finally {
                 if (verification === coroutineContext[Job]) {
                     verification = null
@@ -135,6 +107,71 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
         }
         mutable.update { it.copy(checkingReadability = true) }
         verification?.start()
+    }
+
+    private fun verifyResults() {
+        val snapshot = state.value
+        val query = snapshot.request?.query?.takeIf { it.isNotEmpty() } ?: return
+        if (snapshot.catalogs.none { it.id in readableIds && !it.failed && (it.loading || it.candidates.isNotEmpty()) }) return
+        startVerification {
+            val normalized = normalizedTitle(query)
+            fun rank(entry: DiscoveryEntry): Int {
+                val title = normalizedTitle(entry.publication.title)
+                return when {
+                    entry.publication.title == query -> 0
+                    title == normalized -> 1
+                    normalized.isNotEmpty() && normalized in title -> 2
+                    else -> 3
+                }
+            }
+            fun candidates(current: DiscoveryState) = current.catalogs.flatMap { it.candidates }
+                .filter { it.readability == CatalogReadability.READABLE_CANDIDATE &&
+                    (it.publication.id to it.publication.resources) !in attemptedResources }
+            suspend fun nextCandidate(): DiscoveryEntry? {
+                val ready = state.first { current ->
+                    current.catalogs.none { it.id in readableIds && it.loading } ||
+                        candidates(current).any { rank(it) == 0 }
+                }
+                return candidates(ready).minByOrNull(::rank)
+            }
+
+            // Catalog requests already have their own deadlines. Their queue time
+            // must not consume the EPUB budget before a candidate is available.
+            val first = nextCandidate() ?: return@startVerification
+            withTimeoutOrNull(18_000) {
+                checkCandidate(snapshot, first.publication)
+                nextCandidate()?.let { checkCandidate(snapshot, it.publication) }
+            }
+        }
+    }
+
+    fun retryReadability(id: PublicationId) {
+        val snapshot = state.value
+        val candidate = snapshot.catalogs.firstOrNull { it.id == id.sourceId }?.candidates?.firstOrNull {
+            it.publication.id == id && it.readability == CatalogReadability.TEMPORARY_ERROR
+        } ?: return
+        startVerification { checkCandidate(snapshot, candidate.publication) }
+    }
+
+    private suspend fun checkCandidate(snapshot: DiscoveryState, publication: Publication) {
+        attemptedResources += publication.id to publication.resources
+        val result = try {
+            catalog.verifyReadable(publication)
+        } catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            publishReadability(snapshot, publication, CatalogReadability.TEMPORARY_ERROR, CatalogErrorKind.CANCELLED)
+            return
+        } catch (_: DiscoveryTimeout) {
+            currentCoroutineContext().ensureActive()
+            publishReadability(snapshot, publication, CatalogReadability.TEMPORARY_ERROR, CatalogErrorKind.TIMEOUT)
+            return
+        } catch (error: CatalogSourceException) {
+            currentCoroutineContext().ensureActive()
+            publishReadability(snapshot, publication, CatalogReadability.TEMPORARY_ERROR, error.kind)
+            return
+        }
+        currentCoroutineContext().ensureActive()
+        publishReadability(snapshot, publication, result)
     }
 
     private fun normalizedTitle(value: String): String =
@@ -202,11 +239,15 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
         val request = DiscoveryRequest(query, current.genre, current.language, current.readabilityMode)
         val eligible = visibleOptions.filter { it.source.id in current.enabled &&
             (current.genre == null || (it.source as? DiscoverySource)?.canBrowseGenres == true) }
-        if (current.request == request && current.catalogs.map { it.id } == eligible.map { it.source.id } &&
-            current.catalogs.none { it.failed }) {
-            if (explicit && !automaticStarted && current.readabilityMode == ReadabilityMode.READABLE) {
-                automaticStarted = true
-                verifyResults()
+        if (current.request == request && current.catalogs.map { it.id } == eligible.map { it.source.id }) {
+            if (explicit) {
+                val failed = current.catalogs.filter { it.failed }
+                failed.forEach { fetch(it.id, it.pendingToken) }
+                if (current.readabilityMode == ReadabilityMode.READABLE &&
+                    (!automaticStarted || failed.any { it.id in readableIds })) {
+                    automaticStarted = true
+                    verifyResults()
+                }
             }
             return
         }
@@ -222,6 +263,7 @@ internal class DiscoveryController(private val options: List<SourceOption>, priv
     fun retry(id: SourceId) {
         val result = state.value.catalogs.firstOrNull { it.id == id && it.failed && !it.loading } ?: return
         fetch(id, result.pendingToken)
+        if (id in readableIds && automaticStarted) verifyResults()
     }
     fun more(id: SourceId) { val result = state.value.catalogs.firstOrNull { it.id == id } ?: return
         if (!result.loading && !result.failed && result.nextToken != null && result.pages < 4 &&

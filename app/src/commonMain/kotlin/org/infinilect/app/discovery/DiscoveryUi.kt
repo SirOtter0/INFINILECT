@@ -124,11 +124,18 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                         }
                     }
                     items(pending, key = { "pending:" + it.publication.id.resultKey() }, span = { GridItemSpan(maxLineSpan) }) { entry ->
-                        TextButton({ detail = entry }, Modifier.heightIn(min = 48.dp)) {
-                            Column {
+                        Column {
+                            TextButton({ detail = entry }, Modifier.heightIn(min = 48.dp)) {
                                 Text(strings.format(UiText.WIKI_PENDING_OPEN, entry.publication.title))
-                                if (entry.readability == CatalogReadability.TEMPORARY_ERROR)
-                                    Text(strings[UiText.WIKI_EPUB_TEMPORARY], style = MaterialTheme.typography.caption)
+                            }
+                            if (entry.readability == CatalogReadability.TEMPORARY_ERROR) {
+                                Text(strings[if (entry.readabilityFailure == CatalogErrorKind.TIMEOUT)
+                                    UiText.WIKI_EPUB_CHECK_TIMEOUT else UiText.WIKI_EPUB_TEMPORARY],
+                                    style = MaterialTheme.typography.caption)
+                                TextButton({ controller.retryReadability(entry.publication.id) },
+                                    Modifier.heightIn(min = 48.dp).semantics {
+                                        contentDescription = strings.format(UiText.UI_RETRY_1_S, entry.publication.title)
+                                    }) { Text(strings[UiText.RETRY]) }
                             }
                         }
                     }

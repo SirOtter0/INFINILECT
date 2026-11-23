@@ -35,6 +35,7 @@ internal enum class UiText(val resource: StringResource, val fallback: String) {
     WIKI_SEARCH_INTRO(Res.string.wiki_search_intro, "Search works, authors and pages. Reading and download capabilities are checked for each page."),
     WIKI_KIND_TEXT(Res.string.wiki_kind_text, "Work text · completeness unverified"),
     WIKI_EPUB_EXPORTABLE(Res.string.wiki_epub_exportable, "The service offered an EPUB; file validation is pending."),
+    WIKI_EPUB_CHECK_TIMEOUT(Res.string.wiki_epub_check_timeout, "The EPUB check took too long. You can retry it here."),
     WIKI_EPUB_TEMPORARY(Res.string.wiki_epub_temporary, "The EPUB check could not finish. Try again later."),
     WIKI_RIGHTS_VERIFIED(Res.string.wiki_rights_verified, "Source declarations authorize acquisition; territorial restrictions may still apply."),
     WIKI_RIGHTS_UNKNOWN(Res.string.wiki_rights_unknown, "Download authorization could not be verified. EPUB availability is a separate check."),

@@ -1,5 +1,44 @@
 # Wikisource: availability and rights follow-up — PR #39
 
+## Primera búsqueda con metadatos lentos
+
+En el realme C55, una búsqueda de «A Venus» dejó la obra en **Pendientes
+de comprobar** y una segunda pulsación mostró el libro. La prueba de
+regresión reprodujo el primer resultado en el controlador anterior:
+el catálogo entrega el candidato autorizado a los 15 segundos, la
+comprobación EPUB necesita 4 segundos y el reloj de 18 segundos cancela
+la operación al cumplirse el tercer segundo de la comprobación. La
+primera búsqueda se queda sin promoción. Esto demuestra un defecto
+del controlador. Falta repetir la prueba física para confirmar que
+explica el caso concreto del realme C55.
+
+El plazo de 18 segundos empieza ahora al recibir el primer candidato
+elegible. Los metadatos conservan sus plazos y los EPUB conservan su
+tope de 8 segundos por comprobación, los límites de tamaño, los
+presupuestos de solicitudes y el control de concurrencia. Si la
+confirmación llegó a la caché justo antes de vencer el plazo, se
+consulta la evidencia en memoria sin otra exportación. Un tiempo
+agotado muestra su motivo y permite reintentar únicamente ese EPUB.
+Repetir la misma búsqueda con un proveedor fallido reintenta solo ese
+proveedor y conserva los libros ya confirmados.
+
+La prueba determinista comprueba la promoción y la retirada de
+**Pendientes** con una sola búsqueda, tanto con metadatos inmediatos
+como con la espera simulada. También comprueba recuperación desde la
+caché al vencer el plazo, reintento del EPUB, conservación de resultados
+al fallar otro proveedor y rechazo de resultados cancelados al cambiar
+de consulta, filtro o pantalla. El probe Desktop del 23 de noviembre de
+2026 confirmó «A Venus» (1927) a los 4.502 ms en frío con una exportación
+de 21.370 bytes. En caliente apareció a los 307 ms y sin otra exportación.
+La medición funcional de Desktop queda separada de la validación física.
+
+Para repetirlo en el realme C55, fuerza la detención de INFINILECT y
+vuelve a abrirlo. En **Buscar → Legibles**, escribe «A Venus» y pulsa
+una sola vez la lupa. Espera a que termine la comprobación y comprueba
+que la obra aparece en la cuadrícula. Si la comprobación agota su plazo,
+comprueba que la ficha pendiente indica el motivo y ofrece **Reintentar**.
+Abre la ficha después de que el libro aparezca en la cuadrícula.
+
 ## Verificación EPUB automática en Buscar
 
 En el realme C55, «A Venus» quedaba como candidato autorizado y requería
@@ -23,7 +62,7 @@ acotada. El ajuste de modo se conserva en la preferencia existente.
 | --- | --- |
 | Metadatos | Dos páginas y ocho fichas en ocho segundos por operación y edición. 24 solicitudes y un presupuesto de 8 MiB del cuerpo por minuto y edición, en bloques de hasta 8 KiB e incluidas las revalidaciones automáticas. |
 | Verificaciones EPUB | Dos por operación explícita y cuatro comienzos por minuto en toda la sesión, una verificación automática activa entre todas las ediciones. |
-| Tiempo | Ocho segundos por EPUB y 18 segundos para el tramo de búsqueda y comprobación, incluida la espera de metadatos. |
+| Tiempo | Ocho segundos por EPUB y 18 segundos desde el primer candidato elegible. Los metadatos tienen sus propios plazos. |
 | Bytes EPUB | 512 KiB de cuerpo por intento, hasta 1 MiB por operación y 2 MiB por minuto de inicios. El exceso queda pendiente y sigue disponible la vía manual. |
 | Memoria y espacio | El mismo preparador en IO, con sus límites existentes de entradas, ratio, análisis y descompresión. Una comprobación automática usa un archivo temporal de hasta 512 KiB y se libera al terminar o al cancelar. |
 | Red móvil y Wi-Fi | Android ya declara el permiso que permite consultar si la conexión es medida. El mismo límite conservador se aplica en toda red para evitar depender de esa señal y mantener el comportamiento en Desktop. |

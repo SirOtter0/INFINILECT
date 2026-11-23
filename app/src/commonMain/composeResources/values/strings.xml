@@ -568,6 +568,7 @@
     <string name="wiki_official_open_failed">The official page could not be opened.</string>
     <string name="wiki_kind_text">Work text · completeness unverified</string>
     <string name="wiki_epub_exportable">The service offered an EPUB; file validation is pending.</string>
+    <string name="wiki_epub_check_timeout">The EPUB check took too long. You can retry it here.</string>
     <string name="wiki_epub_temporary">The EPUB check could not finish. Try again later.</string>
     <string name="wiki_rights_verified">Source declarations authorize acquisition; territorial restrictions may still apply.</string>
     <string name="wiki_rights_unknown">Download authorization could not be verified. EPUB availability is a separate check.</string>
