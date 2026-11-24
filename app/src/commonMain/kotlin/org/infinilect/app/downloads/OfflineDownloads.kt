@@ -151,10 +151,10 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
         val id=offer.publication.id
         if(closed.value || !foreground || !catalogue.value.loaded || entry(id)?.status in setOf(DownloadStatus.PENDING,DownloadStatus.DOWNLOADING,DownloadStatus.DOWNLOADED)) return
         if(catalogue.value.entries.count {it.status in setOf(DownloadStatus.PENDING,DownloadStatus.DOWNLOADING)}+catalogue.value.busy.size>=8) {fail(DownloadFailure.LIMIT);return}
-        progress.getOrPut(id) {MutableStateFlow(DownloadProgress())}.value=DownloadProgress(total=offer.size)
         mutate(id) {
             val row=backend.pending(offer)
             if(!foreground || closed.value) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish);return@mutate}
+            progress.getOrPut(id) {MutableStateFlow(DownloadProgress())}.value=DownloadProgress(total=offer.size)
             publish(row)
             if(!commands.trySend(id).isSuccess) backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.LIMIT)?.let(::publish)
         }
@@ -175,7 +175,16 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
         if(active?.first==id) {active?.second?.cancel();return}
         if(entry(id)?.status in setOf(DownloadStatus.PENDING,DownloadStatus.DOWNLOADING)) mutate(id) {backend.settle(id,DownloadStatus.CANCELLED,DownloadFailure.INTERRUPTED)?.let(::publish)}
     }
-    fun remove(id: PublicationId) {mutate(id) {try {backend.remove(id)} finally {refresh()};progress.remove(id)}}
+    fun remove(id: PublicationId) {
+        mutate(id) {
+            try {
+                backend.remove(id)
+            } finally {
+                refresh()
+                if (entry(id) == null) progress.remove(id)?.value = DownloadProgress()
+            }
+        }
+    }
     fun setQuota(bytes: Long) {mutate {backend.quota(bytes);refresh()}}
     fun reload() {mutate {backend.load();refresh()}}
     suspend fun acquire(id: PublicationId): OfflineReadingCopy? {

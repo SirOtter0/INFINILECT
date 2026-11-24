@@ -18,6 +18,11 @@ independence and safe deletion below remain unchanged. [Policy, actual live
 results and physical checklist](WIKISOURCE.md). The original PR #36 audit below
 is historical; its statement that no remote EPUB adapter exists is superseded.
 
+El progreso de una descarga en memoria se inicializa al aceptar su registro. Si
+el almacenamiento rechaza la solicitud, no queda una entrada de progreso.
+La retirada descarta ese progreso cuando la recarga confirma que el registro
+desapareció, incluso si la limpieza de un archivo posterior falla.
+
 ## Wikisource explicit checks and authorization — 3 November 2026
 
 A candidate EPUB resource is independent of positive rights evidence. Source

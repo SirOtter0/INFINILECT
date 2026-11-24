@@ -1,0 +1,41 @@
+name: Verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Verify Gradle wrapper and localized resources
+        run: |
+          printf '%s  %s\n' 7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d gradle/wrapper/gradle-wrapper.jar | sha256sum --check
+          python3 tools/check_localization.py
+          test -s gradle/verification-metadata.xml
+      - name: Test, build and lint with strict dependency verification
+        run: |
+          ./gradlew --dependency-verification strict --no-daemon --console=plain --max-workers=2 --continue \
+            :core:jvmTest :core:testAndroidHostTest :app:desktopTest :app:testAndroidHostTest \
+            :androidApp:assembleDebug :androidApp:assembleRelease :androidApp:check \
+            :androidApp:lintRelease :androidApp:verifyDebugLanguageResources :desktopApp:createDistributable

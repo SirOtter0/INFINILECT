@@ -2,10 +2,19 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.reader.pdf
 
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import javax.imageio.ImageIO
 import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.cos.COSName
+import org.apache.pdfbox.pdmodel.PDResources
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory
 import org.apache.pdfbox.pdmodel.PDPage
+import org.apache.pdfbox.pdmodel.PDPageContentStream
+import org.apache.pdfbox.pdmodel.common.PDRectangle
+import org.apache.pdfbox.pdmodel.common.PDStream
+import org.apache.pdfbox.pdmodel.graphics.image.CCITTFactory
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import org.infinilect.core.*
@@ -63,6 +72,82 @@ class DesktopPdfEngineTest {
             } finally { Files.deleteIfExists(file) }
         }
     }
+    @Test fun declaresBoundedImageGeometryBeforeDecodingResources() {
+        fun pdfWithImageResource(width: Int, height: Int): ByteArray = ByteArrayOutputStream().use { output ->
+            PDDocument().use { pdf ->
+                val page = PDPage()
+                val image = LosslessFactory.createFromImage(pdf, BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB))
+                image.cosObject.setInt(COSName.WIDTH, width)
+                image.cosObject.setInt(COSName.HEIGHT, height)
+                // No page operation draws this resource. The fixture only exercises metadata preflight.
+                page.resources = PDResources().also { it.add(image) }
+                pdf.addPage(page)
+                pdf.save(output)
+            }
+            output.toByteArray()
+        }
+        withPdf(pdfWithImageResource(1, 1)) { document ->
+            document.render(0, PdfRenderSize(128, 128)).close()
+        }
+        for ((width, height) in listOf(5_000 to 5_001, 16_385 to 1, 0 to 1)) {
+            withPdf(pdfWithImageResource(width, height)) { document ->
+                assertEquals(PdfFailure.LIMIT, assertFailsWith<PdfException> {
+                    document.render(0, PdfRenderSize(128, 128)).close()
+                }.failure)
+            }
+        }
+    }
+
+    @Test fun boundsInlineImagesAndSoftMasksBeforeDecoding() {
+        for (width in listOf(1, 16_385)) {
+            for (inline in listOf(true, false)) {
+                val output = ByteArrayOutputStream()
+                PDDocument().use { pdf ->
+                    val page = PDPage()
+                    pdf.addPage(page)
+                    if (inline) {
+                        val contents = PDStream(pdf)
+                        contents.createOutputStream().use {
+                            it.write("q 64 0 0 64 32 32 cm BI /W $width /H 1 /BPC 8 /CS /G ID\nX\nEI Q\n".encodeToByteArray())
+                        }
+                        page.setContents(contents)
+                    } else {
+                        val image = LosslessFactory.createFromImage(pdf, BufferedImage(1, 1, BufferedImage.TYPE_BYTE_GRAY))
+                        val mask = LosslessFactory.createFromImage(pdf, BufferedImage(1, 1, BufferedImage.TYPE_BYTE_GRAY))
+                        mask.cosObject.setInt(COSName.WIDTH, width)
+                        image.cosObject.setItem(COSName.SMASK, mask.cosObject)
+                        PDPageContentStream(pdf, page).use { it.drawImage(image, 32f, 32f, 64f, 64f) }
+                    }
+                    pdf.save(output)
+                }
+                withPdf(output.toByteArray()) { document ->
+                    val render = { document.render(0, PdfRenderSize(128, 128)).close() }
+                    if (width == 1) render()
+                    else assertEquals(PdfFailure.LIMIT, assertFailsWith<PdfException> { render() }.failure)
+                }
+            }
+        }
+    }
+
+    @Test fun rendersAnA3ScanAt300DpiWithinTheDisplayBudget() {
+        val output = ByteArrayOutputStream()
+        PDDocument().use { pdf ->
+            val page = PDPage(PDRectangle.A3)
+            pdf.addPage(page)
+            val scan = BufferedImage(3508, 4961, BufferedImage.TYPE_BYTE_BINARY)
+            val image = try { CCITTFactory.createFromImage(pdf, scan) } finally { scan.flush() }
+            PDPageContentStream(pdf, page).use { it.drawImage(image, 0f, 0f, page.mediaBox.width, page.mediaBox.height) }
+            pdf.save(output)
+        }
+        withPdf(output.toByteArray()) { document ->
+            val raster = document.render(0, PdfRenderSize(256, 256))
+            try {
+                assertTrue(raster.argb.any { it != -1 })
+                assertTrue(raster.argb.size <= 256 * 256)
+            } finally { raster.close() }
+        }
+    }
+
     @Test fun missingOptionalCodecsFailInsteadOfDroppingDrawnImages() {
         for((filter,format) in listOf("JBIG2Decode" to "JBIG2","JPXDecode" to "JPEG2000")) {
             if(ImageIO.getImageReadersByFormatName(format).hasNext()) continue

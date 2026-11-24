@@ -39,8 +39,9 @@ owns the result; engine images are flushed and PDDocument closes on retirement.
 Annotations are filtered out. Reachable image resources (including forms/patterns),
 inline images and image masks requiring missing
 JBIG2/JPEG2000 ImageIO readers raise CODEC before PDFBox can log-and-omit them.
-The resource check is conservative: an unused resource needing an absent codec
-can also reject its page. No optional image codecs or cryptography dependencies are added. Missing/substitute
+Desktop also rejects source images with declared dimensions outside its side or
+pixel limits before calling the decoder. An unused image resource can therefore
+reject a page if its declared geometry exceeds those limits or its codec is missing. No optional image codecs or cryptography dependencies are added. Missing/substitute
 fonts and platform font differences remain graphical acceptance concerns.
 
 One shared third-party engine was rejected for this slice: it adds Android/native
@@ -62,6 +63,7 @@ IPC, subprocess or worker JVM is implemented here.
 | Preparation ownership | at most two live prepared documents per application owner |
 | Reader retention | one owned raster; no thumbnails, tiling or prefetch |
 | Image-mask inspection on Desktop | depth 16; 32 dictionaries; 16 filters per image |
+| Declared Desktop source image geometry | Maximum side 16,384 px and 25,000,000 pixels per image, including inspected inline images and masks |
 | Desktop resource codec preflight | depth 16; 1,024 resource dictionaries; 4,096 entries |
 
 Output products use Long arithmetic and validate before adapter allocation.

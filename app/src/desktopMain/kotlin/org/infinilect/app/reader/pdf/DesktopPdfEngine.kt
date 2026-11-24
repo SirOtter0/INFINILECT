@@ -59,6 +59,7 @@ private class DesktopPdfEngineDocument(path: Path) : PdfEngineDocument {
                         override fun drawImage(image: PDImage) {
                             // PDFBox otherwise logs absent optional codecs and can omit an image.
                             checkImageCodecs(image.cosObject)
+                            checkImageDimensions(image.width.toLong(), image.height.toLong())
                             super.drawImage(image)
                         }
                     }
@@ -96,12 +97,29 @@ private class DesktopPdfEngineDocument(path: Path) : PdfEngineDocument {
     override fun close() { document.close() }
 }
 
+// Source image limits are independent of the much smaller page raster. A 25 MP
+// image accommodates ordinary 300 dpi A3 scans while bounding declared geometry.
+private const val PDF_IMAGE_MAX_SIDE = 16_384L
+private const val PDF_IMAGE_MAX_PIXELS = 25_000_000L
+
+private fun checkImageDimensions(width: Long?, height: Long?) {
+    if (width != null && width !in 1..PDF_IMAGE_MAX_SIDE ||
+        height != null && height !in 1..PDF_IMAGE_MAX_SIDE ||
+        width != null && height != null && width * height > PDF_IMAGE_MAX_PIXELS
+    ) throw PdfException(PdfFailure.LIMIT)
+}
+
 /** Include image masks: PDFBox can decode them inside getImage without drawImage callbacks. */
 private fun checkImageCodecs(image: COSDictionary) {
     val visited = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<COSDictionary,Boolean>())
     fun inspect(dictionary:COSDictionary,depth:Int) {
         if (depth > 16 || visited.size >= 32) throw PdfException(PdfFailure.LIMIT)
         if (!visited.add(dictionary)) throw PdfException(PdfFailure.MALFORMED)
+        fun dimension(full: COSName, short: COSName): Long? {
+            val value = dictionary.getDictionaryObject(full, short) ?: return null
+            return (value as? COSInteger)?.longValue() ?: throw PdfException(PdfFailure.MALFORMED)
+        }
+        checkImageDimensions(dimension(COSName.WIDTH, COSName.W), dimension(COSName.HEIGHT, COSName.H))
         val filter=dictionary.getDictionaryObject(COSName.FILTER)
         val names=when(filter) {
             is COSName -> listOf(filter)
