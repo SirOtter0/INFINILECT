@@ -9,8 +9,12 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.text.*
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -40,7 +44,8 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
     val state by controller.state.collectAsState()
     LaunchedEffect(state.request) { if (viewport.changed(state.request)) position.scrollToItem(0) }
     LaunchedEffect(controller) { controller.resume() }
-    var detail by remember { mutableStateOf<DiscoveryEntry?>(null) }
+    val scope = rememberCoroutineScope()
+    var detail by remember(state.generation, state.readabilityMode) { mutableStateOf<DiscoveryEntry?>(null) }
     var filters by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     DisposableEffect(controller) { onDispose { controller.pause() } }
@@ -66,6 +71,7 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                     Text(strings.number(state.enabled.size), style = MaterialTheme.typography.caption, modifier = Modifier.weight(1f))
                     IconButton({ help = true }, Modifier.size(48.dp).semantics { contentDescription = strings[UiText.UI_ABOUT_CATALOG_SEARCH] }) { Text("?", style = MaterialTheme.typography.h6) }
                 }
+                if (controller.hasReadableSources) ReadabilitySelector(state.readabilityMode, application::wikisourceMode)
                 if (state.genre != null || state.language != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.genre?.let { genre -> FilterChoice(strings.status(genre.label), true) { controller.genre(null) } }
                     state.language?.let { language -> FilterChoice(strings.status(DISCOVERY_LANGUAGES.getValue(language)), true) { controller.language(null) } }
@@ -76,11 +82,28 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                 contentPadding = PaddingValues(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status", contentType = "status") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite })
+                        if (state.loading || state.checkingReadability) LinearProgressIndicator(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite })
                         if (state.invalidQuery) Text(strings[UiText.UI_USE_AT_MOST_256_CHARACTERS_AND_NO_CONTROL_CHARACTERS], color = MaterialTheme.colors.error)
-                        if (state.request == null) Text(strings[UiText.UI_SEARCH_ACROSS_CATALOGS_OR_EXPLORE_A_SUBJECT_ABOVE_NOTHING_IS_DOWNLOADED_BY_BROWS])
-                        else if (state.catalogs.isEmpty()) Text(strings[UiText.UI_SELECT_AT_LEAST_ONE_SOURCE_SUBJECT_BROWSING_CURRENTLY_REQUIRES_INTERNET_ARCHIVE])
-                        else if (!state.loading && state.entries.isEmpty() && state.catalogs.none { it.failed }) Text(if (state.genre == null) strings[UiText.UI_NO_MATCHES_ON_LOADED_PAGES_LOAD_MORE_OR_TRY_ANOTHER_QUERY_SOURCE_OR_LANGUAGE] else strings[UiText.UI_NO_MATCHES_IN_THE_LOADED_CC0_CATALOG_PAGES_LOAD_MORE_CHANGE_THE_LANGUAGE_OR_TRY])
+                        val status = state.resultStatus()
+                        val label = when (status) {
+                            DiscoveryStatus.IDLE -> UiText.DISCOVERY_SEARCH_PROMPT
+                            DiscoveryStatus.SEARCHING -> UiText.DISCOVERY_SEARCHING
+                            DiscoveryStatus.CHECKING -> UiText.WIKI_FILTER_CHECKING
+                            DiscoveryStatus.SELECT_SOURCES -> UiText.UI_SELECT_AT_LEAST_ONE_SOURCE_SUBJECT_BROWSING_CURRENTLY_REQUIRES_INTERNET_ARCHIVE
+                            DiscoveryStatus.LIMITED -> if (state.readabilityMode == ReadabilityMode.READABLE &&
+                                state.catalogs.any { controller.isReadableSource(it.id) }) UiText.WIKI_FILTER_EMPTY else UiText.WIKI_FILTER_LIMIT
+                            DiscoveryStatus.UNCONFIRMED -> UiText.WIKI_FILTER_EMPTY
+                            DiscoveryStatus.NO_MATCHES -> UiText.DISCOVERY_NO_RESULTS
+                            DiscoveryStatus.PARTIAL_ERROR -> UiText.DISCOVERY_PARTIAL_ERROR.takeIf { state.catalogs.any { row -> row.assessmentFailed } }
+                            DiscoveryStatus.PENDING, null -> null
+                        }
+                        label?.let { Text(strings[it], modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+                        val canExploreWiki = state.readabilityMode == ReadabilityMode.READABLE &&
+                            state.catalogs.any { controller.isReadableSource(it.id) } &&
+                            status in setOf(DiscoveryStatus.LIMITED, DiscoveryStatus.UNCONFIRMED, DiscoveryStatus.PARTIAL_ERROR)
+                        if (canExploreWiki) TextButton({ application.wikisourceMode(ReadabilityMode.ALL) }, Modifier.heightIn(min = 48.dp)) {
+                            Text(strings[UiText.WIKI_FILTER_SHOW_ALL])
+                        }
                         state.catalogs.forEach { source ->
                             if (source.failed) Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(strings.status(catalogFailureMessage(application.sourceName(source.id), source.failure)), Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
@@ -92,11 +115,56 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                 items(state.entries, key = { it.publication.id.resultKey() }, contentType = { "publication" }) { entry ->
                     DiscoveryTile(entry, application, Modifier.fillMaxWidth()) { detail = entry }
                 }
+                val pending = state.catalogs.flatMap { it.candidates }
+                if (state.readabilityMode == ReadabilityMode.READABLE && pending.isNotEmpty() && !state.checkingReadability) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "wiki-pending") {
+                        Column {
+                            Text(strings[UiText.WIKI_PENDING_HEADING], style = MaterialTheme.typography.subtitle2)
+                            Text(strings[UiText.WIKI_PENDING_HINT], style = MaterialTheme.typography.body2)
+                        }
+                    }
+                    items(pending, key = { "pending:" + it.publication.id.resultKey() }, span = { GridItemSpan(maxLineSpan) }) { entry ->
+                        Column {
+                            TextButton({ detail = entry }, Modifier.heightIn(min = 48.dp)) {
+                                Text(strings.format(UiText.WIKI_PENDING_OPEN, entry.publication.title))
+                            }
+                            if (entry.readability == CatalogReadability.TEMPORARY_ERROR) {
+                                Text(strings[if (entry.readabilityFailure == CatalogErrorKind.TIMEOUT)
+                                    UiText.WIKI_EPUB_CHECK_TIMEOUT else UiText.WIKI_EPUB_TEMPORARY],
+                                    style = MaterialTheme.typography.caption)
+                                TextButton({ controller.retryReadability(entry.publication.id) },
+                                    Modifier.heightIn(min = 48.dp).semantics {
+                                        contentDescription = strings.format(UiText.UI_RETRY_1_S, entry.publication.title)
+                                    }) { Text(strings[UiText.RETRY]) }
+                            }
+                        }
+                    }
+                }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "more", contentType = "status") {
                     Column {
-                        state.catalogs.filter { it.nextToken != null }.forEach { result ->
-                            if (result.pages < 4) TextButton({ controller.more(result.id) }, Modifier.heightIn(min = 48.dp), enabled = !result.loading && !result.failed) { Text(strings.format(UiText.UI_MORE_FROM_1_S, strings.sourceName(application.sourceName(result.id)))) }
-                            else Text(strings[UiText.UI_SHOWING_UP_TO_100_RESULTS_PER_SOURCE_REFINE_YOUR_SEARCH_FOR_MORE], style = MaterialTheme.typography.caption)
+                        val more = state.catalogs.filter { it.nextToken != null && it.pages < 4 && !it.loading && !it.failed }
+                        val wikiMore = more.filter { controller.isReadableSource(it.id) }
+                        if (state.catalogs.any { it.assessmentFailed } && state.resultStatus() != DiscoveryStatus.PARTIAL_ERROR)
+                            Text(strings[UiText.DISCOVERY_PARTIAL_ERROR], style = MaterialTheme.typography.caption)
+                        if (state.catalogs.any { it.nextToken != null && it.pages >= 4 })
+                            Text(strings[UiText.UI_SHOWING_UP_TO_100_RESULTS_PER_SOURCE_REFINE_YOUR_SEARCH_FOR_MORE], style = MaterialTheme.typography.caption)
+                        if (wikiMore.isNotEmpty() && !state.checkingReadability) {
+                            var expanded by remember(state.generation, state.readabilityMode) { mutableStateOf(false) }
+                            Box {
+                                TextButton({ expanded = true }, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.WIKI_MORE_EDITIONS]) }
+                                DropdownMenu(expanded, { expanded = false }) {
+                                    wikiMore.forEach { result ->
+                                        DropdownMenuItem({ expanded = false; controller.more(result.id) }) {
+                                            Text(strings.sourceName(application.sourceName(result.id)))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        more.filterNot { controller.isReadableSource(it.id) }.forEach { result ->
+                            TextButton({ controller.more(result.id) }, Modifier.heightIn(min = 48.dp)) {
+                                Text(strings.format(UiText.UI_MORE_FROM_1_S, strings.sourceName(application.sourceName(result.id))))
+                            }
                         }
                         Text(strings[UiText.UI_CATALOG_PRESENCE_IS_NOT_PERMISSION_TO_DOWNLOAD_OR_PROOF_OF_RIGHTS_IN_YOUR_COUNTR], style = MaterialTheme.typography.caption)
                     }
@@ -108,7 +176,9 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
                 Column(Modifier.heightIn(max = maxHeight * .6f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(strings[UiText.UI_SOURCES], style = MaterialTheme.typography.subtitle2)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        application.catalogOptions.forEach { option -> FilterChoice(strings.sourceName(option.name), option.source.id in state.enabled) { controller.filter(option.source.id) } }
+                        application.catalogOptions.forEach { option -> FilterChoice(
+                            if (option.supportsIntegratedReading) strings.sourceName(option.name) else strings.format(UiText.SOURCE_CATALOG_ONLY_NAME, strings.sourceName(option.name)),
+                            option.source.id in state.enabled) { controller.filter(option.source.id) } }
                     }
                     Text(strings[UiText.UI_LANGUAGE], style = MaterialTheme.typography.subtitle2)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -124,10 +194,16 @@ internal fun UnifiedSearchScreen(application: ApplicationSession, position: Lazy
             dismissButton = { TextButton(controller::resetFilters, Modifier.heightIn(min = 48.dp)) { Text(strings[UiText.UI_RESET_FILTERS]) } })
         if (help) AlertDialog(onDismissRequest = { help = false }, title = { Text(strings[UiText.UI_ABOUT_CATALOG_SEARCH]) },
             text = { Column(Modifier.heightIn(max = maxHeight * .6f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (controller.hasReadableSources) Text(strings[UiText.WIKI_SEARCH_AUTO_NOTE])
                 Text(strings[UiText.UI_SUBJECTS_SEARCH_INTERNET_ARCHIVE_S_LIMITED_CC0_TEXT_CATALOG_NOT_THE_WHOLE_ARCHIV]); Text(strings[UiText.UI_LANGUAGES_FILTER_RETURNED_METADATA_MISSING_LANGUAGE_IS_EXCLUDED]); Text(strings[UiText.UI_CATALOG_PRESENCE_IS_NOT_PERMISSION_TO_DOWNLOAD_OR_PROOF_OF_RIGHTS_IN_YOUR_COUNTR]); Text(strings[UiText.DISCOVERY_PRIVACY]); Text(strings[UiText.UI_ADVERTISED_GUTENBERG_THUMBNAILS_ARE_OPTIONAL_OTHER_OR_UNAVAILABLE_ARTWORK_USES_A])
             } }, confirmButton = { TextButton({ help = false }) { Text(strings[UiText.DONE]) } })
     }
-    detail?.let { DiscoveryDetails(it, application) { detail = null } }
+    detail?.let { entry ->
+        DiscoveryDetails(entry, application) {
+            detail = null
+            scope.launch { controller.refreshReadability(entry.publication) }
+        }
+    }
 }
 
 @Composable
@@ -136,6 +212,23 @@ private fun CloseSearchIcon() {
     Canvas(Modifier.size(20.dp).clearAndSetSemantics {}) {
         drawLine(color, androidx.compose.ui.geometry.Offset(size.width * .25f, size.height * .25f), androidx.compose.ui.geometry.Offset(size.width * .75f, size.height * .75f), 2.dp.toPx())
         drawLine(color, androidx.compose.ui.geometry.Offset(size.width * .75f, size.height * .25f), androidx.compose.ui.geometry.Offset(size.width * .25f, size.height * .75f), 2.dp.toPx())
+    }
+}
+
+@Composable
+internal fun ReadabilitySelector(mode: ReadabilityMode, select: (ReadabilityMode) -> Unit) {
+    val strings = LocalAppStrings.current
+    Row(Modifier.fillMaxWidth().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+        Text(strings[UiText.WIKI_FILTER_LABEL], Modifier.weight(0.9f), style = MaterialTheme.typography.caption)
+        for ((choice, label) in listOf(ReadabilityMode.READABLE to UiText.WIKI_FILTER_READABLE, ReadabilityMode.ALL to UiText.WIKI_FILTER_ALL)) {
+            Box(Modifier.weight(1f).heightIn(min = 48.dp).clip(MaterialTheme.shapes.small)
+                .background(if (mode == choice) MaterialTheme.colors.primary.copy(alpha = 0.14f) else MaterialTheme.colors.surface)
+                .selectable(mode == choice, role = Role.RadioButton, onClick = { select(choice) }),
+                contentAlignment = Alignment.Center) {
+                Text(strings[label], textAlign = TextAlign.Center, style = MaterialTheme.typography.body2,
+                    color = if (mode == choice) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface)
+            }
+        }
     }
 }
 
@@ -160,7 +253,10 @@ internal fun DiscoveryTile(entry: DiscoveryEntry, application: ApplicationSessio
         // as different cards enter the horizontal viewport. Empty slots invent no metadata.
         Text(entry.publication.authors.joinToString("; "), minLines = 1, maxLines = 1,
             overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
-        Text(LocalAppStrings.current.sourceName(application.sourceName(entry.publication.id.sourceId)), minLines = 1, maxLines = 1,
+        val strings = LocalAppStrings.current
+        entry.readability?.let { Text(strings[it.resultLabel()], style = MaterialTheme.typography.caption, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        val sourceName = strings.sourceName(application.sourceName(entry.publication.id.sourceId))
+        Text(if (application.supportsIntegratedReading(entry.publication.id.sourceId)) sourceName else strings.format(UiText.SOURCE_CATALOG_ONLY_NAME, sourceName), minLines = 1, maxLines = 1,
             overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
         Text(entry.publication.languages.joinToString(", "), minLines = 1, maxLines = 1,
             overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.caption)
@@ -173,10 +269,10 @@ internal fun DiscoveryDetails(entry: DiscoveryEntry, application: ApplicationSes
     val record = detailsProgress(application, entry.publication.id, null)
     PublicationDetails(entry.publication, application.sourceName(entry.publication.id.sourceId), entry.publication.resources.map { it.format },
         record, close, cover = { DetailsCover(entry.publication, if (entry.thumbnail != null || entry.publication.id.sourceId.value == "local-imports") application.covers else null) },
-        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,downloads=application.downloads,organizationCovers=application.covers) {
+        descriptions = application.descriptions, suppliedSynopsis = entry.description, subjects = entry.subjects,collections=application.collections,downloads=application.downloads,organizationCovers=application.covers,catalog=application.catalogSource(entry.publication.id)) {
         if (application.canRetry(entry.publication)) PublicationReadAction(record) { close(); application.openDiscovered(entry.publication) }
         else Text(strings[UiText.UI_CATALOG_METADATA_ONLY_ACQUISITION_IS_UNAVAILABLE_FOR_THIS_SOURCE], style = MaterialTheme.typography.body2)
-        if (entry.publication.rights == null) Text(strings[UiText.UI_NO_SOURCE_RIGHTS_STATEMENT_WAS_SUPPLIED_LEGAL_AVAILABILITY_IS_UNDETERMINED], style = MaterialTheme.typography.caption)
+        if (application.catalogSource(entry.publication.id)==null && entry.publication.rights == null) Text(strings[UiText.UI_NO_SOURCE_RIGHTS_STATEMENT_WAS_SUPPLIED_LEGAL_AVAILABILITY_IS_UNDETERMINED], style = MaterialTheme.typography.caption)
     }
 
 }
@@ -186,6 +282,16 @@ internal fun DiscoveryPreferenceControls(preferences: DiscoveryPreferences, chan
     val strings = org.infinilect.app.ui.LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(strings[org.infinilect.app.ui.UiText.DISCOVERY], style = MaterialTheme.typography.h6, modifier = Modifier.semantics { heading() })
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
+            value = preferences.showCatalogOnlySources, role = Role.Switch,
+            onValueChange = { change(preferences.copy(showCatalogOnlySources = it)) }),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(strings[UiText.SOURCE_SHOW_CATALOG_ONLY])
+                Text(strings[UiText.SOURCE_SHOW_CATALOG_ONLY_DESCRIPTION], style = MaterialTheme.typography.caption)
+            }
+            Switch(preferences.showCatalogOnlySources, null)
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(strings[org.infinilect.app.ui.UiText.ONLINE_DISCOVERY], Modifier.weight(1f)); Switch(preferences.homeEnabled, { change(preferences.copy(homeEnabled = it)) }, Modifier.semantics { contentDescription = strings[org.infinilect.app.ui.UiText.ONLINE_DISCOVERY] })
         }

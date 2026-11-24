@@ -70,7 +70,8 @@ internal fun DownloadAction(publication: Publication,manager: OfflineDownloads) 
     }]
     LibraryIconButton(label,if(status==DownloadStatus.DOWNLOADED) LibraryGlyph.CHECK else if(status==DownloadStatus.ERROR) LibraryGlyph.ERROR else LibraryGlyph.DOWNLOAD,
         modifier=Modifier.semantics {row?.failure?.let {stateDescription=s[it.label()]}},
-        enabled=!busy && !looking && capability==DownloadCapability.AUTHORIZED_SOURCE,active=status==DownloadStatus.DOWNLOADED,
+        enabled=!busy && !looking && capability==DownloadCapability.AUTHORIZED_SOURCE &&
+            (active || status==DownloadStatus.DOWNLOADED || LocalCatalogActions.current.mayDownload),active=status==DownloadStatus.DOWNLOADED,
         icon=if(active) ({DownloadActionProgress(manager,id)}) else if(looking) ({CircularProgressIndicator(Modifier.size(22.dp),strokeWidth=2.dp)}) else null) {
         when {
             active -> manager.cancel(id)

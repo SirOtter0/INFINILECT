@@ -58,7 +58,7 @@ class HomeLoadingStressTest {
         }
         val libraryBefore = data.saved.toMap(); val historyBefore = data.opened.toMap()
         val collections = ApplicationCollections(data.library, data.history, dispatcher)
-        val preferences = ApplicationPreferences(profile = LocalProfile(setupHandled = true), discovery = DiscoveryPreferences(homeEnabled = true))
+        val preferences = ApplicationPreferences(profile = LocalProfile(setupHandled = true), discovery = DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true))
         val appearance = ApplicationAppearancePreferences(object : ApplicationAppearanceStore {
             override suspend fun load() = ApplicationThemeMode.SYSTEM
             override suspend fun save(mode: ApplicationThemeMode) = true

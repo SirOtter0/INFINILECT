@@ -1,5 +1,43 @@
 # Offline publication downloads — PR #36
 
+PR #39 registers the shared Wikisource adapter for **es/en/ca**, with general
+under-demand catalog queries, separate positive source-rights evidence and full
+EPUB validation. It reuses this manager; Archive's policy is unchanged. There is
+no title/revision/text-hash whitelist. Pages lacking sufficient rights evidence
+remain catalog-only. Sizes are not invented; progress may be indeterminate.
+
+The stable identity remains `wikisource-<language>` plus MediaWiki page ID and
+resource `epub3-policy1-r<root revision>`. Existing El Matadero copies keep their
+IDs/bytes/locators and reopen from the retained snapshot without a network or
+new rights determination. A new acquisition may lack automatic rights evidence.
+The root revision does not freeze every transclusion or dynamic export byte;
+`resource.revision` stays null and the full retained-file SHA-256 is verified.
+Completed copies cannot be silently replaced; explicit removal/reacquisition is
+required. Consent, leases, quotas, recovery, partial cleanup, progress/history
+independence and safe deletion below remain unchanged. [Policy, actual live
+results and physical checklist](WIKISOURCE.md). The original PR #36 audit below
+is historical; its statement that no remote EPUB adapter exists is superseded.
+
+## Wikisource explicit checks and authorization — 3 November 2026
+
+A candidate EPUB resource is independent of positive rights evidence. Source
+loads/offers still require fresh authorization and the exact resource key.
+**Check EPUB** temporarily prepares an authorized export and discards its scratch
+copy; it does not enqueue or claim a retained download. Only the existing
+explicit offline operation publishes a validated retained file atomically.
+Unknown rights cause no speculative binary download. The download manager,
+Archive policy, quotas, concurrent worker limit, storage layout and partial-file
+recovery are unchanged. New ES/CA DP-100 and EN PD-release declarations are
+recognized within the [reviewed scope policy](WIKISOURCE_RIGHTS.md).
+
+Live host checks for A Venus, Rima LIII, EN Smokey the Bear Sutra and CA L'emigrant
+performed real acquisition, source/store shutdown, retained reopening with the
+network source closed, locator restoration and deletion while keeping progress.
+[Per-artifact hashes, cohort results and physical limitations](WIKISOURCE.md).
+These checks do not establish Android airplane-mode acceptance or universal
+Wikisource availability. Existing retained El Matadero copies keep identity,
+bytes and progress and are not reauthorized on reopen.
+
 ## Audit before implementation
 
 Base: main `1d8235e294079844118e0125c5170e6f10c32df1` (PR #35 merged). Existing Library/History live in SQLDelight schema v2; locators, imports, preferences, translation models and disposable reading preparation have independent owners. Saving metadata never authorizes bytes. `OpenPublicationController` normally resolves fresh source metadata and then feeds the existing format preparer through `ResourceLoader` / streaming `ResourceContent`.

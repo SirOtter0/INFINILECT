@@ -419,6 +419,8 @@ private fun ChapterBody(reader: EpubReaderController, ready: EpubReaderState.Rea
                                 fontStyle = if (run.emphasis) FontStyle.Italic else null)
                             withStyle(style) {
                                 val target = run.target
+                                // External references remain passive text: no URL annotation,
+                                // UriHandler, browser or resource request is created here.
                                 if (target == null) append(run.text)
                                 else withLink(LinkAnnotation.Clickable("internal-$runIndex", TextLinkStyles(style = SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline, color = linkColor))) {
                                     reader.navigate(target)

@@ -176,7 +176,7 @@ class GutenbergAndroidCancellationTest {
                 val owner = ApplicationSources(listOf(SourceOption("Original fixture", source)), sessionDispatcher = ui) { source.close() }
                 val app = ApplicationSession(owner, scope); owner.attach(app)
                 try {
-                    withContext(ui) { app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true)) }
+                    withContext(ui) { app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true)) }
                     withTimeout(5_000) { connection.entered.await() }
                     withContext(ui) { app.navigate(target) }
                     assertEquals(target, app.destination.value); assertFalse(app.homeDiscovery.state.value.loading)
@@ -185,7 +185,7 @@ class GutenbergAndroidCancellationTest {
                         // Source cleanup joins the abandoned operation before the serialized retry.
                         val retry = Connection(URL("https://example.invalid/original-fixture"), connection.ui).apply { hold = false }
                         TestUrls.next.set(retry)
-                        withContext(ui) { app.navigate(Destination.HOME); app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true)) }
+                        withContext(ui) { app.navigate(Destination.HOME); app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true)) }
                         app.homeDiscovery.state.first { !it.loading }
                     }
                     assertEquals(Destination.HOME, app.destination.value)
@@ -320,7 +320,7 @@ class GutenbergAndroidCancellationTest {
                     val owner = ApplicationSources(listOf(SourceOption("Original fixture", source)), sessionDispatcher = ui) { source.close() }
                     val app = ApplicationSession(owner, scope); owner.attach(app)
                     try {
-                        withContext(ui) { app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true)) }
+                        withContext(ui) { app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true)) }
                         withTimeout(5_000) { body.reading.await() }
                         withContext(ui) { app.navigate(target) }
                         withTimeout(5_000) { body.cancellationObserved.await() }
@@ -328,7 +328,7 @@ class GutenbergAndroidCancellationTest {
                         assertEquals(42, withTimeout(5_000) { withContext(ui) { 42 } })
                         body.releaseRead.countDown()
                         withTimeout(5_000) { body.safelyClosed.await() }
-                        withContext(ui) { app.navigate(Destination.HOME); app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true)) }
+                        withContext(ui) { app.navigate(Destination.HOME); app.homeDiscovery.refresh(DiscoveryPreferences(homeEnabled = true, showCatalogOnlySources = true)) }
                         withTimeout(5_000) { app.homeDiscovery.state.first { !it.loading } }
                         assertTrue(app.homeDiscovery.state.value.rows.isNotEmpty())
                         assertTrue(errors.isEmpty())

@@ -6,8 +6,16 @@ package org.infinilect.app.discovery
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import org.infinilect.app.SourceOption
+import org.infinilect.app.ui.*
 import org.infinilect.core.*
 import kotlin.test.*
+
+/** Legacy discovery tests explicitly exercise catalogs without integrated readers. */
+internal fun catalogFixtureAppearance() = ApplicationAppearancePreferences(object : ApplicationAppearanceStore {
+    override suspend fun load() = ApplicationThemeMode.SYSTEM
+    override suspend fun save(mode: ApplicationThemeMode) = true
+    override suspend fun loadPreferences() = ApplicationPreferences(discovery = DiscoveryPreferences(showCatalogOnlySources = true))
+}, Dispatchers.Unconfined)
 
 internal class CatalogFixture(override val id: SourceId = SourceId("catalog")) : PublicationSource, DiscoverySource {
     var calls = 0; var acquisition = 0
@@ -42,7 +50,7 @@ class DiscoveryTest {
     @Test fun independentFailuresDoNotDiscardSuccessfulSourcesAndRetryIsIsolated()=runTest {
         val a=CatalogFixture(); val b=CatalogFixture(SourceId("other"));b.respond={_,_->error("private error path")}
         val catalog=DiscoveryCatalog(listOf(a,b),backgroundScope){testScheduler.currentTime}
-        val controller=DiscoveryController(listOf(SourceOption("A",a),SourceOption("B",b)),catalog,backgroundScope)
+        val controller=DiscoveryController(listOf(SourceOption("A",a),SourceOption("B",b)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         controller.edit("book");advanceTimeBy(350);runCurrent()
         assertEquals(1,controller.state.value.entries.size);assertTrue(controller.state.value.catalogs.last().failed)
         b.respond={_,_->DiscoveryPage(listOf(b.entry("2")))};controller.retry(b.id);runCurrent()
@@ -52,7 +60,7 @@ class DiscoveryTest {
     @Test fun queryEditIsDebouncedAndCancelsObsoleteWorkBeforeReplacement()=runTest {
         val source=CatalogFixture();val pending=CompletableDeferred<DiscoveryPage>();source.respond={request,_->if(request.query=="first") pending.await() else DiscoveryPage(listOf(source.entry("new")))}
         val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0}
-        val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope)
+        val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         controller.edit("f");advanceTimeBy(100);controller.edit("first");advanceTimeBy(349);runCurrent();assertEquals(0,source.calls)
         advanceTimeBy(1);runCurrent();assertEquals(1,source.calls)
         controller.edit("second");advanceTimeBy(350);runCurrent();pending.complete(DiscoveryPage(listOf(source.entry("old"))));runCurrent()
@@ -61,7 +69,7 @@ class DiscoveryTest {
     }
     @Test fun paginationAppendsWithoutOverlapAndStopsAfterFourPages()=runTest {
         val source=CatalogFixture();source.respond={_,token->val page=token?.toInt()?:1;DiscoveryPage(listOf(source.entry("$page"),source.entry("shared")),"${page+1}")}
-        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope)
+        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         controller.edit("q");advanceTimeBy(350);runCurrent()
         repeat(6) {controller.more(source.id);runCurrent()}
         assertEquals(listOf("1","shared","2","3","4"),controller.state.value.entries.map {it.publication.id.localId})
@@ -122,12 +130,12 @@ class DiscoveryTest {
         val source=CatalogFixture();source.respond={_,_->error("offline")};val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0}
         val home=HomeDiscovery(listOf(SourceOption("A",source)),catalog,backgroundScope){0}
         home.refresh(DiscoveryPreferences());runCurrent();assertEquals(0,source.calls)
-        home.refresh(DiscoveryPreferences(homeEnabled=true));runCurrent();assertTrue(home.state.value.failed);assertTrue(home.state.value.rows.isEmpty())
+        home.refresh(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true));runCurrent();assertTrue(home.state.value.failed);assertTrue(home.state.value.rows.isEmpty())
         home.close();catalog.close()
     }
     @Test fun homeRowsComeFromExactSourceRequestsAndReuseCache()=runTest {
         val source=CatalogFixture();val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val home=HomeDiscovery(listOf(SourceOption("A",source)),catalog,backgroundScope){0}
-        val prefs=DiscoveryPreferences(homeEnabled=true,interests=setOf(Genre.FANTASY));home.refresh(prefs);runCurrent()
+        val prefs=DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true,interests=setOf(Genre.FANTASY));home.refresh(prefs);runCurrent()
         assertEquals(3,source.calls);assertEquals(Genre.FANTASY,source.requests[1].first.genre)
         home.pause();home.refresh(prefs);runCurrent();assertEquals(3,source.calls)
         home.refresh(prefs.copy(homeEnabled=false));runCurrent();assertTrue(home.state.value.rows.isEmpty());home.close();catalog.close()
@@ -146,7 +154,7 @@ class DiscoveryTest {
     @Test fun duplicateSubmitCoalescesAndPaginationRetryKeepsPriorResults()=runTest {
         val source=CatalogFixture();val wait=CompletableDeferred<Unit>();var fail=true
         source.respond={_,token->if(token==null){wait.await();DiscoveryPage(listOf(source.entry("first")),"next")}else{if(fail)error("offline");DiscoveryPage(listOf(source.entry("second")))}}
-        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope)
+        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         controller.edit("q");advanceTimeBy(350);runCurrent();repeat(5){controller.submit()};runCurrent();assertEquals(1,source.calls)
         wait.complete(Unit);runCurrent();controller.more(source.id);runCurrent();assertEquals("first",controller.state.value.entries.single().publication.id.localId)
         fail=false;controller.retry(source.id);runCurrent();assertEquals(listOf("first","second"),controller.state.value.entries.map{it.publication.id.localId})
@@ -154,7 +162,7 @@ class DiscoveryTest {
     }
     @Test fun timedOutSourceStopsLoadingAndAllowsSafeRetry()=runTest {
         val source=CatalogFixture();source.respond={_,_->awaitCancellation()}
-        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){testScheduler.currentTime};val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope)
+        val catalog=DiscoveryCatalog(listOf(source),backgroundScope){testScheduler.currentTime};val controller=DiscoveryController(listOf(SourceOption("A",source)),catalog,backgroundScope).also { it.catalogOnlyVisibility(true) }
         controller.edit("q");advanceTimeBy(350);runCurrent();advanceTimeBy(20000);runCurrent()
         assertFalse(controller.state.value.loading);assertTrue(controller.state.value.catalogs.single().failed)
         source.respond={_,_->DiscoveryPage(listOf(source.entry("ready")))};controller.retry(source.id);runCurrent();assertEquals("ready",controller.state.value.entries.single().publication.id.localId)
@@ -167,7 +175,7 @@ class DiscoveryTest {
 
     @Test fun optingOutIgnoresStoredInterestsInHomeRequestsAndResetRetainsLocalDataBoundary()=runTest {
         val source=CatalogFixture();val catalog=DiscoveryCatalog(listOf(source),backgroundScope){0};val home=HomeDiscovery(listOf(SourceOption("A",source)),catalog,backgroundScope){0}
-        home.refresh(DiscoveryPreferences(homeEnabled=true,personalized=false,interests=setOf(Genre.FANTASY)));runCurrent()
+        home.refresh(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true,personalized=false,interests=setOf(Genre.FANTASY)));runCurrent()
         assertEquals(listOf(null,Genre.PHILOSOPHY,Genre.HISTORY),source.requests.map{it.first.genre})
         assertEquals(0,source.acquisition);home.close();catalog.close()
     }
@@ -175,7 +183,7 @@ class DiscoveryTest {
     @Test fun homePublishesFastProviderWhileOtherCatalogIsStillPending()=runTest {
         val slow=CatalogFixture();slow.respond={_,_->awaitCancellation()};val fast=CatalogFixture(SourceId("fast"))
         val catalog=DiscoveryCatalog(listOf(slow,fast),backgroundScope){0};val home=HomeDiscovery(listOf(SourceOption("Slow",slow),SourceOption("Fast",fast)),catalog,backgroundScope){0}
-        home.refresh(DiscoveryPreferences(homeEnabled=true));runCurrent()
+        home.refresh(DiscoveryPreferences(showCatalogOnlySources=true,homeEnabled=true));runCurrent()
         assertTrue(home.state.value.loading);assertEquals(fast.id,home.state.value.rows.single().entries.single().publication.id.sourceId)
         home.pause();runCurrent();assertFalse(home.state.value.loading);home.close();catalog.close()
     }

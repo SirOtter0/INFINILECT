@@ -32,4 +32,12 @@ class EpubDocumentTest {
         assertEquals("chapter", EpubSpineItem(item.id).itemId)
         assertTrue(EpubSpineItem(item.id).linear)
     }
+    @Test fun rightsAreSeparateOrderedStatementsRatherThanAnInferredLicense() {
+        val statements=listOf(EpubRightsStatement("  Crèdits 李 📚\n","ca","credits","ltr"),EpubRightsStatement("A"),EpubRightsStatement("A"))
+        val metadata=EpubMetadata("original","Original",listOf("ca"),null,rights=statements)
+        assertEquals(statements,metadata.rights)
+        assertEquals("  Crèdits 李 📚\n",metadata.rights.first().text)
+        assertEquals(3,metadata.rights.size)
+        assertTrue(EpubMetadata("original","Original",listOf("ca"),null).rights.isEmpty())
+    }
 }

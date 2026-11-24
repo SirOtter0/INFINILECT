@@ -21,13 +21,24 @@ data class EpubEntryPath(val value: String) {
     }
 }
 
+/** A literal rights statement, not an interpreted license or acquisition authorization.
+ * Text retains XML-decoded whitespace; order/duplicates are retained by EpubMetadata.
+ * Language/direction include inheritance from metadata/package; id remains a local reference.
+ */
+data class EpubRightsStatement(
+    val text: String,
+    val language: String? = null,
+    val id: String? = null,
+    val direction: String? = null,
+)
+
 data class EpubMetadata(
     val identifier: String,
     val title: String,
     val languages: List<String>,
     val modified: String?,
     val creators: List<String> = emptyList(),
-    val rights: String? = null,
+    val rights: List<EpubRightsStatement> = emptyList(),
 )
 
 data class EpubManifestItem(

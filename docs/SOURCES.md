@@ -3,12 +3,33 @@
 Current retained-download behavior (PR #36): the existing strict explicit-CC0
 Internet Archive adapter supports TXT and PDF retained copies, independently of
 Library membership. Gutenberg remains catalogue-only; imports are not duplicated.
+PR #39 adds a shared **Wikisource es/en/ca** adapter with general under-demand
+search/pagination and a real EPUB acquisition/retained-reading route. Individual
+pages have separate content classification, rights evidence and technical EPUB
+state. An unknown page is not automatically a complete book or a downloadable
+resource. No title/revision allowlist is used. [API, rights, verified samples and
+limits](WIKISOURCE.md). The existing capability-based visibility preference stays
+off by default; catalog-only providers are hidden without hiding saved books.
 The initial acquisition experiments below are historical and do not describe the
 new download manager. See [offline acquisition/storage/lifecycle policy](OFFLINE_DOWNLOADS.md).
 
 A source obtains publications and resources; it does not choose how they are read.
 The app routes by stable SourceId. Catalog-local IDs are only unique inside that
 source. Resource keys are opaque and must be resolved by their owning source.
+
+## Wikisource follow-up: candidate is not permission
+
+The 3 November PR #39 follow-up represents a page's kind, EPUB technical state
+and rights state independently. Header-bearing text is not labeled a complete
+book; dictionary entries are sections. A candidate EPUB reference can exist with
+unknown rights and cannot be acquired until the source independently authorizes
+it. An explicit user check uses the existing preparer only for authorized pages;
+ordinary search/details never export. See the [ten-page comparison](WIKISOURCE.md)
+and [reviewed rights rules](WIKISOURCE_RIGHTS.md). Neither source-wide integrated
+reading nor a successful file validation promises that all its pages are readable.
+The majority of the mixed audit cohort remains blocked for documented auxiliary
+or insufficient-evidence reasons. Other providers and visibility behavior are
+unchanged.
 
 ## Project Gutenberg — experimental OPDS2 catalog
 

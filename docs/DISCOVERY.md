@@ -1,5 +1,31 @@
 # Search, discovery and local recommendations — PR #29
 
+## Estados de búsqueda y selector de Wikisource
+
+La cuadrícula estricta distingue entre coincidencias del catálogo,
+confirmaciones, candidatos autorizados y evaluación incompleta. La
+interfaz elige una explicación primaria y agrupa la paginación de
+Wikisource en un menú por edición. La disponibilidad y las fichas
+pendientes afectan al descubrimiento. El modo elegido mantiene el
+mismo campo de preferencias y valor inicial. [Comportamiento y prueba física](WIKISOURCE.md).
+
+## Disponibilidad de resultados y preferencias de Wikisource
+
+**Legibles** filtra la cuadrícula por preparación real del EPUB y autorización
+positiva. Enviar la consulta con la lupa, Intro o el teclado, volver a **Legibles**
+o pedir más resultados permite comprobar hasta dos candidatos autorizados. Escribir
+sin enviar consulta solo metadatos. La ficha conserva la comprobación manual para
+los casos pendientes. **Todos** recupera el catálogo general con estados conocidos
+y cancela la comprobación automática. Los demás proveedores
+conservan la búsqueda y la paginación existentes. [Presupuestos y prueba manual](WIKISOURCE.md).
+
+El campo local `wikisourceAllResults` se guarda en el registro atómico de
+preferencias. Los formatos INF1–INF5 conservan sus campos y cargan Legibles por
+defecto. INF6 guarda Todos junto a la visibilidad de fuentes y el idioma lector.
+Una elección del modo durante la carga inicial se combina con los demás campos
+de descubrimiento guardados. El filtro no modifica Biblioteca, Historial ni las
+posiciones de lectura.
+
 Audited against main `1d11bdc8a8e8f94a26fb2409182bbd02167b2879`, the
 PR #28 squash merge. Sources obtain publications; existing readers still display
 freshly authorized resources. No reader engine, progress/identity schema,
@@ -85,8 +111,9 @@ are never uploaded. Selected interests can influence ordinary subject queries.
 Requests use the existing project user-agent/contact and normal network transport;
 providers see connection/network information. Country is user-declared, not verified
 legal eligibility, and is not sent or used as a universal copyright classifier.
-Discovery is separate from acquisition; no restriction, licensing or geographic
-acquisition check is bypassed. No cloud profile, AI API, new provider or scraper.
+Las comprobaciones EPUB de Wikisource vuelven a validar derechos y revisión antes
+de adquirir bytes y al final de la transferencia. Usan el preparador y el
+almacenamiento temporal existentes. [Límites y cancelación](WIKISOURCE.md). No cloud profile, AI API, new provider or scraper.
 
 Explicit budgets:
 
@@ -115,8 +142,9 @@ Explicit budgets:
   typographic cover; negative thumbnail results may persist in that session cache.
 - Closing cancels catalog/controller/Home work and clears metadata and advertised
   thumbnail maps. Screen/reader exit cancels obsolete requests. Cover leases reuse
-  existing release/cancellation. Preferences alone persist privately; no book payload,
-  thumbnail or catalog content is added to disk by discovery.
+  existing release/cancellation. Wikisource uses private preparation files for its
+  bounded checks, then closes them. The setting persists and confirmations are
+  retained only in session memory.
 
 ## Verification and manual acceptance
 
