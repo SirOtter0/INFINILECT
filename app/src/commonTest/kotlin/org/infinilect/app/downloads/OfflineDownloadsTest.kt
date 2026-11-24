@@ -137,8 +137,12 @@ class OfflineDownloadsTest {
         backend.settleFailure=true;owner.cancel(backend.offer().publication.id);runCurrent();assertEquals(DownloadFailure.STORAGE,owner.catalogue.value.failure)
         backend.settleFailure=false;owner.cancel(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.CANCELLED,owner.status())
         backend.gate.complete(Unit);owner.retry(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.DOWNLOADED,owner.status())
-        backend.removeFailure=true;owner.remove(backend.offer().publication.id);runCurrent();assertTrue(owner.available.value.isEmpty());assertNull(owner.status());assertEquals(DownloadFailure.STORAGE,owner.catalogue.value.failure)
-        assertEquals(DownloadProgress(),owner.progress(backend.offer().publication.id).value)
+        val id = backend.offer().publication.id
+        val retainedProgress = owner.progress(id)
+        assertTrue(retainedProgress.value.bytes > 0)
+        backend.removeFailure=true;owner.remove(id);runCurrent();assertTrue(owner.available.value.isEmpty());assertNull(owner.status());assertEquals(DownloadFailure.STORAGE,owner.catalogue.value.failure)
+        assertEquals(DownloadProgress(), retainedProgress.value)
+        assertEquals(DownloadProgress(), owner.progress(id).value)
         owner.close();owner.awaitClosed()
     }
 }

@@ -181,7 +181,7 @@ internal class OfflineDownloads(val backend: DownloadBackend,dispatcher: Corouti
                 backend.remove(id)
             } finally {
                 refresh()
-                if (entry(id) == null) progress.remove(id)
+                if (entry(id) == null) progress.remove(id)?.value = DownloadProgress()
             }
         }
     }
