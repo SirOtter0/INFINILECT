@@ -2,9 +2,14 @@
 // Copyright © 2026 SirOtter0 and INFINILECT contributors.
 package org.infinilect.app.reader.pdf
 
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import javax.imageio.ImageIO
 import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.cos.COSName
+import org.apache.pdfbox.pdmodel.PDResources
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory
 import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
@@ -63,6 +68,32 @@ class DesktopPdfEngineTest {
             } finally { Files.deleteIfExists(file) }
         }
     }
+    @Test fun declaresBoundedImageGeometryBeforeDecodingResources() {
+        fun pdfWithImageResource(width: Int, height: Int): ByteArray = ByteArrayOutputStream().use { output ->
+            PDDocument().use { pdf ->
+                val page = PDPage()
+                val image = LosslessFactory.createFromImage(pdf, BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB))
+                image.cosObject.setInt(COSName.WIDTH, width)
+                image.cosObject.setInt(COSName.HEIGHT, height)
+                // No page operation draws this resource. The fixture only exercises metadata preflight.
+                page.resources = PDResources().also { it.add(image) }
+                pdf.addPage(page)
+                pdf.save(output)
+            }
+            output.toByteArray()
+        }
+        withPdf(pdfWithImageResource(1, 1)) { document ->
+            document.render(0, PdfRenderSize(128, 128)).close()
+        }
+        for ((width, height) in listOf(5_000 to 5_001, 16_385 to 1, 0 to 1)) {
+            withPdf(pdfWithImageResource(width, height)) { document ->
+                assertEquals(PdfFailure.LIMIT, assertFailsWith<PdfException> {
+                    document.render(0, PdfRenderSize(128, 128)).close()
+                }.failure)
+            }
+        }
+    }
+
     @Test fun missingOptionalCodecsFailInsteadOfDroppingDrawnImages() {
         for((filter,format) in listOf("JBIG2Decode" to "JBIG2","JPXDecode" to "JPEG2000")) {
             if(ImageIO.getImageReadersByFormatName(format).hasNext()) continue
