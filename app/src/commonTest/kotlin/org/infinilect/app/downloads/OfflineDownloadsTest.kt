@@ -93,6 +93,19 @@ class OfflineDownloadsTest {
         backend.gate.complete(Unit);owner.awaitClosed();assertTrue(backend.closed);assertEquals(DownloadStatus.CANCELLED,backend.rows.values.single().status)
         assertTrue(owner.available.value.isEmpty())
     }
+    @Test fun aRejectedRequestDoesNotPublishDownloadProgress()=runTest {
+        val backend=Backend().also {it.writeFailure=true}
+        val owner=OfflineDownloads(backend,StandardTestDispatcher(testScheduler))
+        try {
+            runCurrent()
+            val offer=backend.offer()
+            owner.enqueue(offer);runCurrent()
+            assertTrue(owner.catalogue.value.entries.isEmpty())
+            assertEquals(0,backend.starts)
+            assertEquals(DownloadProgress(),owner.progress(offer.publication.id).value)
+        } finally {owner.close();owner.awaitClosed()}
+    }
+
     @Test fun durableCompletionWinsLateCancelAndPersistenceErrorsDoNotInventMembership()=runTest {
         val backend=Backend();val owner=OfflineDownloads(backend,StandardTestDispatcher(testScheduler));runCurrent()
         backend.writeFailure=true;owner.enqueue(backend.offer());runCurrent();assertTrue(backend.rows.isEmpty());assertEquals(DownloadFailure.STORAGE,owner.catalogue.value.failure)
@@ -125,6 +138,7 @@ class OfflineDownloadsTest {
         backend.settleFailure=false;owner.cancel(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.CANCELLED,owner.status())
         backend.gate.complete(Unit);owner.retry(backend.offer().publication.id);runCurrent();assertEquals(DownloadStatus.DOWNLOADED,owner.status())
         backend.removeFailure=true;owner.remove(backend.offer().publication.id);runCurrent();assertTrue(owner.available.value.isEmpty());assertNull(owner.status());assertEquals(DownloadFailure.STORAGE,owner.catalogue.value.failure)
+        assertEquals(DownloadProgress(),owner.progress(backend.offer().publication.id).value)
         owner.close();owner.awaitClosed()
     }
 }
