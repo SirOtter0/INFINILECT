@@ -33,7 +33,7 @@ Los 14 avisos del escáner fueron descartados tras leer los cuatro documentos qu
 - Se resolvieron 23 configuraciones runtime de los cuatro módulos, con debug, release, Android-host, Desktop y configuraciones dev. 260 coordenadas/versiones Maven únicas y Foxlet 0.5.0, AAR local SHA-256 comprobado. El [SBOM CycloneDX 1.6](runtime-sbom.cdx.json) validado contra el esquema oficial es un inventario plano con configuraciones Gradle. No incluye bibliotecas de sistema ni descompone binarios nativos.
 - Ktor 3.6.0, OkHttp Android 5.5.0, coroutines/serialization 1.11.0, SQLDelight 2.4.0 y PDFBox 3.0.8. Foxlet se descarga con pin SHA-256 y los modelos tienen manifiestos específicos. Maven Central y Google para dependencias. Los plugins añaden Gradle Plugin Portal.
 - OSV Maven consultado por coordenada y versión exactas el 24 de noviembre de 2026. Cero coincidencias en los seis lotes con 260 coordenadas runtime y seis coordenadas de build seleccionadas. GitHub Advisory Database tampoco coincidió con PDFBox 3.0.8. El resultado está sujeto a la cobertura del índice, incluidas las variantes Maven. Foxlet/Bergamot, modelos, SDK, JDK y nativos necesitan seguimiento upstream propio. [OSV](https://osv.dev/) · [Avisos GitHub](https://github.com/advisories) · [Seguridad de PDFBox](https://pdfbox.apache.org/security.html)
-- El ZIP y el JAR del Gradle Wrapper coinciden con el hash fijado y el publicado, respectivamente. Faltan metadatos de verificación Gradle para los artefactos Maven. [Checksums Gradle](https://gradle.org/release-checksums/)
+- El ZIP y el JAR del Gradle Wrapper coinciden con el hash fijado y el publicado, respectivamente. La base aún carecía de metadatos de verificación Gradle para artefactos Maven. La remediación se detalla a continuación. [Checksums Gradle](https://gradle.org/release-checksums/)
 - La API lista cinco workflows históricos. Se revisó el YAML de la última ejecución de cada uno. Push acotado por rama y un workflow manual, permisos contents: read, acciones fijadas por SHA y artefactos temporales. El árbol auditado de main carece de workflows, configuración de CodeQL, Dependency Review, Dependabot y escaneo de secretos versionados. No se cambiaron ajustes del repositorio. [Historial de Actions](https://github.com/SirOtter0/INFINILECT/actions)
 - Distribuir avisos y licencias vigentes, incluidos PDFBox y FontBox, Skia/Skiko, SQLite JDBC, OkHttp/PSL, Foxlet/Bergamot/Marian y modelos. Los ABIs y las licencias de sistema varían según plataforma. [Inventario de licencias](../../THIRD_PARTY_NOTICES.md) · [Textos de terceros](../../third-party)
 
@@ -54,9 +54,40 @@ Se inventariaron 130 coordenadas de build mediante los informes buildEnvironment
 | [CVE-2026-13506](https://github.com/advisories/GHSA-qp49-qgx5-5m26) | HIGH | org.bouncycastle:bcprov-jdk18on 1.79 | < 1.85 | 1.85 | Análisis ASN.1 afectado con secuencias diferidas bajo entrada no confiable. |
 | [CVE-2021-33813](https://github.com/advisories/GHSA-2363-cqg2-863c) | HIGH | org.jdom:jdom2 2.0.6 | < 2.0.6.1 | 2.0.6.1 | Análisis XML externo con configuración JDOM que permite entidades. |
 
-La presencia de las versiones afectadas en build está confirmada. No se demostró que una entrada remota, una publicación o un fichero de usuario alcanzara esos mecanismos en INFINILECT. Para producción son riesgo de toolchain pendiente, separado de la gravedad upstream. Ejecutar el empaquetado de firma con fuentes y entradas revisadas. Priorizar una versión estable compatible de AGP que actualice sus dependencias o una alineación explícita validada con AGP. Para cubrir todos los avisos combinados de Bouncy Castle, verificar juntos proveedor, PKIX y utilidades en 1.85 o una versión segura posterior. La regresión de esa actualización debe incluir resolución del classpath, rescan, build limpio debug y release, Lint, manifiestos y verificación independiente de una APK firmada. Esta auditoría no fuerza versiones transitivas a través del classloader de AGP ni afirma que tales pruebas se hayan ejecutado para una actualización futura.
+El alcance confirmado era el classpath de compilación. AGP introduce los módulos afectados a través de sdk-common/sdklib, builder, apkzlib, bundletool y jetifier-processor. La auditoría no identificó una ruta desde archivos o respuestas de red de usuario hasta esas dependencias. Jetifier no está habilitado en el proyecto.
 
-Se siguieron las rutas de AGP hacia sdk-common/sdklib, builder, apkzlib, bundletool y jetifier-processor. El proyecto no activa Jetifier y no se añadieron permisos de firma al CI histórico. Google Maven lista revisiones AGP estables posteriores. Los POM oficiales de sdk-common 32.3.3 y 32.5.2 conservan BC 1.79 y 1.80.2, respectivamente. Una actualización de AGP por sí sola a ese conjunto no acredita corregir los avisos que necesitan 1.85. Queda pendiente resolver y probar la cadena de build con una combinación compatible.
+### Remediación en la PR #41
+
+La remediación parte de `3f77b20eaa26bd281d9f605feda306cadb0c701a`. Se evaluaron los POM publicados por Google Maven. Los de sdk-common 32.3.3 y 32.5.2 aún usan Bouncy Castle 1.79 y 1.80.2, respectivamente. Actualizar AGP por sí solo con esas dependencias conservaría los dos avisos que requieren 1.85. Se mantuvo AGP 9.3.1 y se aplicaron restricciones Gradle normales en el classpath de build del proyecto raíz. Gradle permite que el grafo seleccione una versión superior compatible. Los classpaths de la aplicación quedan fuera de estas restricciones.
+
+| Módulo | Classpath anterior | Classpath resuelto |
+| --- | --- | --- |
+| Guava | 33.4.0-jre | 33.7.2-jre |
+| Commons Lang3 | 3.16.0 | 3.18.0 |
+| jose4j | 0.9.5 | 0.9.6 |
+| Bouncy Castle PKIX, Provider y utilidades | 1.79 | 1.85 los tres |
+| JDOM2 | 2.0.6 | 2.0.6.1 |
+
+El grafo efectivo se obtuvo con `buildEnvironment`. El [inventario actualizado](build-dependencies.tsv) contiene 131 coordenadas Maven. OSV consultado el 24 de noviembre de 2026 devolvió cero coincidencias para esas coordenadas, Gradle Core 9.7.1 y las 260 coordenadas Maven runtime. La comparación del [SBOM](runtime-sbom.cdx.json) conservó los mismos 261 componentes, contando Foxlet. Los diez avisos de la tabla anterior ya quedan fuera de los rangos afectados en el grafo de build resuelto. El resultado de OSV está limitado a las coordenadas e índices consultados. [OSV](https://osv.dev/) · [Avisos de GitHub](https://github.com/advisories) · [Google Maven](https://maven.google.com/)
+
+### Verificación de dependencias y CI
+
+Los metadatos de Gradle fijan SHA-256 para archivos publicados y metadatos de resolución, incluidos los de los plugins. El workflow ejecuta Gradle con `--dependency-verification strict`. El checksum del ZIP del Wrapper reside en sus propiedades. El workflow verifica el JAR antes de invocar el Wrapper. El AAR de Foxlet mantiene su verificación SHA-256 propia, ya que se obtiene desde una tarea y queda fuera de la resolución Maven. [Metadatos Gradle](../../gradle/verification-metadata.xml) · [Checksums Gradle](https://gradle.org/release-checksums/)
+
+La lista definitiva contiene 1.327 hashes de 786 componentes. Se contrastaron con SHA-256 publicados, bytes obtenidos de repositorios oficiales o el descriptor Gradle previamente comprobado. En coordenadas Compose donde Gradle Plugin Portal y Maven Central ofrecen bytes distintos, se fijó el artefacto exacto que resolvió Gradle. La lista incluye las variantes publicadas de Compose/Skiko para Linux ARM64, macOS y Windows, y los binarios AAPT2 de Google para macOS y Windows. Se verificó su procedencia desde Linux; la ejecución en esos sistemas permanece pendiente.
+
+Se excluyeron 37 archivos de instrumentación Android en dispositivo de `com.android.tools.utp` y `com.google.testing.platform`. El proxy devolvió HTTP 503 al contrastarlos con Google Maven. Las tareas de dispositivo que los necesiten requieren comprobar y añadir sus hashes antes de ejecutarse con verificación estricta. Los tests Android-host usan otro classpath.
+
+Para actualizar dependencias de forma verificable:
+
+1. Revisar avisos upstream, coordenadas, repositorio oficial y compatibilidad antes de cambiar la versión. Obtener el grafo anterior y el nuevo con `buildEnvironment` y los informes de dependencias runtime.
+2. En un checkout de revisión aislado, generar una propuesta con `./gradlew --write-verification-metadata sha256 help --dry-run`. Para resoluciones iniciadas al ejecutar tareas, generar la propuesta ejecutando las tareas afectadas en ese mismo checkout. Considerar el resultado generado como una lista de hashes por contrastar.
+3. Comparar cada SHA-256 nuevo con la publicación o el checksum del editor mediante HTTPS en el repositorio oficial. Si el editor publica firmas, contrastarlas con su clave autenticada cuando corresponda. Cuando el repositorio solo ofrezca el artefacto, obtener los bytes directamente y calcular el hash. Investigar cualquier diferencia, archivo desconocido o segundo hash de una misma coordenada antes de aceptar el cambio.
+4. Incorporar únicamente el metadato revisado, conservar `verify-metadata=true` y resolver en un `GRADLE_USER_HOME` limpio con verificación estricta. Ejecutar el workflow de verificación y actualizar inventarios y avisos de licencias que hayan cambiado. Los fallos de verificación requieren revisar el origen y los bytes antes de continuar. [Guía de Gradle](https://docs.gradle.org/9.7.1/userguide/dependency_verification.html)
+
+El [workflow Verification](../../.github/workflows/verification.yml) se activa en `pull_request` y `push` a `main`. Usa un runner hospedado, token de lectura, checkout sin persistencia de credenciales y tres acciones fijadas por SHA. Ejecuta las pruebas Core, App Android-host y Desktop, builds Android debug y release sin firmar, lint, manifiestos, recursos y app image Linux. Firma de producción y publicación pertenecen a un flujo separado.
+
+Dependabot para Gradle queda para otra revisión junto con el mantenimiento de hashes y la verificación de sus propuestas. CodeQL admite Java/Kotlin, pero su configuración de compilación para KMP y las condiciones de disponibilidad del repositorio requieren una evaluación separada. El escaneo continuo de secretos queda pendiente de confirmar las capacidades nativas de GitHub con el mantenedor. La configuración de este workflow se limita al repositorio versionado. [Dependabot](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates) · [CodeQL](https://codeql.github.com/docs/codeql-overview/supported-languages-and-frameworks/) · [Secret scanning](https://docs.github.com/en/code-security/secret-scanning)
 
 ## Revisión por superficie
 
@@ -81,14 +112,14 @@ Las dos APK de desarrollo de referencia de la PR #39, be97f00 y 0f2b17d, tienen 
 
 | ID | Severidad | Ubicación, condición e impacto | Corrección o estado |
 | --- | --- | --- | --- |
-| RA-01 | MEDIUM | [DesktopPdfEngine.kt:105](../../app/src/desktopMain/kotlin/org/infinilect/app/reader/pdf/DesktopPdfEngine.kt#L105), preflight de imágenes y PageDrawer. La página podía tener raster de salida pequeño y una imagen de origen con dimensiones declaradas fuera de un presupuesto razonable. Posible presión de memoria o fallo al decodificar. | Límite de imágenes declaradas antes del decodificador. Regresión sintética usa una imagen original de 1×1 como recurso sin dibujarlo. |
+| RA-01 | MEDIUM | [DesktopPdfEngine.kt:105](../../app/src/desktopMain/kotlin/org/infinilect/app/reader/pdf/DesktopPdfEngine.kt#L105), preflight de imágenes y PageDrawer. La página podía tener raster de salida pequeño y una imagen de origen con dimensiones declaradas fuera de un presupuesto razonable. Posible presión de memoria o fallo al decodificar. | Límite de imágenes declaradas antes del decodificador. Regresiones de recurso sin dibujar, imagen inline, máscara alfa y control de un escaneo A3 a 300 ppp. |
 | RA-02 | MEDIUM | [FilePdfPreparer.kt:40](../../app/src/jvmSharedMain/kotlin/org/infinilect/app/reader/pdf/FilePdfPreparer.kt#L40) y PdfRenderer. Un PDF se analiza dentro del proceso y puede consumir recursos de motor por encima de los presupuestos de salida. | Riesgo residual. Aislar el parser requiere diseño de IPC y autorización para el cambio arquitectónico. |
-| RA-03 | MEDIUM | [settings.gradle.kts:1](../../settings.gradle.kts#L1) y wrapper. Repositorios fijos y checksums del wrapper y Foxlet, pero sin verificación reproducible de todos los artefactos Maven. | Pendiente. Inventario y hashes comprobados. Sin evidencia de manipulación. |
+| RA-03 | MEDIUM | [settings.gradle.kts:1](../../settings.gradle.kts#L1) y wrapper. Repositorios fijos y checksums del wrapper y Foxlet, pero sin verificación reproducible de todos los artefactos Maven. | Implementada verificación SHA-256 estricta de artefactos y metadatos Maven. |
 | RA-04 | MEDIUM | [AndroidUpdates.kt:22](../../app/src/androidMain/kotlin/org/infinilect/app/updates/AndroidUpdates.kt#L22) y proceso de release. Aún falta la validación física de la firma pública y su compatibilidad con las instalaciones de desarrollo. | Pendiente antes de publicar. Instalación integrada bloqueada. |
-| RA-05 | LOW | Main sin CI versionada. Una revisión futura puede prescindir de comprobaciones automáticas. | Pendiente. Separar verificación de solo lectura, firma y publicación cuando se adopte CI. |
+| RA-05 | LOW | Main sin CI versionada. Una revisión futura puede prescindir de comprobaciones automáticas. | Implementado workflow de verificación de solo lectura para PR y main. |
 | RA-06 | LOW | Discovery Android en realme C55. Una búsqueda de Wikisource puede dejar el libro pendiente. | Resolución aplazada. La comprobación desde ficha o la segunda búsqueda son alternativas. [Issue #40](https://github.com/SirOtter0/INFINILECT/issues/40) |
-| RA-08 | MEDIUM | [build.gradle.kts:6](../../build.gradle.kts#L6), classpath AGP 9.3.1. Seis módulos resuelven versiones con avisos upstream críticos, altos o medios. Sin ruta desde los lectores y fuentes en los binarios actuales. | Pendiente la corrección del toolchain. Tabla de avisos, condiciones, versiones corregidas y prueba de aceptación arriba. |
-| RA-09 | LOW | OfflineDownloads.enqueue y remove. Un rechazo de persistencia podía retener progreso de una solicitud sin registro. Una eliminación parcial podía dejar su último progreso en memoria aun desaparecido el registro. | Retrasar la inicialización hasta aceptar la descarga y limpiar el progreso si la recarga confirma que el registro ya no existe. Regresión con backend de prueba. |
+| RA-08 | MEDIUM | [build.gradle.kts:1](../../build.gradle.kts#L1), classpath AGP 9.3.1. Seis módulos resuelven versiones con avisos upstream críticos, altos o medios. Sin ruta desde los lectores y fuentes en los binarios actuales. | Diez avisos remediados en el classpath de build. Versiones efectivas y alcance arriba. |
+| RA-09 | LOW | OfflineDownloads.enqueue y remove. Un rechazo de persistencia podía retener progreso de una solicitud sin registro. Una eliminación parcial podía dejar su último progreso en memoria aun desaparecido el registro. | Retrasar la inicialización hasta aceptar la descarga y limpiar el progreso si la recarga confirma que el registro ya no existe. Regresión con backend de prueba que conserva el StateFlow original antes de eliminar el registro y comprueba su reinicio. |
 | RA-07 | INFORMATIONAL | [ApplicationInterfaceTest.kt:578](../../app/src/desktopTest/kotlin/org/infinilect/app/ApplicationInterfaceTest.kt#L578) y PageSpreadLayoutTest Desktop. El historial distingue fallos Compose RectList y un gesto anterior estabilizado con reloj sintético. | Seguimiento. Ambas suites completas, antes y después, pasaron. La intermitencia no se reprodujo y su causa sigue abierta. |
 
 ## Línea base, regresión y comprobaciones finales
@@ -121,6 +152,30 @@ Comando de suites y artefactos, con los cuatro tests forzados con --rerun en amb
 
 El app image se añadió solo a la pasada final. La pasada final terminó en 18 min 55 s. Lint debug y release terminaron con cero errores y un aviso preexistente GradleDependency por variante.
 
+### Pruebas de remediación
+
+Se volvieron a ejecutar las cuatro suites con el classpath corregido. Pasaron **3.484 pruebas**, sin fallos, errores ni omisiones.
+
+| Suite | Pruebas |
+| --- | ---: |
+| Core JVM | 60 |
+| Core Android-host | 60 |
+| App Android-host | 1.537 |
+| App Desktop | 1.827 |
+
+El caso de descarga parcial conserva el flujo obtenido antes de borrar y comprueba que pierde su contador aunque falle la limpieza posterior. El caso comprueba también el estado que observa un nuevo suscriptor. Las pruebas PDF cubren las rutas reales de imagen inline y máscara de transparencia y comprueban que una imagen dentro del límite se puede dibujar. El escaneo A3 de 3.508 × 4.961 píxeles a 300 ppp se rasteriza dentro del presupuesto de salida. Las pruebas de página doble completaron esta pasada de Desktop con renderizado lento en Skiko. Se mantiene el seguimiento histórico de RA-07. La comprobación final con `--dependency-verification strict` terminó en 3 min 3 s y reprodujo el mismo grafo. Gradle reutilizó los resultados de las cuatro suites recién ejecutadas. Kotlin Footguns dio cero coincidencias sobre el diff y pasó `git diff --check`.
+
+Para la resolución limpia se inició un `GRADLE_USER_HOME` vacío. El primer intento estricto rechazó cinco POM o metadatos de módulos padre ausentes. Sus bytes se contrastaron con Maven Central antes de fijarlos. El segundo intento resolvió el classpath y reprodujo las 23 configuraciones runtime y sus 2.682 filas sin módulos irresueltos. En un checkout separado, la modificación deliberada del hash del JAR de AGP fue rechazada con el modo estricto.
+
+La ejecución completa con el nuevo classpath duró 25 min 54 s. Generó debug y release sin firmar, comprobó los manifiestos y los ocho casos de política, y verificó los recursos empaquetados de en, es y ca. Lint debug y release dieron cero errores y un aviso `GradleDependency` preexistente por variante. Se compiló Desktop y se generó el app image Linux x86-64 de 169.666.218 bytes.
+
+Se verificó la integridad ZIP, la alineación de 16 KiB y el manifiesto de las dos APK. Conservan el paquete `org.infinilect.app`, SDK objetivo 37, SDK mínimo 26, permisos y cuatro ABI. La APK debug pasó la verificación de firma APK v2. Se comprobó que release quedó sin firmar. SHA-256 locales para trazar estas dos compilaciones:
+
+| Artefacto | SHA-256 |
+| --- | --- |
+| Android debug | `9eedb1245865d6acea611f9572c9c94a53880f388fe44bcdad2932c9b4206c1c` |
+| Android release sin firmar | `30bfbb88c8811fd21a1698f74a41cd01719e49a7f0bad7682b0708b900e9ac2c` |
+
 ## Candidato de release
 
 **Propuesta** `versionName=0.1.0`, `versionCode=2`, etiqueta futura `v0.1.0`. GitHub devolvió listas vacías de releases y tags. El proyecto declara `0.0.1-SNAPSHOT` y código 1. Confirmar el mayor versionCode de todos los artefactos previamente distribuidos antes de fijarlo.
@@ -135,7 +190,7 @@ El app image se añadió solo a la pasada final. La pasada final terminó en 18 
 
 ### Compilación, firma e instalación
 
-1. Fijar SHA y versión aprobados. En checkout limpio ejecutar `./gradlew :androidApp:assembleRelease :desktopApp:createDistributable` con JDK 21, SDK 37 y artefactos revisados. Comprobar el nombre que ve el usuario en el paquete Desktop y probar el app image Linux. Construir macOS y Windows en sus hosts.
+1. Fijar SHA y versión aprobados. En checkout limpio ejecutar `./gradlew --dependency-verification strict :androidApp:assembleRelease :desktopApp:createDistributable` con JDK 21, SDK 37 y artefactos revisados. Comprobar el nombre que ve el usuario en el paquete Desktop y probar el app image Linux. Construir macOS y Windows en sus hosts.
 2. Alinear la APK antes de firmar. Usar apksigner en el entorno de confianza con el almacén de firma autorizado y la entrada secreta de ese entorno. Verificar firmas y certificado público con `apksigner verify --verbose --print-certs`. Comparar paquete, código, ABIs, permisos y certificado o linaje contra el artefacto anterior. [Firma Android](https://developer.android.com/studio/publish/app-signing)
 3. Ejecutar `sha256sum <archivo>` después de firmar y volver a comprobar los bytes entregados. Adjuntar SBOM y avisos. Si se habilita el instalador integrado, verificar también el manifiesto con la raíz independiente descrita en SECURE_UPDATES.
 4. Instalar encima de una versión con certificado compatible. Con firma incompatible o alerta de Play Protect, detenerse y revisar la procedencia. Para recuperación, preferir una compilación corregida con código superior y certificado compatible, preservando los datos.
@@ -148,4 +203,4 @@ El app image se añadió solo a la pasada final. La pasada final terminó en 18 
 - [ ] TalkBack, es/en/ca, claro/oscuro, 150% y 180%, retrato estrecho y paisaje. Revisar arranque frío, desplazamiento, portadas, PDF y memoria con mediciones físicas.
 - [ ] Confirmar que el instalador integrado siga deshabilitado. Si se habilita, validar rechazo de firma, consentimiento y cancelación en otra revisión.
 
-**Recomendación.** Revisar la PR como candidata y posponer la publicación hasta resolver o aceptar explícitamente el riesgo del classpath de build y validar firma, instalación física y conservación de datos. Mantener seguimiento separado de la Issue #40.
+**Recomendación.** Revisar la PR como candidata y posponer la publicación hasta validar firma, instalación física y conservación de datos. Mantener seguimiento separado de la Issue #40.

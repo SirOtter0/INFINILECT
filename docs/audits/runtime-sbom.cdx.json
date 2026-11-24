@@ -2,18 +2,18 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "version": 1,
+  "version": 2,
   "metadata": {
     "component": {
       "type": "application",
-      "bom-ref": "infinilect-9432d90",
+      "bom-ref": "infinilect-0.0.1-SNAPSHOT",
       "name": "INFINILECT",
       "version": "0.0.1-SNAPSHOT"
     },
     "properties": [
       {
-        "name": "infinilect:audited-commit",
-        "value": "9432d90a4440cbbd1232e00a36eee374bd4eefd4"
+        "name": "infinilect:remediation-base-commit",
+        "value": "3f77b20eaa26bd281d9f605feda306cadb0c701a"
       },
       {
         "name": "infinilect:scope",
