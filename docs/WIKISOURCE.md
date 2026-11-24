@@ -1,5 +1,20 @@
 # Wikisource: availability and rights follow-up — PR #39
 
+## Problemas conocidos
+
+### Android · Verificación automática de EPUB en Buscar
+
+- **Plataforma.** Android, reproducido en un realme C55 con la versión de la PR #39 basada en `0f2b17d`.
+- **Comportamiento esperado.** Las obras confirmadas aparecen automáticamente en **Legibles** tras una sola búsqueda.
+- **Comportamiento observado.** En ocasiones, la primera búsqueda de «A Venus» deja la obra en **Pendientes de comprobar**. Una segunda búsqueda con la misma consulta permite que aparezca en **Legibles**.
+- **Solución temporal.** Repetir la búsqueda o abrir la ficha y pulsar **Comprobar EPUB**.
+- **Impacto observado.** Afecta a la experiencia de descubrimiento. Sigue sin demostrarse un fallo asociado de integridad, seguridad o lectura offline.
+- **Causa y estado.** La causa en Android físico sigue sin confirmar. La resolución se aplaza. [Incidencia #40](https://github.com/SirOtter0/INFINILECT/issues/40)
+
+El defecto de tiempo de espera descrito a continuación se reprodujo y corrigió
+en las pruebas automatizadas. La prueba posterior en el realme C55 confirmó
+que el síntoma físico persiste con esa corrección.
+
 ## Primera búsqueda con metadatos lentos
 
 En el realme C55, una búsqueda de «A Venus» dejó la obra en **Pendientes
@@ -8,9 +23,9 @@ regresión reprodujo el primer resultado en el controlador anterior:
 el catálogo entrega el candidato autorizado a los 15 segundos, la
 comprobación EPUB necesita 4 segundos y el reloj de 18 segundos cancela
 la operación al cumplirse el tercer segundo de la comprobación. La
-primera búsqueda se queda sin promoción. Esto demuestra un defecto
-del controlador. Falta repetir la prueba física para confirmar que
-explica el caso concreto del realme C55.
+primera búsqueda se queda sin promoción. La regresión aisló ese defecto del controlador.
+El síntoma observado en el realme C55 sigue abierto y se registra por separado
+en la [incidencia #40](https://github.com/SirOtter0/INFINILECT/issues/40).
 
 El plazo de 18 segundos empieza ahora al recibir el primer candidato
 elegible. Los metadatos conservan sus plazos y los EPUB conservan su
