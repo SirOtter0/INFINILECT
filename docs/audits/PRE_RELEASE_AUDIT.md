@@ -62,7 +62,7 @@ Se siguieron las rutas de AGP hacia sdk-common/sdklib, builder, apkzlib, bundlet
 
 | Superficie | Controles y evidencia |
 | --- | --- |
-| Android | Manifiestos y MainActivity. Permisos de Internet y estado de red, más permiso interno de firma. Launcher público y ProfileInstallReceiver protegido por DUMP. Providers y receptor de actualización privados. Sin FileProvider, enlaces profundos públicos, permiso de instalación ni tráfico en claro. Exclusiones de backup y transferencia. Release sin depuración. Controles concretos de almacenamiento, red y plataforma de MASVS/MASTG. [OWASP MASVS](https://mas.owasp.org/MASVS/) |
+| Android | Manifiestos y MainActivity. Permisos de Internet y estado de red, más permiso interno de firma. Launcher público y ProfileInstallReceiver protegido por DUMP. Providers y receptor de actualización privados. Sin FileProvider, enlaces profundos públicos, permiso de instalación ni tráfico en claro. Exclusiones de backup y transferencia. Release sin depuración. Controles MASVS STORAGE-1/2, NETWORK-1 y PLATFORM-1. Se revisó la parte estática de los casos MASTG-TEST-0235, 0262, 0364 y 0366. La captura de red y las pruebas de backup del dispositivo quedan pendientes. [OWASP MASVS](https://mas.owasp.org/MASVS/) · [Índice MASTG](https://mas.owasp.org/MASTG/tests/) |
 | EPUB | EpubZip, EpubXml, EpubLegacyXml, EpubContent y EpubReferences. Rutas e identidad de entradas, expansión acotada, CRC, SAX sin entidades externas, DOCTYPE XHTML limitado, rechazo de contenido activo y recursos externos. Enlaces HTTPS pasivos con gesto explícito. [EPUB](../EPUB.md) |
 | PDF | FilePdfPreparer, límites Core y adaptadores PDFBox/PdfRenderer. Spool privado, geometría y raster final acotados, un motor activo y cierre de página. Memoria interna de códecs y motor permanece fuera del presupuesto del raster. [PDF](../PDF_READER.md) |
 | TXT y CBZ | FileTextPreparer valida UTF-8 incremental, índices y tamaño. CbzPagePreparer limita ZIP, rutas y handles, inspecciona cabeceras de imagen y conserva orden y locators. [TXT](../TEXT_READER.md) · [CBZ](../PAGE_READER.md) |
@@ -89,15 +89,37 @@ Las dos APK de desarrollo de referencia de la PR #39, be97f00 y 0f2b17d, tienen 
 | RA-06 | LOW | Discovery Android en realme C55. Una búsqueda de Wikisource puede dejar el libro pendiente. | Resolución aplazada. La comprobación desde ficha o la segunda búsqueda son alternativas. [Issue #40](https://github.com/SirOtter0/INFINILECT/issues/40) |
 | RA-08 | MEDIUM | [build.gradle.kts:6](../../build.gradle.kts#L6), classpath AGP 9.3.1. Seis módulos resuelven versiones con avisos upstream críticos, altos o medios. Sin ruta desde los lectores y fuentes en los binarios actuales. | Pendiente la corrección del toolchain. Tabla de avisos, condiciones, versiones corregidas y prueba de aceptación arriba. |
 | RA-09 | LOW | OfflineDownloads.enqueue y remove. Un rechazo de persistencia podía retener progreso de una solicitud sin registro. Una eliminación parcial podía dejar su último progreso en memoria aun desaparecido el registro. | Retrasar la inicialización hasta aceptar la descarga y limpiar el progreso si la recarga confirma que el registro ya no existe. Regresión con backend de prueba. |
-| RA-07 | INFORMATIONAL | [ApplicationInterfaceTest.kt:578](../../app/src/desktopTest/kotlin/org/infinilect/app/ApplicationInterfaceTest.kt#L578) y PageSpreadLayoutTest Desktop. El historial distingue fallos Compose RectList y un gesto anterior estabilizado con reloj sintético. | Seguimiento. La línea base pasa. Un pase no demuestra que RectList desapareció. |
+| RA-07 | INFORMATIONAL | [ApplicationInterfaceTest.kt:578](../../app/src/desktopTest/kotlin/org/infinilect/app/ApplicationInterfaceTest.kt#L578) y PageSpreadLayoutTest Desktop. El historial distingue fallos Compose RectList y un gesto anterior estabilizado con reloj sintético. | Seguimiento. Ambas suites completas, antes y después, pasaron. La intermitencia no se reprodujo y su causa sigue abierta. |
 
 ## Línea base, regresión y comprobaciones finales
 
 Línea base completa de 13 min 13 s. Core JVM 60, Core Android-host 60, App Android-host 1.536, App Desktop 1.823. Total 3.479, sin fallos, errores ni omisiones. Compilaron Android debug, Android release sin firmar y Desktop. Los manifiestos, recursos y lint se comprobaron con el pipeline base.
 
-La regresión PDF falla en la base porque el preflight acepta el recurso sintético con dimensiones fuera del presupuesto. En Descargas, los dos casos de rechazo de persistencia y eliminación parcial también fallan en la base por conservar progreso del registro inexistente.
+La regresión PDF falló en la base porque el preflight acepta el recurso sintético con dimensiones fuera del presupuesto. En Descargas, los dos casos de rechazo de persistencia y eliminación parcial también fallan en la base por conservar progreso del registro inexistente.
 
-La ejecución final de las suites y el app image Linux está en curso.
+| Suite | Antes | Después | Fallos, errores u omisiones |
+| --- | ---: | ---: | ---: |
+| Core JVM | 60 | 60 | 0 |
+| Core Android-host | 60 | 60 | 0 |
+| App Android-host | 1.536 | 1.537 | 0 |
+| App Desktop | 1.823 | 1.825 | 0 |
+| **Total** | **3.479** | **3.482** | **0** |
+
+Pasaron la nueva regresión PDF y los dos casos de progreso residual. También pasaron las suites dentro de la ejecución global para EPUB, PDF, TXT, CBZ, descargas, biblioteca, historial, preferencias, Discovery, proveedores y actualizador. Las tres traducciones tienen 599 cadenas y tres plurales. Los ocho casos de política y los dos manifiestos empaquetados se verificaron. La pasada del escáner limitada al diff dio cero coincidencias y pasó git diff --check.
+
+Se compilaron Android debug y release sin firmar y se comprobó alineación de 16 KiB en ambos. Se generó un app image Linux x86-64 con el launcher ejecutable y la clase principal org.infinilect.app.MainKt. La salida de 169.666.080 bytes es del artefacto empaquetado, no una medición de memoria en ejecución. La apertura del launcher en un escritorio empaquetado y las distribuciones macOS/Windows quedan pendientes.
+
+Comando de suites y artefactos, con los cuatro tests forzados con --rerun en ambas pasadas. En el host se usó la distribución Gradle 9.7.1 ya verificada y el SDK local.
+
+~~~sh
+./gradlew --continue :core:jvmTest --rerun :core:testAndroidHostTest --rerun \
+  :app:testAndroidHostTest --rerun :app:desktopTest --rerun \
+  :androidApp:assembleDebug :androidApp:assembleRelease :androidApp:check \
+  :androidApp:lintRelease :androidApp:verifyDebugLanguageResources \
+  :desktopApp:compileKotlin :desktopApp:createDistributable
+~~~
+
+El app image se añadió solo a la pasada final. La pasada final terminó en 18 min 55 s. Lint debug y release terminaron con cero errores y un aviso preexistente GradleDependency por variante.
 
 ## Candidato de release
 
@@ -113,7 +135,7 @@ La ejecución final de las suites y el app image Linux está en curso.
 
 ### Compilación, firma e instalación
 
-1. Fijar SHA y versión aprobados. En checkout limpio ejecutar `./gradlew :androidApp:assembleRelease :desktopApp:createDistributable` con JDK 21, SDK 37 y artefactos revisados. Probar el app image Linux. Construir macOS y Windows en sus hosts.
+1. Fijar SHA y versión aprobados. En checkout limpio ejecutar `./gradlew :androidApp:assembleRelease :desktopApp:createDistributable` con JDK 21, SDK 37 y artefactos revisados. Comprobar el nombre que ve el usuario en el paquete Desktop y probar el app image Linux. Construir macOS y Windows en sus hosts.
 2. Alinear la APK antes de firmar. Usar apksigner en el entorno de confianza con el almacén de firma autorizado y la entrada secreta de ese entorno. Verificar firmas y certificado público con `apksigner verify --verbose --print-certs`. Comparar paquete, código, ABIs, permisos y certificado o linaje contra el artefacto anterior. [Firma Android](https://developer.android.com/studio/publish/app-signing)
 3. Ejecutar `sha256sum <archivo>` después de firmar y volver a comprobar los bytes entregados. Adjuntar SBOM y avisos. Si se habilita el instalador integrado, verificar también el manifiesto con la raíz independiente descrita en SECURE_UPDATES.
 4. Instalar encima de una versión con certificado compatible. Con firma incompatible o alerta de Play Protect, detenerse y revisar la procedencia. Para recuperación, preferir una compilación corregida con código superior y certificado compatible, preservando los datos.
@@ -126,4 +148,4 @@ La ejecución final de las suites y el app image Linux está en curso.
 - [ ] TalkBack, es/en/ca, claro/oscuro, 150% y 180%, retrato estrecho y paisaje. Revisar arranque frío, desplazamiento, portadas, PDF y memoria con mediciones físicas.
 - [ ] Confirmar que el instalador integrado siga deshabilitado. Si se habilita, validar rechazo de firma, consentimiento y cancelación en otra revisión.
 
-**Recomendación.** Revisar la PR como candidata y posponer la publicación hasta validar firma, instalación física y conservación de datos. Mantener seguimiento separado de la Issue #40.
+**Recomendación.** Revisar la PR como candidata y posponer la publicación hasta resolver o aceptar explícitamente el riesgo del classpath de build y validar firma, instalación física y conservación de datos. Mantener seguimiento separado de la Issue #40.
